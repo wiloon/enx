@@ -63,6 +63,7 @@ type aiEnv struct {
 	billing  *fakeBilling
 	limiter  *fakeLimiter
 	ent      *fakeEntitlements
+	recorder *fakeRecorder
 }
 
 // newAIEnv is a service for a user who may use AI, with credit, a model that
@@ -72,11 +73,13 @@ func newAIEnv() *aiEnv {
 	svc, words, external := newTestServiceFor(ent)
 	env := &aiEnv{
 		svc: svc, words: words, external: external, ent: ent,
-		definer: &fakeDefiner{def: goodDefinition, usage: AIUsage{PromptTokens: 150, CompletionTokens: 40}},
-		billing: &fakeBilling{balance: 10},
-		limiter: &fakeLimiter{},
+		definer:  &fakeDefiner{def: goodDefinition, usage: AIUsage{PromptTokens: 150, CompletionTokens: 40}},
+		billing:  &fakeBilling{balance: 10},
+		limiter:  &fakeLimiter{},
+		recorder: &fakeRecorder{},
 	}
 	svc.EnableAI(env.definer, env.billing, env.limiter, AIConfig{MinQuality: minQuality, PromptVersion: "v1"})
+	svc.RecordAIWordOutcomes(env.recorder)
 	return env
 }
 
@@ -179,6 +182,7 @@ func TestDefineWithAINotAWordIsBilledAndNotStored(t *testing.T) {
 	if len(env.billing.settled) != 1 {
 		t.Fatalf("billed %v, want the not-a-word answer billed", env.billing.settled)
 	}
+	assertAIWordOutcome(t, env.recorder, "not_a_word")
 }
 
 func TestDefineWithAIUnusableReplyIsNotBilled(t *testing.T) {
@@ -196,6 +200,7 @@ func TestDefineWithAIUnusableReplyIsNotBilled(t *testing.T) {
 	if len(env.billing.settled) != 0 {
 		t.Fatalf("billed %v for a reply the user can't use", env.billing.settled)
 	}
+	assertAIWordOutcome(t, env.recorder, "invalid_reply")
 }
 
 func TestDefineWithAIFailedCallIsNotBilled(t *testing.T) {
@@ -242,6 +247,7 @@ func TestDefineWithAIRefusesWordsThatAreNotWordShaped(t *testing.T) {
 		if len(env.definer.calls) != 0 || env.limiter.calls != 0 {
 			t.Errorf("define(%q) reached the model or the limiter", word)
 		}
+		assertAIWordOutcome(t, env.recorder, "refused")
 	}
 }
 
@@ -314,21 +320,34 @@ func TestDefineWithAIRateLimited(t *testing.T) {
 }
 
 func TestDefineWithAIUnavailableWhenNotConfiguredOrUnpriced(t *testing.T) {
-	svc, _, _ := newTestServiceFor(&fakeEntitlements{can: true})
-	if _, err := svc.DefineWithAI(context.Background(), "rizzler", "u1"); !errors.Is(err, ErrAIUnavailable) {
-		t.Fatalf("not enabled: err = %v, want ErrAIUnavailable", err)
-	}
-	if svc.AIConfigured() {
-		t.Fatal("AIConfigured should be false before EnableAI")
-	}
-
 	env := newAIEnv()
 	env.billing.unpriced = true
-	if env.svc.AIConfigured() {
-		t.Fatal("an unpriced feature must not count as configured: it would run for free")
+	disabled, _, _ := newTestServiceFor(&fakeEntitlements{can: true})
+	for _, tc := range []struct {
+		name string
+		svc  *Service
+	}{
+		{"disabled", disabled},
+		{"unpriced", env.svc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &fakeRecorder{}
+			tc.svc.RecordAIWordOutcomes(rec)
+			if tc.svc.AIConfigured() {
+				t.Fatal("AIConfigured should be false")
+			}
+			if _, err := tc.svc.DefineWithAI(context.Background(), "rizzler", "u1"); !errors.Is(err, ErrAIUnavailable) {
+				t.Fatalf("err = %v, want ErrAIUnavailable", err)
+			}
+			assertAIWordOutcome(t, rec, "failed")
+		})
 	}
-	if _, err := env.define("rizzler"); !errors.Is(err, ErrAIUnavailable) {
-		t.Fatalf("unpriced: err = %v, want ErrAIUnavailable", err)
+}
+
+func assertAIWordOutcome(t *testing.T, rec *fakeRecorder, want string) {
+	t.Helper()
+	if len(rec.outcomes) != 1 || rec.outcomes[0] != want {
+		t.Fatalf("outcomes = %v, want [%s]", rec.outcomes, want)
 	}
 }
 
@@ -349,6 +368,7 @@ func TestDefineWithAIDoesNotPayForAKnownWord(t *testing.T) {
 		if len(env.definer.calls) != 0 || len(env.billing.settled) != 0 || env.limiter.calls != 0 {
 			t.Fatal("a known word reached the model, billing or the limiter")
 		}
+		assertAIWordOutcome(t, env.recorder, "known")
 	})
 
 	t.Run("in ECDICT", func(t *testing.T) {
@@ -365,22 +385,33 @@ func TestDefineWithAIDoesNotPayForAKnownWord(t *testing.T) {
 		if len(env.definer.calls) != 0 || len(env.billing.settled) != 0 {
 			t.Fatal("a word ECDICT knows reached the model or billing")
 		}
+		assertAIWordOutcome(t, env.recorder, "known")
 	})
 }
 
 func TestDefineWithAIDoesNotPaperOverADictionaryThatCouldNotAnswer(t *testing.T) {
-	t.Run("ECDICT timed out", func(t *testing.T) {
-		env := newAIEnv()
-		env.external.err = ErrExternalTimeout
+	for _, tc := range []struct {
+		name   string
+		err    error
+		source Source
+	}{
+		{"ECDICT timed out", ErrExternalTimeout, SourceTimeout},
+		{"ECDICT read failed", errors.New("read failed"), SourceError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAIEnv()
+			env.external.err = tc.err
 
-		res, err := env.define("rizzler")
-		if err != nil || res.Source != SourceTimeout {
-			t.Fatalf("got %+v, %v, want a timeout result", res, err)
-		}
-		if len(env.definer.calls) != 0 {
-			t.Fatal("the AI must not stand in for a dictionary that merely was slow")
-		}
-	})
+			res, err := env.define("rizzler")
+			if err != nil || res.Source != tc.source {
+				t.Fatalf("got %+v, %v, want source %s", res, err, tc.source)
+			}
+			if len(env.definer.calls) != 0 {
+				t.Fatal("the AI must not stand in for a dictionary that could not answer")
+			}
+			assertAIWordOutcome(t, env.recorder, "failed")
+		})
+	}
 	t.Run("ECDICT is not configured", func(t *testing.T) {
 		env := newAIEnv()
 		env.external.unavailable = true
@@ -391,6 +422,7 @@ func TestDefineWithAIDoesNotPaperOverADictionaryThatCouldNotAnswer(t *testing.T)
 		if len(env.definer.calls) != 0 {
 			t.Fatal("without ECDICT there is no way to know the word is really missing")
 		}
+		assertAIWordOutcome(t, env.recorder, "failed")
 	})
 }
 

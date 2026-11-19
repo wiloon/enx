@@ -73,6 +73,25 @@ func (Word) TableName() string {
 	return "words"
 }
 
+// AICandidate is an AI candidate definition (ADR-091): an AI answer that was
+// not written to words, kept for review. english is canonical (straight
+// apostrophes) and COLLATE NOCASE like words.english, so it is unique whatever
+// the case. There is deliberately no user column.
+type AICandidate struct {
+	English       string `gorm:"column:english;type:TEXT COLLATE NOCASE;primaryKey"`
+	Chinese       string `gorm:"column:chinese;not null"`
+	Quality       int    `gorm:"column:quality;not null"`
+	PromptVersion string `gorm:"column:prompt_version;not null"`
+	Status        string `gorm:"column:status;not null;default:pending;index:idx_ai_candidates_status"` // pending | rejected
+	HitCount      int    `gorm:"column:hit_count;not null;default:1"`
+	FirstHitAt    int64  `gorm:"column:first_hit_at;not null"` // Unix milliseconds
+	LastHitAt     int64  `gorm:"column:last_hit_at;not null"`  // Unix milliseconds
+}
+
+func (AICandidate) TableName() string {
+	return "ai_candidates"
+}
+
 type UserDict struct {
 	UserId     string `gorm:"column:user_id;primaryKey"`
 	WordId     string `gorm:"column:word_id;primaryKey"`
@@ -210,7 +229,7 @@ func initDatabase(dbPath, level string) error {
 	models := []any{&Word{}, &UserDict{}, &Session{}, &SyncState{}, &LookupEvent{},
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &Feedback{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
-		&User{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryQuotaUsage{}}
+		&User{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryQuotaUsage{}, &AICandidate{}}
 	err = DB.AutoMigrate(models...)
 	if err != nil {
 		return fmt.Errorf("auto-migrate database: %w", err)

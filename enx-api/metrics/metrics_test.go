@@ -185,6 +185,24 @@ func TestObserveTrialGrant(t *testing.T) {
 	}
 }
 
+// ADR-091 Decision 8: one count per DefineWithAI call, by outcome.
+func TestRecordAIWordOutcome(t *testing.T) {
+	m := New()
+	m.RecordAIWordOutcome("candidate_hit")
+	m.RecordAIWordOutcome("candidate_hit")
+	m.RecordAIWordOutcome("rejected_hit")
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_ai_word_fallback_total{outcome="candidate_hit"} 2`,
+		`enx_ai_word_fallback_total{outcome="rejected_hit"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
 // ADR-051 Decision 9: invite claims by result, rewards by outcome.
 func TestObserveReferrals(t *testing.T) {
 	m := New()

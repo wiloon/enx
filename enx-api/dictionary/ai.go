@@ -119,11 +119,86 @@ type TrialGate interface {
 }
 
 type aiFallback struct {
-	definer   WordDefiner
-	billing   AIBilling
-	limiter   AILimiter
-	trialGate TrialGate
-	cfg       AIConfig
+	definer    WordDefiner
+	billing    AIBilling
+	limiter    AILimiter
+	trialGate  TrialGate
+	cfg        AIConfig
+	candidates CandidateStore
+}
+
+// CandidateStatus is where an AI candidate definition stands (ADR-091).
+type CandidateStatus string
+
+const (
+	CandidatePending  CandidateStatus = "pending"
+	CandidateRejected CandidateStatus = "rejected"
+)
+
+// Candidate is an AI candidate definition: an AI answer that was not written
+// to words, kept for every AI-eligible user and for an admin to review
+// (ADR-091). It has no user.
+type Candidate struct {
+	English       string
+	Chinese       string
+	Quality       int
+	PromptVersion string
+	Status        CandidateStatus
+	HitCount      int
+	FirstHitAt    time.Time
+	LastHitAt     time.Time
+}
+
+// CandidateStore is the AI candidate table plus the one guarded write into
+// words that must agree with it (ADR-091 Decision 9).
+type CandidateStore interface {
+	// FindCandidate returns the candidate for english (case-insensitive).
+	FindCandidate(ctx context.Context, english string) (c Candidate, ok bool, err error)
+	// HitCandidate adds 1 to the hit count and sets the last hit time, atomically.
+	HitCandidate(ctx context.Context, english string) error
+	// AddCandidate inserts c with hit count 1. On conflict with an existing
+	// row it keeps that row's status and definition and only counts a hit; it
+	// returns affected=false when words has a live row for the word.
+	AddCandidate(ctx context.Context, c Candidate) (affected bool, err error)
+	// AddAIWord is the qualifying write into words. With a rejected candidate
+	// it writes nothing (stored false); with a pending one it inserts the row
+	// and deletes the candidate; with a live words row it leaves that row
+	// alone and returns its id.
+	AddAIWord(ctx context.Context, entry Entry) (id string, stored bool, err error)
+}
+
+// AIWordRecorder counts the outcome of each DefineWithAI call
+// (enx_ai_word_fallback_total).
+type AIWordRecorder interface {
+	RecordAIWordOutcome(outcome string)
+}
+
+// What DefineWithAI reports to the recorder, once per call (ADR-091 Decision 8).
+const (
+	outcomeKnown           = "known"
+	outcomeCandidateHit    = "candidate_hit"
+	outcomeRejectedHit     = "rejected_hit"
+	outcomeStored          = "stored"
+	outcomeCandidateStored = "candidate_stored"
+	outcomeUnstored        = "unstored"
+	outcomeNotAWord        = "not_a_word"
+	outcomeInvalidReply    = "invalid_reply"
+	outcomeRefused         = "refused"
+	outcomeFailed          = "failed"
+)
+
+// UseCandidates keeps definitions that are not cached as AI candidate
+// definitions. Call it after EnableAI; without it they are shown and dropped.
+func (s *Service) UseCandidates(store CandidateStore) {
+	if s.ai != nil {
+		s.ai.candidates = store
+	}
+}
+
+// RecordAIWordOutcomes reports each DefineWithAI outcome to rec, even when
+// the AI fallback is unavailable.
+func (s *Service) RecordAIWordOutcomes(rec AIWordRecorder) {
+	s.aiRecorder = rec
 }
 
 // EnableAI switches the AI word fallback on. Without it DefineWithAI returns
@@ -164,40 +239,61 @@ func (s *Service) AIConfigured() bool {
 // answer "not a word". A call that fails, and a reply that cannot be used,
 // are not billed -- those are not the user's doing.
 func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Result, error) {
+	res, outcome, err := s.defineWithAI(ctx, english, userID)
+	if s.aiRecorder != nil {
+		s.aiRecorder.RecordAIWordOutcome(outcome)
+	}
+	return res, err
+}
+
+func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Result, string, error) {
 	if !s.AIConfigured() {
-		return Result{}, ErrAIUnavailable
+		return Result{}, outcomeFailed, ErrAIUnavailable
 	}
 	if !ValidAIWord(english) {
-		return Result{}, ErrInvalidWord
+		return Result{}, outcomeRefused, ErrInvalidWord
 	}
 	canUse, err := s.ent.CanUseAI(ctx, userID)
 	if err != nil {
-		return Result{}, err
+		return Result{}, outcomeFailed, err
 	}
 	if !canUse {
-		return Result{}, ErrNotEntitled
+		return Result{}, outcomeRefused, ErrNotEntitled
 	}
 
-	if res, known, err := s.alreadyKnown(ctx, english); err != nil || known {
-		return res, err
+	res, err := s.lookupDictionaries(ctx, english)
+	if err != nil {
+		return res, outcomeFailed, err
+	}
+	switch res.Source {
+	case SourceLocal, SourceEcdict:
+		return res, outcomeKnown, nil
+	case SourceMiss:
+		// Only a clean miss can fall through to candidate and model lookups.
+	default:
+		return res, outcomeFailed, nil
+	}
+
+	if res, outcome, done, err := s.answerFromCandidate(ctx, english); done {
+		return res, outcome, err
 	}
 
 	if !s.ai.limiter.AllowCall(userID) {
-		return Result{}, ErrRateLimited
+		return Result{}, outcomeRefused, ErrRateLimited
 	}
 	balance, err := s.ai.billing.Balance(ctx, userID)
 	if err != nil {
-		return Result{}, err
+		return Result{}, outcomeFailed, err
 	}
 	if balance < 1 {
-		return Result{}, ErrInsufficientCredit
+		return Result{}, outcomeRefused, ErrInsufficientCredit
 	}
 	if s.ai.trialGate != nil {
 		switch s.ai.trialGate.Check(ctx, userID) {
 		case ailimit.LimitedPerDay:
-			return Result{}, ErrTrialLimitedPerDay
+			return Result{}, outcomeRefused, ErrTrialLimitedPerDay
 		case ailimit.LimitedPerMinute:
-			return Result{}, ErrTrialLimitedPerMinute
+			return Result{}, outcomeRefused, ErrTrialLimitedPerMinute
 		}
 	}
 
@@ -209,10 +305,10 @@ func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Res
 	case errors.Is(err, ErrInvalidAIReply):
 		logger.Warnf("dictionary: unusable AI reply for %q (user %s, %d+%d tokens, not billed): %v",
 			english, userID, usage.PromptTokens, usage.CompletionTokens, err)
-		return Result{English: english, Source: SourceAIMiss}, nil
+		return Result{English: english, Source: SourceAIMiss}, outcomeInvalidReply, nil
 	case err != nil:
 		logger.Errorf("dictionary: AI lookup of %q failed for user %s: %v", english, userID, err)
-		return Result{}, ErrAIFailed
+		return Result{}, outcomeFailed, ErrAIFailed
 	}
 
 	if err := s.ai.billing.Settle(callCtx, userID, usage); err != nil {
@@ -222,20 +318,42 @@ func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Res
 	}
 
 	if !def.IsWord {
-		return Result{English: english, Source: SourceAIMiss}, nil
+		return Result{English: english, Source: SourceAIMiss}, outcomeNotAWord, nil
 	}
-	return s.keepAIDefinition(callCtx, english, userID, def), nil
+	res, outcome := s.keepAIDefinition(callCtx, english, userID, def)
+	return res, outcome, nil
 }
 
-// alreadyKnown answers from the words table or ECDICT when either has the
-// word, so the AI is only asked about words nobody else knows. known is false
-// on a clean miss from both; ECDICT being down or slow is reported as a
-// result without a definition, not as a miss, because the AI must not paper
-// over a dictionary that merely could not answer.
-func (s *Service) alreadyKnown(ctx context.Context, english string) (res Result, known bool, err error) {
+// answerFromCandidate answers from the AI candidate table (ADR-091): a pending
+// candidate is served as today's uncached AI definition, a rejected one as "no
+// definition". Neither calls the AI or charges. done is false on a clean miss
+// or when no store is wired.
+func (s *Service) answerFromCandidate(ctx context.Context, english string) (res Result, outcome string, done bool, err error) {
+	if s.ai.candidates == nil {
+		return Result{}, "", false, nil
+	}
+	c, ok, err := s.ai.candidates.FindCandidate(ctx, english)
+	if err != nil {
+		return Result{}, outcomeFailed, true, err
+	}
+	if !ok {
+		return Result{}, "", false, nil
+	}
+	if err := s.ai.candidates.HitCandidate(ctx, english); err != nil {
+		logger.Errorf("dictionary: could not count a hit on the AI candidate %q: %v", english, err)
+	}
+	if c.Status == CandidateRejected {
+		return Result{English: english, Source: SourceAIMiss}, outcomeRejectedHit, true, nil
+	}
+	return Result{English: english, Chinese: c.Chinese, Source: SourceAI, Origin: OriginAI}, outcomeCandidateHit, true, nil
+}
+
+// lookupDictionaries checks the words table and ECDICT before AI fallback.
+// Only a clean miss from both allows fallback.
+func (s *Service) lookupDictionaries(ctx context.Context, english string) (Result, error) {
 	id, entry, ok, err := s.words.Find(ctx, english, true)
 	if err != nil {
-		return Result{}, false, err
+		return Result{}, err
 	}
 	if ok {
 		return Result{
@@ -245,40 +363,76 @@ func (s *Service) alreadyKnown(ctx context.Context, english string) (res Result,
 			Pronunciation: entry.Pronunciation,
 			Source:        SourceLocal,
 			Origin:        originOrECDICT(entry.Origin),
-		}, true, nil
+		}, nil
 	}
 	if !s.external.Available() {
-		return Result{}, false, ErrEcdictUnavailable
+		return Result{}, ErrEcdictUnavailable
 	}
-	res = s.fromExternal(ctx, english)
-	return res, res.Source != SourceMiss, nil
+	return s.fromExternal(ctx, english), nil
 }
 
-// keepAIDefinition answers with the model's definition and, when it is
-// confident enough and the user has not hit their daily cache limit, caches
-// it in the words table. An uncached definition has no row id, so it is shown
-// but not recorded in the user's vocabulary.
-func (s *Service) keepAIDefinition(ctx context.Context, english, userID string, def Definition) Result {
+// keepAIDefinition answers with the model's definition. When it is confident
+// enough and the user has not hit their daily cache limit it is cached in the
+// words table; otherwise it is kept as an AI candidate definition (ADR-091).
+// An uncached definition has no row id, so it is shown but not recorded in the
+// user's vocabulary. The string is the outcome for the recorder.
+func (s *Service) keepAIDefinition(ctx context.Context, english, userID string, def Definition) (Result, string) {
 	res := Result{
 		English: english,
 		Chinese: def.Chinese,
 		Source:  SourceAI,
 		Origin:  OriginAI,
 	}
-	if def.Quality < s.ai.cfg.MinQuality || !s.ai.limiter.AllowCacheWrite(userID) {
-		return res
-	}
-	id, err := s.words.Add(ctx, Entry{
+	entry := Entry{
 		English:       english,
 		Chinese:       def.Chinese,
 		Origin:        OriginAI,
 		Quality:       def.Quality,
 		PromptVersion: s.ai.cfg.PromptVersion,
-	})
+	}
+	if def.Quality < s.ai.cfg.MinQuality || !s.ai.limiter.AllowCacheWrite(userID) {
+		return res, s.keepCandidate(ctx, entry)
+	}
+	var (
+		id     string
+		stored = true
+		err    error
+	)
+	if s.ai.candidates != nil {
+		id, stored, err = s.ai.candidates.AddAIWord(ctx, entry)
+	} else {
+		id, err = s.words.Add(ctx, entry)
+	}
 	if err != nil {
 		logger.Errorf("dictionary: could not cache the AI definition of %s: %v", english, err)
-		return res
+		return res, outcomeUnstored
+	}
+	if !stored {
+		// An admin rejected the word while the model was answering.
+		return res, outcomeUnstored
 	}
 	res.ID = id
-	return res
+	return res, outcomeStored
+}
+
+// keepCandidate stores an uncached definition as an AI candidate definition.
+func (s *Service) keepCandidate(ctx context.Context, e Entry) string {
+	if s.ai.candidates == nil {
+		return outcomeUnstored
+	}
+	affected, err := s.ai.candidates.AddCandidate(ctx, Candidate{
+		English:       e.English,
+		Chinese:       e.Chinese,
+		Quality:       e.Quality,
+		PromptVersion: e.PromptVersion,
+		Status:        CandidatePending,
+		HitCount:      1,
+	})
+	if err != nil {
+		logger.Errorf("dictionary: could not keep the AI candidate definition of %s: %v", e.English, err)
+	}
+	if err != nil || !affected {
+		return outcomeUnstored
+	}
+	return outcomeCandidateStored
 }

@@ -44,6 +44,7 @@ type Metrics struct {
 	rateLimited    *prometheus.CounterVec
 	referralClaims *prometheus.CounterVec
 	referralReward *prometheus.CounterVec
+	aiWordFallback *prometheus.CounterVec
 }
 
 // New builds the metrics on a fresh registry, with the Go runtime and
@@ -103,13 +104,17 @@ func New() *Metrics {
 			Name: "enx_referral_rewards_total",
 			Help: "Referrer rewards settled (ADR-051), by result: rewarded or forfeited.",
 		}, []string{"result"}),
+		aiWordFallback: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "enx_ai_word_fallback_total",
+			Help: "AI word fallback calls (ADR-091), by outcome.",
+		}, []string{"outcome"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.httpRequests, m.httpDuration, m.lookupDuration, m.aiDuration, m.aiTokens,
 		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants, m.rateLimited,
-		m.referralClaims, m.referralReward,
+		m.referralClaims, m.referralReward, m.aiWordFallback,
 	)
 	return m
 }
@@ -184,6 +189,12 @@ func (m *Metrics) ObserveAuth(outcome string, elapsed time.Duration) {
 // narrowed to the handled types (billing does that).
 func (m *Metrics) ObserveWebhook(eventType, outcome string) {
 	m.stripeWebhooks.WithLabelValues(eventType, outcome).Inc()
+}
+
+// RecordAIWordOutcome counts one AI word fallback call by its outcome
+// (ADR-091 Decision 8); dictionary.AIWordRecorder.
+func (m *Metrics) RecordAIWordOutcome(outcome string) {
+	m.aiWordFallback.WithLabelValues(outcome).Inc()
 }
 
 // ObserveTrialGrant records one sign-up trial grant, so an abnormal number
