@@ -42,11 +42,17 @@ func fakeDeepSeek(t *testing.T, content string) *fakeWordModel {
 func aiWordEnv(t *testing.T, modelReply string) (base, creditedToken, freeToken, creditedUserID string, model *fakeWordModel) {
 	t.Helper()
 	model = fakeDeepSeek(t, modelReply)
+	base, creditedToken, freeToken, creditedUserID = aiWordEnvAt(t, model.URL)
+	return base, creditedToken, freeToken, creditedUserID, model
+}
 
+// aiWordEnvAt is aiWordEnv with DeepSeek pointed at modelURL.
+func aiWordEnvAt(t *testing.T, modelURL string) (base, creditedToken, freeToken, creditedUserID string) {
+	t.Helper()
 	cfg := noTrialConfig()
 	cfg.Stripe.Costs.DefineWord = config.TokenPrice{WeightIn: 1, WeightOut: 3, Divisor: 3000}
 	cfg.SentenceTranslate.Provider = "deepseek"
-	cfg.SentenceTranslate.DeepSeek = config.OpenAICompatible{APIKey: "test-key", BaseURL: model.URL}
+	cfg.SentenceTranslate.DeepSeek = config.OpenAICompatible{APIKey: "test-key", BaseURL: modelURL}
 	base, adminToken, plainToken := adminDictEnvWithConfig(t, cfg)
 	t.Cleanup(func() {
 		sqlitex.DB.Exec("DELETE FROM words WHERE english IN (?, ?)", "rizzler", "zzzword")
@@ -64,7 +70,7 @@ func aiWordEnv(t *testing.T, modelReply string) (base, creditedToken, freeToken,
 	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: creditedUserID, TopupBalance: 25, UpdatedAt: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
-	return base, plainToken, adminToken, creditedUserID, model
+	return base, plainToken, adminToken, creditedUserID
 }
 
 const confidentReply = `{"is_word": true, "quality": 9, "senses": [{"pos": "n.", "zh": "很有魅力的人"}]}`

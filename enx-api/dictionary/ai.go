@@ -167,6 +167,10 @@ type CandidateStore interface {
 	AddAIWord(ctx context.Context, entry Entry) (id string, stored bool, err error)
 }
 
+// ErrCandidateNotFound: the admin named a candidate that is not there (it was
+// approved, or never existed).
+var ErrCandidateNotFound = errors.New("AI candidate definition not found")
+
 // AIWordRecorder counts the outcome of each DefineWithAI call
 // (enx_ai_word_fallback_total).
 type AIWordRecorder interface {

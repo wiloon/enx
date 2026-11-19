@@ -382,6 +382,12 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		adminDict.GET("/ai-words", handlers.AdminListAIWords)
 		adminDict.PUT("/words/:word", handlers.AdminEditWord)
 		adminDict.DELETE("/words/:word", handlers.AdminDeleteWord)
+		// The AI candidate definition review queue (ADR-091).
+		candidatesHandler := dictionaryhttp.NewCandidatesHandler(adapters.AICandidates{})
+		adminDict.GET("/ai-candidates", candidatesHandler.List)
+		adminDict.POST("/ai-candidates/:word/approve", candidatesHandler.Approve)
+		adminDict.POST("/ai-candidates/:word/reject", candidatesHandler.Reject)
+		adminDict.POST("/ai-candidates/:word/unreject", candidatesHandler.Unreject)
 		adminDict.GET("/ecdict/:word", handlers.AdminGetEcdict)
 		adminDict.POST("/words/:word/sync-from-ecdict", handlers.AdminSyncWordFromEcdict)
 		// The feedback queue (ADR-076 Decision 7-8): filter by kind and status,
