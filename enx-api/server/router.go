@@ -204,6 +204,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 				},
 			)
 			dictionaryService.LimitTrial(trialGate)
+			dictionaryService.UseCandidates(adapters.AICandidates{})
+			if m != nil {
+				dictionaryService.RecordAIWordOutcomes(m)
+			}
 			if !dictionaryService.AIConfigured() {
 				logger.Warnf("AI word lookup is off: define-word has no price; set a complete [stripe.costs.default] (STRIPE_COSTS_DEFAULT_WEIGHT_IN/_WEIGHT_OUT/_DIVISOR) or a complete [stripe.costs.define-word] block")
 			}

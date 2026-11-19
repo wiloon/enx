@@ -118,6 +118,69 @@ func TestE2E_AIWordFallback(t *testing.T) {
 	}
 }
 
+const lowQualityReply = `{"is_word": true, "quality": 5, "senses": [{"pos": "n.", "zh": "很有魅力的人"}]}`
+
+// ADR-091 end to end: a definition below ai-word.min-quality is kept as an AI
+// candidate definition, so the next ask (this user's or anyone's) is answered
+// from it with no model call and no charge; once rejected it answers
+// "no definition", and un-rejected it answers again.
+func TestE2E_AIWordCandidate(t *testing.T) {
+	base, credited, _, userID := aiWordEnv(t, lowQualityReply)
+	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM ai_candidates") })
+	balance := func() int64 {
+		var b int64
+		if err := sqlitex.DB.Raw("SELECT topup_balance FROM credit_accounts WHERE user_id = ?", userID).Scan(&b).Error; err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	ask := func() (int, map[string]any) {
+		return doJSONBody(t, http.MethodPost, base+"/api/dictionary/ai-word", credited, map[string]string{"word": "rizzler"})
+	}
+
+	code, body := ask()
+	word, _ := body["word"].(map[string]any)
+	if code != http.StatusOK || body["found"] != true || word["Chinese"] != "n. 很有魅力的人" || word["Origin"] != "ai" || word["Id"] != "" {
+		t.Fatalf("first ask: code=%d body=%+v, want the definition with no id", code, body)
+	}
+	if balance() != 24 {
+		t.Fatalf("balance = %d, want 24 after one charged call", balance())
+	}
+	var words int64
+	sqlitex.DB.Raw("SELECT count(*) FROM words WHERE english = ?", "rizzler").Scan(&words)
+	if words != 0 {
+		t.Fatalf("words rows = %d, want none for a candidate", words)
+	}
+
+	code, body = ask()
+	word, _ = body["word"].(map[string]any)
+	if code != http.StatusOK || word["Chinese"] != "n. 很有魅力的人" || word["Id"] != "" {
+		t.Fatalf("second ask: code=%d body=%+v", code, body)
+	}
+	if balance() != 24 {
+		t.Fatalf("a candidate hit must not be charged: balance = %d", balance())
+	}
+	var hits int
+	sqlitex.DB.Raw("SELECT hit_count FROM ai_candidates WHERE english = ?", "rizzler").Scan(&hits)
+	if hits != 2 {
+		t.Fatalf("hit count = %d, want 2", hits)
+	}
+
+	sqlitex.DB.Exec("UPDATE ai_candidates SET status = 'rejected' WHERE english = ?", "rizzler")
+	code, body = ask()
+	if code != http.StatusOK || body["found"] != false || body["reason"] != "no_definition" {
+		t.Fatalf("rejected ask: code=%d body=%+v, want found false / no_definition", code, body)
+	}
+	if balance() != 24 {
+		t.Fatalf("a rejected hit must not be charged: balance = %d", balance())
+	}
+
+	sqlitex.DB.Exec("UPDATE ai_candidates SET status = 'pending' WHERE english = ?", "rizzler")
+	if code, body = ask(); code != http.StatusOK || body["found"] != true {
+		t.Fatalf("un-rejected ask: code=%d body=%+v", code, body)
+	}
+}
+
 // A subscriber's fallback starts by itself; the user can turn that off, and
 // the next lookup honours it.
 func TestE2E_AIWordFallbackAutoFollowsTheSubscriptionAndThePreference(t *testing.T) {
