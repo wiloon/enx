@@ -3,6 +3,7 @@ package aitranslate
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"enx-api/ailimit"
@@ -34,6 +35,15 @@ type wordInContextRequest struct {
 type sentenceWithWordRequest struct {
 	Sentence string `json:"sentence" binding:"required"`
 	Word     string `json:"word" binding:"required"`
+}
+
+type sentenceWithWordsRequest struct {
+	Sentence string `json:"sentence"`
+	Words    []struct {
+		Word string `json:"word"`
+		// DictionaryChinese may be empty (no entry, or the lookup failed).
+		DictionaryChinese string `json:"dictionaryChinese"`
+	} `json:"words"`
 }
 
 // TokenLedger is the slice of billing/credit the token-billed AI translate
@@ -228,4 +238,46 @@ func (h *Handler) TranslateSentenceWithWord(c *gin.Context) {
 		"chinese":     res.SentenceChinese,
 		"wordChinese": res.WordChinese,
 	})
+}
+
+// TranslateSentenceWithWords handles POST /api/translate/sentence-with-words
+// (ADR-023 Decision 9): one LLM call returns the sentence translation plus an
+// in-context gloss for every word the sentence card absorbed. It is a
+// separate endpoint so the legacy single-word contract above is untouched.
+// Words are deduplicated by normalized text (first occurrence kept), so the
+// response echoes them in request order. A gloss the model omitted comes back
+// with empty chinese and why; the client falls back to an individual
+// word-in-context call for it. A missing sentence translation is a 502 and is
+// not billed.
+func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
+	var req sentenceWithWordsRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Sentence) == "" {
+		httpjson.Fail(c, http.StatusBadRequest, "sentence and at least one word are required")
+		return
+	}
+	inputs := make([]sentenceword.WordInput, 0, len(req.Words))
+	for _, w := range req.Words {
+		inputs = append(inputs, sentenceword.WordInput{Word: w.Word, DictionaryChinese: w.DictionaryChinese})
+	}
+	words := sentenceword.DedupeWords(inputs)
+	if len(words) == 0 {
+		httpjson.Fail(c, http.StatusBadRequest, "sentence and at least one word are required")
+		return
+	}
+
+	var res sentenceword.WordsResult
+	ok := h.billedCall(c, "translate_sentence_with_word", func(ctx context.Context) (Usage, error) {
+		var u Usage
+		var err error
+		res, u, err = h.translator.TranslateSentenceWithWords(ctx, req.Sentence, words)
+		return u, err
+	})
+	if !ok {
+		return
+	}
+	out := make([]gin.H, len(res.Words))
+	for i, w := range res.Words {
+		out[i] = gin.H{"word": w.Word, "chinese": w.Chinese, "why": w.Why}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": res.SentenceChinese, "words": out})
 }

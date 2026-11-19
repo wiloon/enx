@@ -34,6 +34,10 @@ func (f stubTranslator) TranslateSentence(context.Context, string) (string, Usag
 func (f stubTranslator) TranslateWordInContext(context.Context, string, string, string) (wordcontext.Result, Usage, error) {
 	return wordcontext.Result{WordChinese: "跑"}, f.usage, f.err
 }
+func (f stubTranslator) TranslateSentenceWithWords(context.Context, string, []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
+	return sentenceword.WordsResult{SentenceChinese: "句"}, f.usage, f.err
+}
+
 func (f stubTranslator) TranslateSentenceWithWord(context.Context, string, string) (sentenceword.Result, Usage, error) {
 	return sentenceword.Result{WordChinese: "跑"}, f.usage, f.err
 }

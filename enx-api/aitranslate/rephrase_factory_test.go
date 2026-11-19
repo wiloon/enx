@@ -22,6 +22,9 @@ func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w, dictiona
 func (translatorOnly) TranslateSentenceWithWord(ctx context.Context, s, w string) (sentenceword.Result, Usage, error) {
 	return sentenceword.Result{}, Usage{}, nil
 }
+func (translatorOnly) TranslateSentenceWithWords(ctx context.Context, s string, w []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
+	return sentenceword.WordsResult{}, Usage{}, nil
+}
 
 // translatorAndRephraser is a provider that supports both.
 type translatorAndRephraser struct{ translatorOnly }
