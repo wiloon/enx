@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-29
 related: issue #550、adr-007（划词整句翻译）、adr-008（短语查询）、adr-011（CSS Custom Highlight API、本地偏好）、adr-025（点词后的整句高亮）
 ---
