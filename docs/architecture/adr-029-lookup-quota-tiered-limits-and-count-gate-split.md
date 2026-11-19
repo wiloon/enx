@@ -183,6 +183,8 @@ dictionary-lookup-daily-subscribed = 0
 
 （顺带把 `enx Pro` 改成对外品牌名 **`Catglish Pro`**——正式名见 `LAUNCH-CHECKLIST` §7.4，`adr-010` 的 `Catseye` 已 Superseded。）订阅用户自己撞到 `subscribed` 上限时，不能给这条「去升级」的文案，应给一条独立的「今日用量异常，请联系支持」——因为对他们来说撞墙意味着账号异常，不是该掏钱。
 
+每日查词配额的 429 统一由服务端附带升级信号。仅当订阅查询成功并确认没有有效订阅时，响应才包含 `"upgrade": true`。有有效订阅或订阅查询失败时省略该字段。原有 `code: "lookup_quota_exceeded"` 和各分支的 `message` 照旧。enx-ui `/lookup` 仅在同时收到该错误码和 `upgrade: true` 时显示「See plans」链接，读释义和记查词的拒绝都适用（ADR-079 Decision 3）。
+
 **同一句假话还在另外两处，必须一起改**（否则是白纸黑字写在结账页上的不可兑现承诺）：
 
 - `enx-api/billing/handler.go:109` —— `an active enx Pro (or higher) subscription is required...`（品牌名也要换）
@@ -304,4 +306,8 @@ dictionary-lookup-daily-subscribed = 0
   - **免费档兼有引导付费的作用**：上限不刻意放宽，撞到时 429 提示升级；上线后按数据把免费上限调到让 10–20% 的活跃免费用户偶尔撞到（Linear WIL-176）。这兑现了上面 Revisit Trigger 的第一条。
   - **订阅档是总量兜底**：与令牌桶限流（#185，管速度）配合，挡住一天几十万次的脚本。
   - **出错放行不变**：即使免费档有引导付费的意图，配额存储出错时仍然放行，不因数据库抖动拒绝服务。
+
+## 修订记录
+
+- 2026-11-19，issue #282：Decision 5 增加服务端升级信号，让 `/lookup` 只向已确认的免费用户显示升级入口，并沿用订阅档的支持提示。
 - **Out of Scope「按 plan 细分四档」**：仍不做，付费档差异用 AI 积分体现（ADR-059 Decision 6）。
