@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiService } from '@/services/api'
 import WordEditor from '@/components/admin/WordEditor'
+import AiCandidates from '@/components/admin/AiCandidates'
 import type { AdminEcdictRow, AdminWordRow } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
 import { unwrap } from '@/lib/apiResult'
@@ -439,6 +440,8 @@ export default function AdminDictionaryPage() {
           </div>
         </div>
       )}
+
+      <AiCandidates />
     </div>
   )
 }

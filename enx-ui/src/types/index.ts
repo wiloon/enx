@@ -203,6 +203,25 @@ export interface AdminAiWordsPage {
   total: number
 }
 
+// One AI candidate definition (ADR-091): an AI answer not written to `words`,
+// kept for an admin to approve or reject. Times are Unix milliseconds.
+export interface AdminAiCandidate {
+  english: string
+  chinese: string
+  quality: number
+  promptVersion: string
+  status: 'pending' | 'rejected'
+  hitCount: number
+  firstHitAt: number
+  lastHitAt: number
+}
+
+// GET /api/admin/ai-candidates: hit count desc; `total` counts every match.
+export interface AdminAiCandidatesPage {
+  candidates: AdminAiCandidate[]
+  total: number
+}
+
 // GET /api/admin/ecdict/:word (ADR-021): the matched ECDICT stardict row plus
 // which fallback strategy hit ("exact" | "sw"; "exact" is case-insensitive,
 // stardict.word being COLLATE NOCASE). No exchange reverse lookup (#959).

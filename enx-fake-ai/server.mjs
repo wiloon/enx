@@ -36,7 +36,14 @@ const server = http.createServer(async (req, res) => {
   const prompt = request.messages.find(message => message.role === 'system')?.content ?? ''
   const fixture = fixtures.find(([, marker]) => prompt.includes(marker))
   if (!fixture) return send(422, { error: { message: 'Unsupported fake AI prompt' } })
-  const [feature, , answer] = fixture
+  const [feature, , fixtureAnswer] = fixture
+  let answer = fixtureAnswer
+  if (feature === 'word-definition') {
+    // Words starting with "zlq" come back below ai-word.min-quality, so an e2e
+    // word can become an AI candidate definition (ADR-091).
+    const lowQuality = request.messages.some(m => m.role === 'user' && /^Word:\s*zlq/i.test(m.content))
+    if (lowQuality) answer = { ...fixtureAnswer, quality: 5 }
+  }
   console.log(JSON.stringify({ event: 'completion', feature }))
   return send(200, {
     id: 'chatcmpl-fake', object: 'chat.completion', model: request.model ?? 'fake',
