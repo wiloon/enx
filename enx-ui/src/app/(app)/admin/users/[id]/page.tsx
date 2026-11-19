@@ -164,7 +164,11 @@ function UserDetail({ detail }: { detail: AdminUserDetail }) {
             userId={user.id}
             email={user.email}
             topupBalance={user.balances.topup}
-            onAdjusted={() => {
+            onAdjusted={async () => {
+              // Cancel before invalidating so a list request already in
+              // flight cannot store the pre-adjustment rows as fresh.
+              await queryClient.cancelQueries({ queryKey: ['admin-users'] })
+              queryClient.invalidateQueries({ queryKey: ['admin-users'] })
               queryClient.invalidateQueries({
                 queryKey: ['admin-user', user.id],
               })

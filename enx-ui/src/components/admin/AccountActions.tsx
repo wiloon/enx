@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { AdminUserAction } from '@/lib/account'
@@ -30,6 +30,7 @@ export default function AccountActions({
   onChanged: () => void
 }) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [resetTrial, setResetTrial] = useState(false)
   const disabled = status === 'disabled'
 
@@ -48,7 +49,16 @@ export default function AccountActions({
       if (!resp.success)
         throw new Error(resp.error || 'Could not delete the account')
     },
-    onSuccess: () => router.push('/admin/users'),
+    onSuccess: async () => {
+      // Cancel first: a list request still in flight would otherwise land
+      // after the invalidation and store the pre-delete rows as fresh.
+      await queryClient.cancelQueries({ queryKey: ['admin-users'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      // The ledger is cached per direction under this prefix.
+      queryClient.removeQueries({ queryKey: ['admin-user', userId] })
+      queryClient.removeQueries({ queryKey: ['admin-user-ledger', userId] })
+      router.push('/admin/users')
+    },
   })
 
   const busy = act.isPending || remove.isPending
