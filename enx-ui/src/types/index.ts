@@ -24,6 +24,17 @@ export interface ApiResponse<T = unknown> {
   // the body carries them as strings (the plan-change 409s, #424).
   reason?: string
   subscriptionId?: string
+  // The error code of a non-2xx body (e.g. lookup_quota_exceeded), when it is
+  // a string, and the server's flag that the user is a confirmed free-tier
+  // user who can upgrade, when it is exactly `true`.
+  code?: string
+  upgrade?: true
+}
+
+// Answer of POST /api/me/word-lookups (ADR-079).
+export interface WordLookupRecord {
+  queryCount: number
+  known: boolean
 }
 
 export interface WordData {

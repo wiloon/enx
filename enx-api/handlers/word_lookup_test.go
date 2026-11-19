@@ -280,7 +280,9 @@ func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 		t.Fatalf("got %d %s, want %d %s", w.Code, w.Body.String(), want.Code, want.Body.String())
 	}
 	var body map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
 	if body["code"] != "lookup_quota_exceeded" {
 		t.Fatalf("code = %v, want lookup_quota_exceeded", body["code"])
 	}
@@ -292,18 +294,29 @@ func (r errRecorder) Record(context.Context, string, string) (int, bool, error) 
 	return 0, false, r.err
 }
 
-type quotaSubscriber bool
+type quotaSubscriber struct {
+	active bool
+	err    error
+}
 
 func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, error) {
-	return bool(s), nil
+	return s.active, s.err
 }
 
 func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
+	const upgradeMessage = "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
+	const supportMessage = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
 	for _, tc := range []struct {
-		active bool
+		name   string
+		sub    quotaSubscriber
 		want   string
-	}{{true, "contact support"}, {false, "Upgrade"}} {
-		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(quotaSubscriber(tc.active))
+		upsell bool
+	}{
+		{"subscriber", quotaSubscriber{active: true}, supportMessage, false},
+		{"free", quotaSubscriber{}, upgradeMessage, true},
+		{"lookup error", quotaSubscriber{err: errors.New("db down")}, upgradeMessage, false},
+	} {
+		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(tc.sub)
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)
@@ -311,8 +324,22 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"wordId":"w1"}`))
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
-		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
-			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
+		if w.Code != http.StatusTooManyRequests {
+			t.Fatalf("%s: got %d %s, want 429", tc.name, w.Code, w.Body)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: decode body %q: %v", tc.name, w.Body.String(), err)
+		}
+		if body["code"] != "lookup_quota_exceeded" || body["message"] != tc.want {
+			t.Fatalf("%s: got %s, want code lookup_quota_exceeded and message %q", tc.name, w.Body, tc.want)
+		}
+		upgrade, present := body["upgrade"]
+		if tc.upsell && upgrade != true {
+			t.Fatalf("%s: upgrade = %v, want true", tc.name, upgrade)
+		}
+		if !tc.upsell && present {
+			t.Fatalf("%s: upgrade present: %s", tc.name, w.Body.String())
 		}
 	}
 }

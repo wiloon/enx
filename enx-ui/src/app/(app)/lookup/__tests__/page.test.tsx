@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-query'
 import WordLookupPage from '../page'
 import { apiService } from '@/services/api'
-import type { ApiResponse, WordData } from '@/types'
+import type { ApiResponse, WordData, WordLookupRecord } from '@/types'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -49,7 +49,7 @@ const found = (word: WordData): ApiResponse<unknown> => ({
   ],
 })
 
-const recorded: ApiResponse<{ queryCount: number; known: boolean }> = {
+const recorded: ApiResponse<WordLookupRecord> = {
   success: true,
   data: { queryCount: 4, known: false },
 }
@@ -394,6 +394,72 @@ it.each(['Daily lookup limit reached.', 'Too many requests'])(
     expect(screen.getByText('v. 跑')).toBeInTheDocument()
     expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
     expect(mockRecord).toHaveBeenCalledTimes(1)
+  }
+)
+const upgradeMessage =
+  'Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit.'
+const supportMessage =
+  'Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support.'
+const rateLimitMessage =
+  'Too many requests. Please slow down and try again in a moment.'
+const upgradeCases: [
+  string,
+  { error: string; code: string; upgrade?: boolean },
+  boolean,
+][] = [
+  [
+    'a free-tier quota 429',
+    { code: 'lookup_quota_exceeded', error: upgradeMessage, upgrade: true },
+    true,
+  ],
+  [
+    'a subscriber quota 429',
+    { code: 'lookup_quota_exceeded', error: supportMessage },
+    false,
+  ],
+  [
+    'a quota 429 after a subscription lookup error',
+    { code: 'lookup_quota_exceeded', error: upgradeMessage },
+    false,
+  ],
+  [
+    'a quota 429 with upgrade false',
+    { code: 'lookup_quota_exceeded', error: upgradeMessage, upgrade: false },
+    false,
+  ],
+  [
+    'a rate-limit 429',
+    { code: 'too_many_requests', error: rateLimitMessage },
+    false,
+  ],
+  [
+    'a rate-limit 429 with upgrade true',
+    { code: 'too_many_requests', error: rateLimitMessage, upgrade: true },
+    false,
+  ],
+]
+describe.each([['definition'], ['recording']])(
+  'quota refusal on the %s',
+  (path) => {
+    it.each(upgradeCases)('for %s', async (_, extra, link) => {
+      const refusal = { success: false, status: 429, ...extra }
+      if (path === 'definition') mockLookup.mockResolvedValue(refusal)
+      else {
+        mockLookup.mockResolvedValue(found(run))
+        mockRecord.mockImplementation(async () => refusal)
+      }
+      renderPage()
+      submit('run')
+      expect(await screen.findByText(refusal.error)).toBeInTheDocument()
+      if (path === 'definition') expect(mockRecord).not.toHaveBeenCalled()
+      else {
+        expect(screen.getByText('v. 跑')).toBeInTheDocument()
+        expect(mockRecord).toHaveBeenCalledTimes(1)
+      }
+      const billing = screen.queryByRole('link', { name: 'See plans' })
+      if (link) expect(billing).toHaveAttribute('href', '/billing')
+      else expect(billing).not.toBeInTheDocument()
+    })
   }
 )
 it.each([404, 500, 'network'])(

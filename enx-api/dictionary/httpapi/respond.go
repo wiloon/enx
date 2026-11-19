@@ -37,9 +37,15 @@ func RespondQuotaExceededWithSubscriptions(c *gin.Context, userID string, subs d
 	}
 	// The code tells the clients this 429 from the request rate limit's
 	// too_many_requests (ADR-060 Decision 4).
-	c.JSON(http.StatusTooManyRequests, gin.H{
+	body := gin.H{
 		"success": false,
 		"code":    "lookup_quota_exceeded",
 		"message": message,
-	})
+	}
+	// upgrade marks a confirmed free user; it is omitted for subscribers and
+	// when the subscription lookup failed.
+	if err == nil && !subscribed {
+		body["upgrade"] = true
+	}
+	c.JSON(http.StatusTooManyRequests, body)
 }

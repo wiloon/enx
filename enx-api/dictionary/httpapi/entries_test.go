@@ -138,9 +138,18 @@ func TestEntriesOverQuotaAnswersTheLookupQuota429(t *testing.T) {
 	w := serveEntries(t, &stubMeter{err: dictionary.ErrQuotaExceeded}, "u1", "application/json", `{"words":["ran"]}`)
 
 	var body map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
 	if w.Code != http.StatusTooManyRequests || body["code"] != "lookup_quota_exceeded" {
 		t.Fatalf("got %d %s, want 429 lookup_quota_exceeded", w.Code, w.Body)
+	}
+	if body["upgrade"] != true {
+		t.Fatalf("upgrade = %v, want true for a confirmed free user", body["upgrade"])
+	}
+	const wantMessage = "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
+	if body["message"] != wantMessage {
+		t.Fatalf("message = %q, want %q", body["message"], wantMessage)
 	}
 }
 
