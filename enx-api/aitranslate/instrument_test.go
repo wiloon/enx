@@ -3,6 +3,7 @@ package aitranslate
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -34,6 +35,13 @@ func (f stubTranslator) TranslateSentence(context.Context, string) (string, Usag
 func (f stubTranslator) TranslateWordInContext(context.Context, string, string, string) (wordcontext.Result, Usage, error) {
 	return wordcontext.Result{WordChinese: "跑"}, f.usage, f.err
 }
+func (f stubTranslator) TranslateSentenceWithWords(context.Context, string, []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
+	return sentenceword.WordsResult{
+		SentenceChinese: "句",
+		Words:           []sentenceword.WordGloss{{Word: "run", Chinese: "跑"}},
+	}, f.usage, f.err
+}
+
 func (f stubTranslator) TranslateSentenceWithWord(context.Context, string, string) (sentenceword.Result, Usage, error) {
 	return sentenceword.Result{WordChinese: "跑"}, f.usage, f.err
 }
@@ -61,11 +69,18 @@ func TestInstrumentRecordsEveryTranslatorCall(t *testing.T) {
 	if res, _, _ := tr.TranslateSentenceWithWord(ctx, "s", "w"); res.WordChinese != "跑" {
 		t.Fatalf("TranslateSentenceWithWord passthrough: %+v", res)
 	}
+	res, usage, err := tr.TranslateSentenceWithWords(ctx, "s", []sentenceword.WordInput{{Word: "run"}})
+	wantGlosses := []sentenceword.WordGloss{{Word: "run", Chinese: "跑"}}
+	if err != nil || res.SentenceChinese != "句" || !slices.Equal(res.Words, wantGlosses) ||
+		usage != (Usage{PromptTokens: 100, CompletionTokens: 20}) {
+		t.Fatalf("TranslateSentenceWithWords passthrough: result=%+v usage=%+v error=%v", res, usage, err)
+	}
 
 	want := []observed{
 		{"bedrock", "translate_sentence", nil, 100, 20},
 		{"bedrock", "word_in_context", nil, 100, 20},
 		{"bedrock", "sentence_with_word", nil, 100, 20},
+		{"bedrock", "sentence_with_words", nil, 100, 20},
 	}
 	if len(obs.calls) != len(want) {
 		t.Fatalf("observed %d calls, want %d", len(obs.calls), len(want))

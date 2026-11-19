@@ -40,4 +40,10 @@ type Translator interface {
 	// the caller falls back to a separate word-in-context call rather than
 	// failing.
 	TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, Usage, error)
+
+	// TranslateSentenceWithWords is the multi-word form (ADR-023 Decision 9):
+	// the sentence translation plus one in-context gloss per word, in ONE LLM
+	// call. words is already deduplicated; each gloss may be empty, and the
+	// caller then falls back to an individual word-in-context call.
+	TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error)
 }

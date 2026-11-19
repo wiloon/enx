@@ -31,6 +31,8 @@ type fakeTranslator struct {
 	wordIn       string
 	dictionaryIn string
 	callCount    int
+	swwsResult   sentenceword.WordsResult
+	wordsIn      []sentenceword.WordInput
 }
 
 func (f *fakeTranslator) TranslateSentence(ctx context.Context, sentence string) (string, Usage, error) {
@@ -49,6 +51,12 @@ func (f *fakeTranslator) TranslateSentenceWithWord(ctx context.Context, sentence
 	f.callCount++
 	f.sentenceIn, f.wordIn = sentence, word
 	return f.swwResult, f.usage, f.err
+}
+
+func (f *fakeTranslator) TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
+	f.callCount++
+	f.sentenceIn, f.wordsIn = sentence, words
+	return f.swwsResult, f.usage, f.err
 }
 
 // fakeTokenLedger stands in for the real billing/credit ledger so these
@@ -387,6 +395,99 @@ func TestSentenceWithWordHandlerMissingFields(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
+	}
+}
+
+// --- TranslateSentenceWithWords (ADR-023 Decision 9) ----------------------
+
+func doPostSentenceWithWords(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
+	return doPostTo(t, "/api/translate/sentence-with-words", h.TranslateSentenceWithWords, body)
+}
+
+func TestSentenceWithWordsHandlerSuccess(t *testing.T) {
+	tr := &fakeTranslator{
+		swwsResult: sentenceword.WordsResult{
+			SentenceChinese: "我在银行存了现金。",
+			Words: []sentenceword.WordGloss{
+				{Word: "bank", Chinese: "银行", Why: ""},
+				{Word: "cash", Chinese: "", Why: ""},
+			},
+		},
+		usage: usageCosting2,
+	}
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(tr, ledger, tokenTestPricing)
+	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[`+
+		`{"word":"bank","dictionaryChinese":"银行"},{"word":" Bank ","dictionaryChinese":"x"},`+
+		`{"word":"","dictionaryChinese":"y"},{"word":"cash"}]}`+" \n\t")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Success bool   `json:"success"`
+		Chinese string `json:"chinese"`
+		Words   []struct {
+			Word    string `json:"word"`
+			Chinese string `json:"chinese"`
+			Why     string `json:"why"`
+		} `json:"words"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Success || resp.Chinese != "我在银行存了现金。" || len(resp.Words) != 2 ||
+		resp.Words[0].Word != "bank" || resp.Words[0].Chinese != "银行" || resp.Words[1].Word != "cash" || resp.Words[1].Chinese != "" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	// The provider sees the deduplicated words, first occurrence kept.
+	if len(tr.wordsIn) != 2 || tr.wordsIn[0].DictionaryChinese != "银行" || tr.wordsIn[1].Word != "cash" {
+		t.Fatalf("provider input: %+v", tr.wordsIn)
+	}
+	if tr.callCount != 1 {
+		t.Fatalf("expected one provider call, got %d", tr.callCount)
+	}
+	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].feature != "translate_sentence_with_word" || ledger.settleCalls[0].cost != 2 {
+		t.Fatalf("unexpected settle calls: %+v", ledger.settleCalls)
+	}
+}
+
+func TestSentenceWithWordsHandlerInvalidInputIs400BeforeProvider(t *testing.T) {
+	for _, body := range []string{
+		`{"words":[{"word":"bank"}]}`,
+		`{"sentence":"   ","words":[{"word":"bank"}]}`,
+		`{"sentence":"I bank."}`,
+		`{"sentence":"I bank.","words":[]}`,
+		`{"sentence":"I bank.","words":[{"word":"  ","dictionaryChinese":"银行"}]}`,
+		`not json`,
+		`{"sentence":"I bank.","words":[{"word":"bank"}]} {}`,
+		`{"sentence":"I bank.","words":[{"word":"bank"}]} trailing`,
+	} {
+		tr := &fakeTranslator{}
+		ledger := &fakeTokenLedger{balance: 100}
+		h := NewHandler(tr, ledger, tokenTestPricing)
+		w := doPostSentenceWithWords(t, h, body)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status got %d want 400", body, w.Code)
+		}
+		if tr.callCount != 0 || ledger.balanceCalls != 0 || len(ledger.settleCalls) != 0 {
+			t.Errorf("%s: provider calls=%d, balance calls=%d, settlements=%d",
+				body, tr.callCount, ledger.balanceCalls, len(ledger.settleCalls))
+		}
+	}
+}
+
+func TestSentenceWithWordsHandlerMissingSentenceIs502Unbilled(t *testing.T) {
+	tr := &fakeTranslator{err: errors.New("sentenceword: reply has no sentence translation"), usage: usageCosting2}
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(tr, ledger, tokenTestPricing)
+	w := doPostSentenceWithWords(t, h, `{"sentence":"I bank.","words":[{"word":"bank"}]}`)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
+	}
+	if len(ledger.settleCalls) != 0 {
+		t.Fatalf("a failed call must not be billed, got: %+v", ledger.settleCalls)
 	}
 }
 

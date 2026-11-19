@@ -52,6 +52,13 @@ func (i *instrumentedTranslator) TranslateSentenceWithWord(ctx context.Context, 
 	return res, u, err
 }
 
+func (i *instrumentedTranslator) TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
+	start := time.Now()
+	res, u, err := i.next.TranslateSentenceWithWords(ctx, sentence, words)
+	i.observe("sentence_with_words", start, u, err)
+	return res, u, err
+}
+
 // InstrumentRephraser wraps r the same way, as operation "rephrase".
 func InstrumentRephraser(r rephrase.Rephraser, provider string, obs AIObserver) rephrase.Rephraser {
 	return &instrumentedRephraser{next: r, provider: provider, obs: obs}
