@@ -2,6 +2,8 @@ package aitranslate
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -251,7 +253,12 @@ func (h *Handler) TranslateSentenceWithWord(c *gin.Context) {
 // not billed.
 func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
 	var req sentenceWithWordsRequest
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Sentence) == "" {
+	dec := json.NewDecoder(c.Request.Body)
+	if dec.Decode(&req) != nil || strings.TrimSpace(req.Sentence) == "" {
+		httpjson.Fail(c, http.StatusBadRequest, "sentence and at least one word are required")
+		return
+	}
+	if _, err := dec.Token(); err != io.EOF {
 		httpjson.Fail(c, http.StatusBadRequest, "sentence and at least one word are required")
 		return
 	}

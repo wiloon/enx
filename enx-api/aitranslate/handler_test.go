@@ -419,7 +419,7 @@ func TestSentenceWithWordsHandlerSuccess(t *testing.T) {
 	h := NewHandler(tr, ledger, tokenTestPricing)
 	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[`+
 		`{"word":"bank","dictionaryChinese":"银行"},{"word":" Bank ","dictionaryChinese":"x"},`+
-		`{"word":"","dictionaryChinese":"y"},{"word":"cash"}]}`)
+		`{"word":"","dictionaryChinese":"y"},{"word":"cash"}]}`+" \n\t")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
@@ -460,16 +460,19 @@ func TestSentenceWithWordsHandlerInvalidInputIs400BeforeProvider(t *testing.T) {
 		`{"sentence":"I bank.","words":[]}`,
 		`{"sentence":"I bank.","words":[{"word":"  ","dictionaryChinese":"银行"}]}`,
 		`not json`,
+		`{"sentence":"I bank.","words":[{"word":"bank"}]} {}`,
+		`{"sentence":"I bank.","words":[{"word":"bank"}]} trailing`,
 	} {
 		tr := &fakeTranslator{}
 		ledger := &fakeTokenLedger{balance: 100}
 		h := NewHandler(tr, ledger, tokenTestPricing)
 		w := doPostSentenceWithWords(t, h, body)
 		if w.Code != http.StatusBadRequest {
-			t.Fatalf("%s: status got %d want 400", body, w.Code)
+			t.Errorf("%s: status got %d want 400", body, w.Code)
 		}
-		if tr.callCount != 0 || ledger.balanceCalls != 0 {
-			t.Fatalf("%s: provider or ledger reached", body)
+		if tr.callCount != 0 || ledger.balanceCalls != 0 || len(ledger.settleCalls) != 0 {
+			t.Errorf("%s: provider calls=%d, balance calls=%d, settlements=%d",
+				body, tr.callCount, ledger.balanceCalls, len(ledger.settleCalls))
 		}
 	}
 }

@@ -31,6 +31,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"POST /translate/sentence",
 		"POST /translate/word-in-context",
 		"POST /translate/sentence-with-word",
+		"POST /translate/sentence-with-words",
 		"POST /rephrase",
 		"PUT /me/words/:english/known",
 		"DELETE /me/words/:english/known",

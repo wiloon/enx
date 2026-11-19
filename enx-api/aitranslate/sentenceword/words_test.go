@@ -2,6 +2,7 @@ package sentenceword
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,6 +24,43 @@ func TestDedupeWordsKeepsFirstByNormalizedText(t *testing.T) {
 	})
 	if len(got) != 2 || got[0].Word != " Bank " || got[0].DictionaryChinese != "银行" || got[1].Word != "Look   up" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestDedupeWordsMatchesChromeCardKeys(t *testing.T) {
+	got := DedupeWords([]WordInput{
+		{Word: "\uFEFFbank", DictionaryChinese: "银行"},
+		{Word: "bank"},
+		{Word: "\uFEFF"},
+		{Word: "LOOK\u00A0\uFEFFup"},
+		{Word: "look up"},
+		{Word: "İ"},
+		{Word: "i\u0307"},
+		{Word: "i"},
+		{Word: "ΟΣ"},
+		{Word: "ος"},
+		{Word: "\u0085bank"},
+	})
+	want := []WordInput{
+		{Word: "\uFEFFbank", DictionaryChinese: "银行"},
+		{Word: "LOOK\u00A0\uFEFFup"},
+		{Word: "İ"},
+		{Word: "i"},
+		{Word: "ΟΣ"},
+		{Word: "\u0085bank"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %+q, want %+q", got, want)
+	}
+}
+
+func TestParseWordsResultMatchesChromeCardKeys(t *testing.T) {
+	raw := `{"sentence":"句子","words":[{"word":"bank","chinese":"银行"},{"word":"i\u0307","chinese":"字母"}]}`
+	words := []WordInput{{Word: "\uFEFFbank"}, {Word: "İ"}}
+	res, err := ParseWordsResult(raw, words)
+	want := []WordGloss{{Word: "\uFEFFbank", Chinese: "银行"}, {Word: "İ", Chinese: "字母"}}
+	if err != nil || !slices.Equal(res.Words, want) {
+		t.Fatalf("got %+v, %v, want %+v", res.Words, err, want)
 	}
 }
 
@@ -75,6 +113,17 @@ func TestParseWordsResultDuplicateEntryUsesFirstNonblank(t *testing.T) {
 	}
 }
 
+func TestParseWordsResultKeepsValidGlossesBesideMalformedEntries(t *testing.T) {
+	raw := `{"sentence":"句子","words":[{"word":"bank","chinese":"银行","why":"引申义"},` +
+		`{"word":"extra","chinese":42},{"word":"run","chinese":"跑"}]}`
+	res, err := ParseWordsResult(raw, bankRun)
+	if err != nil || res.SentenceChinese != "句子" || len(res.Words) != 2 ||
+		res.Words[0] != (WordGloss{Word: "bank", Chinese: "银行", Why: "引申义"}) ||
+		res.Words[1] != (WordGloss{Word: "run", Chinese: "跑"}) {
+		t.Fatalf("got %+v, %v, want both valid glosses", res, err)
+	}
+}
+
 func TestParseWordsResultMalformedJSONRecoversSentence(t *testing.T) {
 	raw := `{"sentence": "我在银行存钱。" oops, "words": [{"word": "bank", "chinese": "银行"}`
 	res, err := ParseWordsResult(raw, bankRun)
@@ -86,6 +135,27 @@ func TestParseWordsResultMalformedJSONRecoversSentence(t *testing.T) {
 	}
 	if len(res.Words) != 2 || res.Words[0].Chinese != "" || res.Words[1].Chinese != "" {
 		t.Fatalf("unmatched words must have empty glosses: %+v", res.Words)
+	}
+}
+
+func TestParseWordsResultRecoversSentenceFromTruncatedObject(t *testing.T) {
+	res, err := ParseWordsResult(`{"sentence":"译文","words":[`, bankRun)
+	if err != nil || res.SentenceChinese != "译文" {
+		t.Fatalf("got %+v, %v, want recovered sentence", res, err)
+	}
+	if len(res.Words) != 2 || res.Words[0] != (WordGloss{Word: "bank"}) || res.Words[1] != (WordGloss{Word: "run"}) {
+		t.Fatalf("want empty glosses for the requested words, got %+v", res.Words)
+	}
+}
+
+func TestParseWordsResultRejectsNestedSentence(t *testing.T) {
+	for _, raw := range []string{
+		`{"words":[{"sentence":"例句"}]}`,
+		`{"metadata":{"sentence":"例句"}, "words":[`,
+	} {
+		if res, err := ParseWordsResult(raw, bankRun); err == nil {
+			t.Errorf("got %+v for %q, want a missing sentence error", res, raw)
+		}
 	}
 }
 

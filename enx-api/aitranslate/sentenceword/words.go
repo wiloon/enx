@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"enx-api/aitranslate/aiusage"
 	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/zh"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // The multi-word variant (ADR-023 Decision 9): one call translates the
@@ -61,7 +65,18 @@ type WordsResult struct {
 // NormalizeWord mirrors enx-chrome's normalizeCardText: trim, collapse
 // whitespace runs to one space, lowercase.
 func NormalizeWord(s string) string {
-	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+	fields := strings.FieldsFunc(s, isCardWhitespace)
+	return cases.Lower(language.Und).String(strings.Join(fields, " "))
+}
+
+// ECMAScript \s includes WhiteSpace and LineTerminator code points.
+func isCardWhitespace(r rune) bool {
+	switch r {
+	case '\t', '\n', '\v', '\f', '\r', '\u2028', '\u2029', '\uFEFF':
+		return true
+	default:
+		return unicode.Is(unicode.Zs, r)
+	}
 }
 
 // DedupeWords drops blank words and later duplicates by NormalizeWord, keeping
@@ -94,12 +109,8 @@ func BuildWordsUserContent(sentence string, words []WordInput) string {
 }
 
 type wireWordsResult struct {
-	Sentence string `json:"sentence"`
-	Words    []struct {
-		Word    string `json:"word"`
-		Chinese string `json:"chinese"`
-		Why     string `json:"why"`
-	} `json:"words"`
+	Sentence string            `json:"sentence"`
+	Words    []json.RawMessage `json:"words"`
 }
 
 // ParseWordsResult turns a provider's raw reply into a WordsResult for the
@@ -111,47 +122,71 @@ type wireWordsResult struct {
 func ParseWordsResult(raw string, words []WordInput) (WordsResult, error) {
 	start := strings.IndexByte(raw, '{')
 	end := strings.LastIndexByte(raw, '}')
-	if start < 0 || end < start {
+	if start < 0 {
 		return WordsResult{}, fmt.Errorf("sentenceword: reply contains no JSON object")
 	}
-	obj := raw[start : end+1]
 
 	var wire wireWordsResult
-	if err := json.Unmarshal([]byte(obj), &wire); err == nil {
-		if sentence := strings.TrimSpace(wire.Sentence); sentence != "" {
-			type gloss struct{ chinese, why string }
-			byKey := map[string]gloss{}
-			for _, e := range wire.Words {
-				key := NormalizeWord(e.Word)
-				chinese := strings.TrimSpace(e.Chinese)
-				if key == "" || chinese == "" {
-					continue
-				}
-				if _, ok := byKey[key]; !ok {
-					byKey[key] = gloss{chinese, strings.TrimSpace(e.Why)}
-				}
-			}
-			out := WordsResult{SentenceChinese: sentence, Words: make([]WordGloss, len(words))}
-			for i, w := range words {
-				g := byKey[NormalizeWord(w.Word)]
-				if strings.TrimSpace(w.DictionaryChinese) == "" {
-					g.why = ""
-				}
-				out.Words[i] = WordGloss{Word: w.Word, Chinese: g.chinese, Why: g.why}
-			}
-			return out, nil
-		}
+	if end <= start || json.Unmarshal([]byte(raw[start:end+1]), &wire) != nil {
+		wire = wireWordsResult{Sentence: recoverWordsSentence(raw[start:])}
 	}
 
-	sentence := strings.TrimSpace(unquoteJSONString(firstSubmatch(sentenceFieldPattern, obj)))
+	sentence := strings.TrimSpace(wire.Sentence)
 	if sentence == "" {
 		return WordsResult{}, fmt.Errorf("sentenceword: reply has no sentence translation")
 	}
+	byKey := make(map[string]WordGloss, len(wire.Words))
+	for _, entry := range wire.Words {
+		var gloss WordGloss
+		if err := json.Unmarshal(entry, &gloss); err != nil {
+			continue
+		}
+		key := NormalizeWord(gloss.Word)
+		gloss.Chinese = strings.TrimSpace(gloss.Chinese)
+		if key == "" || gloss.Chinese == "" {
+			continue
+		}
+		if _, exists := byKey[key]; !exists {
+			gloss.Why = strings.TrimSpace(gloss.Why)
+			byKey[key] = gloss
+		}
+	}
 	out := WordsResult{SentenceChinese: sentence, Words: make([]WordGloss, len(words))}
 	for i, w := range words {
-		out.Words[i] = WordGloss{Word: w.Word}
+		gloss := byKey[NormalizeWord(w.Word)]
+		gloss.Word = w.Word
+		if strings.TrimSpace(w.DictionaryChinese) == "" {
+			gloss.Why = ""
+		}
+		out.Words[i] = gloss
 	}
 	return out, nil
+}
+
+// Read complete top-level fields in order, stopping at the first syntax error.
+// Decoding each value as a unit keeps nested sentence fields out of recovery.
+func recoverWordsSentence(raw string) string {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	if _, err := dec.Token(); err != nil {
+		return ""
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return ""
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return ""
+		}
+		if key == "sentence" {
+			var sentence string
+			if json.Unmarshal(value, &sentence) == nil {
+				return strings.TrimSpace(sentence)
+			}
+		}
+	}
+	return ""
 }
 
 // CallWords is the multi-word combined translation on any provider: one
