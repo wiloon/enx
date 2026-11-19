@@ -448,7 +448,7 @@ function StepDetail({
             Already have an account?{' '}
             <Link
               href={`/sign-in?redirect_url=${redirect}`}
-              className="font-medium text-brand underline underline-offset-4"
+              className="rounded-sm font-medium text-brand underline underline-offset-4 hover:decoration-2 active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
             >
               Sign in
             </Link>

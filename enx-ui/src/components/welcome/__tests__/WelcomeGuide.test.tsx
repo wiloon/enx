@@ -155,9 +155,10 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
   expect(
     screen.getByRole('link', { name: 'Create free account' })
   ).toHaveAttribute('href', '/sign-up?redirect_url=%2Fwelcome')
-  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
-    'href',
-    '/sign-in?redirect_url=%2Fwelcome'
+  const signInLink = within(signIn).getByRole('link', { name: 'Sign in' })
+  expect(signInLink).toHaveAttribute('href', '/sign-in?redirect_url=%2Fwelcome')
+  expect(signInLink.closest('p')).toHaveTextContent(
+    /^Already have an account\? Sign in$/
   )
   expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument()
   expect(

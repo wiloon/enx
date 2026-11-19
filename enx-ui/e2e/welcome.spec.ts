@@ -711,16 +711,15 @@ test('shows the checking state until the extension answers, and updates after in
   await skipPin.click()
   await expect(current.getByLabel('Skipped')).toBeVisible()
   const account = page.locator('ol > li').nth(2)
-  await expect(
-    account.getByRole('link', { name: 'Create free account', exact: true })
-  ).toBeVisible()
-  await expect(
-    account.getByRole('link', { name: 'Sign in', exact: true })
-  ).toBeVisible()
+  const createAccount = account.getByRole('link', {
+    name: 'Create free account',
+    exact: true,
+  })
+  const signIn = account.getByRole('link', { name: 'Sign in', exact: true })
+  await expect(createAccount).toBeVisible()
+  await expect(signIn).toBeVisible()
   await expect(skipPin).toHaveCount(0)
-  await expect(
-    page.getByRole('link', { name: 'Create free account', exact: true })
-  ).toBeInViewport()
+  await expect(createAccount).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',
     path: 'test-results/welcome-installed-mobile.png',
@@ -729,6 +728,24 @@ test('shows the checking state until the extension answers, and updates after in
   await page.screenshot({
     path: 'test-results/welcome-signed-out-desktop.png',
     animations: 'disabled',
+  })
+
+  await test.step('Sign in responds to hover, press, and keyboard focus', async () => {
+    const underline = await signIn.evaluate(
+      (link) => getComputedStyle(link).textDecorationThickness
+    )
+    await signIn.hover()
+    await expect(signIn).not.toHaveCSS('text-decoration-thickness', underline)
+    await page.mouse.down()
+    await expect(signIn).toHaveCSS('opacity', '0.8')
+    await page.mouse.move(0, 0)
+    await page.mouse.up()
+
+    await createAccount.focus()
+    await page.keyboard.press('Tab')
+    await expect(signIn).toBeFocused()
+    await expect(signIn).toHaveCSS('outline-style', 'solid')
+    await expect(signIn).toHaveCSS('outline-width', '2px')
   })
 })
 
