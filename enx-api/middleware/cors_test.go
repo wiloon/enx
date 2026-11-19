@@ -28,6 +28,9 @@ func TestCORSOrigins(t *testing.T) {
 				if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
 					t.Errorf("allowed origin = %q, want %q", got, origin)
 				}
+				if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+					t.Errorf("allow credentials = %q, want %q", got, "true")
+				}
 			} else {
 				for key, value := range w.Header() {
 					if strings.HasPrefix(key, "Access-Control-") {
