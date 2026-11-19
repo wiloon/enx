@@ -44,6 +44,8 @@ translation: n. <主英>=modernization
 - `enx-chrome/src/components/WordPopup.tsx:114-118`：`{currentWord.Chinese}` 原样渲染，前端也没有任何解析/兜底逻辑。
 - 全仓库搜索 `主英`、`crossRef`、`redirect`、`resolveRedirect` 均无命中——这是一个未被实现过的功能缺口，不是某处逻辑的 bug。
 
+> 注（2026-11-19，issue #964）：上面第一条的回退链是本文写作时的情况。#963（issue #959）删除了 `exchange` 全表扫描，现行 `lookupEntry()` 只有 exact（`word` 列 COLLATE NOCASE，大小写不敏感）→ `sw` 两级，未命中直接交给 AI 兜底；§3.1 选项 A 里的"不复用 sw/exchange 模糊回退"同样按此理解。其余内容作为当时的调查记录保留。
+
 ### 2.3 Youdao 链接不是数据源
 
 `WordPopup.tsx:40-42, 132-139` 的"📚 Youdao"只是一个跳转到 `youdao.com/result?word=...` 网页的外部链接（新标签页打开），不参与任何数据获取。按 ADR-0001，有道 API 已被否决作为数据源，这里只是给用户提供的"手动去别处查一下"的便利入口，不在本次改动范围内。
