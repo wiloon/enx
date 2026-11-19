@@ -283,7 +283,7 @@ task build
 ## Project-Specific Tasks
 
 For more detailed tasks specific to each project, refer to:
-- `enx-api/TASKFILE_README.md`
+- `enx-api/docs/TASKFILE_README.md`
 - `enx-chrome/TASKFILE_README.md`
 
 ## Integration with IDEs
@@ -350,7 +350,7 @@ This hierarchical Taskfile structure provides:
 ## References
 
 - [Task Documentation](https://taskfile.dev/)
-- [enx-api Taskfile](enx-api/TASKFILE_README.md)
+- [enx-api Taskfile](../enx-api/docs/TASKFILE_README.md)
 - [enx-chrome Taskfile](enx-chrome/TASKFILE_README.md)
 
 ---
