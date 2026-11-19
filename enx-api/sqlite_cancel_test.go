@@ -21,8 +21,6 @@ import (
 // so logJobFailure's reliance on errors.Is(err, context.Canceled) is checked
 // against the real driver rather than assumed.
 
-const cancelWorkloadRows = 2_000_000
-
 // cancelProbe lets a test observe SQLite evaluating its test-only scalar
 // functions. The functions are registered once, driver-wide; each run installs
 // its own channels.
