@@ -51,12 +51,13 @@ export class WordProcessor {
     htmlEntity: /&[a-zA-Z0-9#]+;/g,
   }
 
-  // Ancestor tags whose text is never looked up or highlighted (links,
-  // form controls, code). Shared by collectTextNodes (highlight + extract
-  // path) and expandToWordRange (click path) so their exclusion rules can't
-  // drift apart (ADR-010 §1.3 / ADR-011 Decision 2). A click on summary or
-  // label text keeps its default action (toggling a details, focusing a
-  // field) because no lookup claims it.
+  // Ancestor tags whose text is never looked up or highlighted (form
+  // controls, code). Links are excluded by the `a[href]` selector in
+  // LOOKUP_EXCLUDED_SELECTORS, not by a tag. Shared by collectTextNodes
+  // (highlight + extract path) and expandToWordRange (click path) so their
+  // exclusion rules can't drift apart (ADR-010 §1.3 / ADR-011 Decision 2).
+  // A click on summary or label text keeps its default action (toggling a
+  // details, focusing a field) because no lookup claims it.
   static readonly LOOKUP_EXCLUDED_TAGS = [
     'script',
     'style',
@@ -136,10 +137,10 @@ export class WordProcessor {
   // this single traversal is what stops their filter rules from drifting
   // apart (ADR-010 §1.3).
   //
-  // True when `node` sits inside a LOOKUP_EXCLUDED_TAGS subtree (walking up
-  // to, but not including, `root`), or inside an `adapterExclusions` match
-  // anywhere above it, `root` and its ancestors included (the SiteAdapter's
-  // lookupExcludedSelectors).
+  // True when `node` sits inside a LOOKUP_EXCLUDED_TAGS or
+  // LOOKUP_EXCLUDED_SELECTORS subtree (walking up to, but not including,
+  // `root`), or inside an `adapterExclusions` match anywhere above it, `root`
+  // and its ancestors included (the SiteAdapter's lookupExcludedSelectors).
   static isInExcludedSubtree(
     node: Node,
     root?: Node,
