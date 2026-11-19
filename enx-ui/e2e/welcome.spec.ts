@@ -566,10 +566,13 @@ test('never offers Add to Chrome to an installed extension while Clerk loads slo
       page.evaluate(() => (window as unknown as { answered: number }).answered)
     )
     .toBeGreaterThan(0)
-  await expect(page.getByText('Loading…')).toBeVisible()
+  const loading = page.getByText('Loading…')
+  await expect(loading).toBeVisible()
   await page.waitForTimeout(2500)
-  await expect(page.getByText('Loading…')).toBeVisible()
+  await expect(loading).toBeVisible()
   releaseClerk()
+  // Releasing the route lets the real Clerk download and initialize.
+  await expect(loading).toBeHidden({ timeout: 15_000 })
   await expect(page.getByText('Catglish extension installed')).toBeVisible()
   await expect(page.locator('ol > li').first().getByLabel('Done')).toBeVisible()
   expect(
