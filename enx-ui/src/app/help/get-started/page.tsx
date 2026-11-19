@@ -45,8 +45,9 @@ export default function GetStartedPage() {
         <p>
           <Link href="/welcome">Open Welcome</Link> and choose{' '}
           <strong>Create free account</strong> if you are new, or{' '}
-          <strong>Sign in</strong> if you already have an account. After
-          signing in, you return to Welcome to continue setup. The extension uses the same account.
+          <strong>Sign in</strong> if you already have an account. After signing
+          in, you return to Welcome to continue setup. The extension uses the
+          same account.
         </p>
       </section>
       <section aria-labelledby="enable" className="space-y-4">
