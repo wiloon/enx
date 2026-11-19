@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -19,14 +20,19 @@ import (
 // ListCandidates returns the candidates with the given status, most hit first
 // then most recently hit, and the total number with that status.
 func (AICandidates) ListCandidates(ctx context.Context, status dictionary.CandidateStatus, limit, offset int) ([]dictionary.Candidate, int64, error) {
-	db := sqlitex.DB.WithContext(ctx).Model(&sqlitex.AICandidate{}).Where("status = ?", string(status))
 	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
 	var rows []sqlitex.AICandidate
-	if err := db.Order("hit_count DESC, last_hit_at DESC, english ASC").
-		Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	// Read-only transactions take one snapshot without SQLite's immediate
+	// write lock.
+	err := sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		db := tx.Model(&sqlitex.AICandidate{}).Where("status = ?", string(status))
+		if err := db.Count(&total).Error; err != nil {
+			return err
+		}
+		return db.Order("hit_count DESC, last_hit_at DESC, english ASC").
+			Limit(limit).Offset(offset).Find(&rows).Error
+	}, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
 		return nil, 0, err
 	}
 	out := make([]dictionary.Candidate, 0, len(rows))
@@ -99,7 +105,7 @@ func (AICandidates) ApproveCandidate(ctx context.Context, english string) (creat
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			row := repo.Word{
-				Id: uuid.NewString(), English: english, Chinese: cand.Chinese,
+				Id: uuid.NewString(), English: cand.English, Chinese: cand.Chinese,
 				CreatedAt: now, UpdatedAt: now, Source: repo.WordSourceAI,
 				AdminEditedAt: &now, AIQuality: &quality, AIPromptVersion: &version,
 			}
@@ -113,6 +119,7 @@ func (AICandidates) ApproveCandidate(ctx context.Context, english string) (creat
 			// A live row wins; the candidate has nothing left to add.
 		default:
 			err := tx.Model(&repo.Word{}).Where("id = ?", existing.Id).Updates(map[string]any{
+				"english":           cand.English,
 				"chinese":           cand.Chinese,
 				"pronunciation":     "",
 				"updated_at":        now,

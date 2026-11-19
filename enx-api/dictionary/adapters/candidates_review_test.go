@@ -3,14 +3,37 @@ package adapters
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"enx-api/dictionary"
 	"enx-api/utils/sqlitex"
+
+	"gorm.io/gorm"
 )
 
 func strPtr(s string) *string { return &s }
+
+func setupFileCandidatesDB(t *testing.T, connections int) {
+	t.Helper()
+	previous := sqlitex.DB
+	t.Cleanup(func() { sqlitex.DB = previous })
+	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := sqlitex.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.SetMaxOpenConns(connections)
+	t.Cleanup(func() {
+		if err := pool.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+}
 
 func seedCandidate(t *testing.T, english string, status dictionary.CandidateStatus, hits int, lastHit int64) {
 	t.Helper()
@@ -52,9 +75,42 @@ func TestListCandidatesFiltersByStatusOrdersAndPages(t *testing.T) {
 		t.Fatalf("page = %+v total %d, want [beta] of 3", rows, total)
 	}
 
+	rows, total, err = store.ListCandidates(ctx, dictionary.CandidatePending, 1, 10)
+	if err != nil || total != 3 || len(rows) != 0 {
+		t.Fatalf("page past the end = %+v total %d err %v, want an empty page of 3", rows, total, err)
+	}
+
 	rows, total, err = store.ListCandidates(ctx, dictionary.CandidateRejected, 10, 0)
 	if err != nil || total != 1 || len(rows) != 1 || rows[0].English != "delta" {
 		t.Fatalf("rejected = %+v total %d err %v, want [delta]", rows, total, err)
+	}
+}
+
+func TestListCandidatesUsesOneSnapshotDuringAnInsert(t *testing.T) {
+	setupFileCandidatesDB(t, 2)
+	db := sqlitex.DB
+	var insertOnce sync.Once
+	var inserted bool
+	// Commit a write on a separate connection after the first read, before
+	// the list can run its next query.
+	if err := db.Callback().Query().After("gorm:query").Register("insert_candidate", func(*gorm.DB) {
+		insertOnce.Do(func() {
+			seedCandidate(t, "alpha", dictionary.CandidatePending, 1, 10)
+			inserted = true
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	store := AICandidates{}
+	ctx := context.Background()
+	rows, total, err := store.ListCandidates(ctx, dictionary.CandidatePending, 1, 0)
+	if err != nil || !inserted || total != 0 || len(rows) != 0 {
+		t.Fatalf("list during insert = %+v total %d err %v, insert committed = %v; want an empty snapshot", rows, total, err, inserted)
+	}
+	rows, total, err = store.ListCandidates(ctx, dictionary.CandidatePending, 1, 0)
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].English != "alpha" {
+		t.Fatalf("list after insert = %+v total %d err %v, want [alpha] of 1", rows, total, err)
 	}
 }
 
@@ -95,7 +151,7 @@ func TestApproveCandidateCreatesAnAdminReviewedAIRowAndDeletesTheCandidate(t *te
 	if err := sqlitex.DB.Where("english = ?", "alpha").First(&w).Error; err != nil {
 		t.Fatal(err)
 	}
-	if w.Source != "ai" || w.Chinese == nil || *w.Chinese != "n. 候选" || w.AIQuality == nil || *w.AIQuality != 5 ||
+	if w.English != "alpha" || w.Source != "ai" || w.Chinese == nil || *w.Chinese != "n. 候选" || w.AIQuality == nil || *w.AIQuality != 5 ||
 		w.AIPromptVersion == nil || *w.AIPromptVersion != "v1" {
 		t.Fatalf("word = %+v, want an AI row with the candidate's content", w)
 	}
@@ -133,10 +189,10 @@ func TestApproveCandidateRevivesASoftDeletedWord(t *testing.T) {
 	setupCandidatesDB(t)
 	seedCandidate(t, "alpha", dictionary.CandidatePending, 1, 10)
 	deleted := int64(5)
-	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w1", English: "alpha", Chinese: strPtr("old"), Source: "ecdict", DeletedAt: &deleted}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w1", English: "ALPHA", Chinese: strPtr("old"), Source: "ecdict", DeletedAt: &deleted}).Error; err != nil {
 		t.Fatal(err)
 	}
-	created, err := AICandidates{}.ApproveCandidate(context.Background(), "alpha")
+	created, err := AICandidates{}.ApproveCandidate(context.Background(), "Alpha")
 	if err != nil || !created {
 		t.Fatalf("approve created = %v, err = %v, want true", created, err)
 	}
@@ -148,7 +204,7 @@ func TestApproveCandidateRevivesASoftDeletedWord(t *testing.T) {
 		t.Fatalf("%d word rows, want 1", len(rows))
 	}
 	w := rows[0]
-	if w.Id != "w1" || w.DeletedAt != nil || w.Chinese == nil || *w.Chinese != "n. 候选" || w.Source != "ai" || w.AdminEditedAt == nil {
+	if w.Id != "w1" || w.English != "alpha" || w.DeletedAt != nil || w.Chinese == nil || *w.Chinese != "n. 候选" || w.Source != "ai" || w.AdminEditedAt == nil {
 		t.Fatalf("word = %+v, want the revived row overwritten with the candidate", w)
 	}
 }
@@ -164,32 +220,47 @@ func TestApproveCandidateMissingIsNotFound(t *testing.T) {
 func TestApproveCandidateFailureRollsBack(t *testing.T) {
 	setupCandidatesDB(t)
 	seedCandidate(t, "alpha", dictionary.CandidatePending, 1, 10)
-	if err := sqlitex.DB.Exec("DROP TABLE words").Error; err != nil {
+	// FAIL leaves the inserted row in the transaction for rollback to remove.
+	if err := sqlitex.DB.Exec(`CREATE TRIGGER fail_word_insert AFTER INSERT ON words
+		BEGIN SELECT RAISE(FAIL, 'approval write failed'); END`).Error; err != nil {
 		t.Fatal(err)
 	}
 	_, err := AICandidates{}.ApproveCandidate(context.Background(), "alpha")
-	if err == nil || errors.Is(err, dictionary.ErrCandidateNotFound) {
-		t.Fatalf("err = %v, want a failure", err)
+	if err == nil || !strings.Contains(err.Error(), "approval write failed") {
+		t.Fatalf("err = %v, want the injected insert failure", err)
 	}
 	if got := candidateRow(t, "alpha").Status; got != "pending" {
 		t.Fatalf("status = %q, want the candidate to stay pending", got)
 	}
+	var count int64
+	if err := sqlitex.DB.Model(&sqlitex.Word{}).Where("english = ?", "alpha").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("word rows after failed approval = %d, want 0", count)
+	}
 }
 
 func TestConcurrentApprovesOfOneCandidateSucceedOnce(t *testing.T) {
-	setupCandidatesDB(t)
-	seedCandidate(t, "alpha", dictionary.CandidatePending, 1, 10)
 	const n = 5
-	var wg sync.WaitGroup
+	setupFileCandidatesDB(t, n)
+	seedCandidate(t, "alpha", dictionary.CandidatePending, 1, 10)
+	var ready, done sync.WaitGroup
+	ready.Add(n)
+	done.Add(n)
+	start := make(chan struct{})
 	errs := make([]error, n)
 	for i := 0; i < n; i++ {
-		wg.Add(1)
 		go func(i int) {
-			defer wg.Done()
+			defer done.Done()
+			ready.Done()
+			<-start
 			_, errs[i] = AICandidates{}.ApproveCandidate(context.Background(), "alpha")
 		}(i)
 	}
-	wg.Wait()
+	ready.Wait()
+	close(start)
+	done.Wait()
 	ok, notFound := 0, 0
 	for _, err := range errs {
 		switch {
@@ -205,7 +276,9 @@ func TestConcurrentApprovesOfOneCandidateSucceedOnce(t *testing.T) {
 		t.Fatalf("ok = %d, notFound = %d, want 1 and %d", ok, notFound, n-1)
 	}
 	var count int64
-	sqlitex.DB.Model(&sqlitex.Word{}).Where("english = ?", "alpha").Count(&count)
+	if err := sqlitex.DB.Model(&sqlitex.Word{}).Where("english = ?", "alpha").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
 	if count != 1 {
 		t.Fatalf("%d word rows, want 1", count)
 	}

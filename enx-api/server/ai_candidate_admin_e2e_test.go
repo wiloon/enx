@@ -4,8 +4,21 @@ import (
 	"net/http"
 	"testing"
 
+	"enx-api/dictionary"
 	"enx-api/utils/sqlitex"
 )
+
+func persistedRizzler(t *testing.T) sqlitex.Word {
+	t.Helper()
+	var word sqlitex.Word
+	if err := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", "rizzler").First(&word).Error; err != nil {
+		t.Fatal(err)
+	}
+	if word.Id == "" {
+		t.Fatal("persisted word has no ID")
+	}
+	return word
+}
 
 // ADR-091 admin review end to end: the candidate a user's low-quality ask
 // created is listed, rejected, un-rejected and approved through the admin API,
@@ -73,11 +86,13 @@ func TestE2E_AICandidateAdminReview(t *testing.T) {
 	if code != http.StatusOK || body["created"] != true {
 		t.Fatalf("approve: code=%d body=%+v, want created true", code, body)
 	}
+	persisted := persistedRizzler(t)
 	// A reviewed AI row is visible to every user, with or without AI access.
 	for name, token := range map[string]string{"AI user": credited, "user without AI": adminToken} {
 		code, body := doJSON(t, http.MethodGet, base+"/api/word/rizzler", token)
-		if code != http.StatusOK || body["Chinese"] != "n. 很有魅力的人" || body["Origin"] != "ai" || body["Id"] == "" {
-			t.Fatalf("%s after approve: code=%d body=%+v, want the word with an id", name, code, body)
+		id, _ := body["Id"].(string)
+		if code != http.StatusOK || body["Chinese"] != "n. 很有魅力的人" || body["Origin"] != "ai" || id != persisted.Id {
+			t.Fatalf("%s after approve: code=%d body=%+v, want the word with persisted ID %q", name, code, body, persisted.Id)
 		}
 	}
 	if got := model.calls.Load(); got != 1 {
@@ -88,6 +103,64 @@ func TestE2E_AICandidateAdminReview(t *testing.T) {
 	}
 	if code, _ := post("reject"); code != http.StatusNotFound {
 		t.Fatalf("reject after approve: code = %d, want 404", code)
+	}
+}
+
+func TestE2E_AICandidateAdminListDefaultsToPendingAndPages(t *testing.T) {
+	base, adminToken, _ := adminDictEnv(t)
+	rows := []sqlitex.AICandidate{
+		{English: "alpha", Status: string(dictionary.CandidatePending), HitCount: 3},
+		{English: "beta", Status: string(dictionary.CandidatePending), HitCount: 2},
+		{English: "gamma", Status: string(dictionary.CandidatePending), HitCount: 1},
+		{English: "delta", Status: string(dictionary.CandidateRejected), HitCount: 4},
+	}
+	if err := sqlitex.DB.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := doJSON(t, http.MethodGet, base+"/api/admin/ai-candidates?limit=1&offset=1", adminToken)
+	page, _ := body["candidates"].([]any)
+	if code != http.StatusOK || body["total"] != float64(3) || len(page) != 1 {
+		t.Fatalf("list: code=%d body=%+v, want one row out of three pending candidates", code, body)
+	}
+	row, _ := page[0].(map[string]any)
+	if row["english"] != "beta" || row["status"] != "pending" {
+		t.Fatalf("page row = %+v, want pending candidate beta", row)
+	}
+}
+
+func TestE2E_AICandidateAdminListRejectsInvalidQueryParameters(t *testing.T) {
+	base, adminToken, _ := adminDictEnv(t)
+	for _, tc := range []struct{ query, message string }{
+		{"status=approved", "status must be pending or rejected"},
+		{"limit=abc", "limit must be between 1 and 200"},
+		{"limit=0", "limit must be between 1 and 200"},
+		{"limit=201", "limit must be between 1 and 200"},
+		{"offset=abc", "offset must be 0 or more"},
+		{"offset=-1", "offset must be 0 or more"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			code, body := doJSON(t, http.MethodGet, base+"/api/admin/ai-candidates?"+tc.query, adminToken)
+			if code != http.StatusBadRequest || body["success"] != false || body["message"] != tc.message {
+				t.Fatalf("list: code=%d body=%+v, want 400 with message %q", code, body, tc.message)
+			}
+		})
+	}
+}
+
+func TestE2E_AICandidateAdminApproveReportsWriteFailure(t *testing.T) {
+	base, adminToken, _ := adminDictEnv(t)
+	row := sqlitex.AICandidate{English: "rizzler", Status: string(dictionary.CandidatePending)}
+	if err := sqlitex.DB.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Exec(`CREATE TRIGGER fail_word_insert AFTER INSERT ON words
+		BEGIN SELECT RAISE(FAIL, 'approval write failed'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	code, body := doJSON(t, http.MethodPost, base+"/api/admin/ai-candidates/rizzler/approve", adminToken)
+	if code != http.StatusInternalServerError || body["success"] != false || body["message"] != "failed to update the AI candidate definition" {
+		t.Fatalf("approve: code=%d body=%+v, want the approval failure response", code, body)
 	}
 }
 

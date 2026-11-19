@@ -50,10 +50,14 @@ func newGatedModel(t *testing.T, plan func(n int64) (reply string, hold bool)) *
 
 func (m *gatedModel) release() { m.once.Do(func() { close(m.gate) }) }
 
-func (m *gatedModel) waitArrived(t *testing.T) {
+func (m *gatedModel) waitArrived(t *testing.T, aDone, bDone <-chan askResult) {
 	t.Helper()
 	select {
 	case <-m.arrived:
+	case r := <-aDone:
+		t.Fatalf("A's request finished before the model call: %+v", r)
+	case r := <-bDone:
+		t.Fatalf("B's request finished before the model call: %+v", r)
 	case <-time.After(10 * time.Second):
 		t.Fatal("no call reached the model")
 	}
@@ -62,6 +66,7 @@ func (m *gatedModel) waitArrived(t *testing.T) {
 type askResult struct {
 	code int
 	body map[string]any
+	err  error
 }
 
 type raceEnv struct {
@@ -69,7 +74,6 @@ type raceEnv struct {
 	a, b          string // tokens of user A (credited) and user B (also the admin)
 	model         *gatedModel
 	askAsync      func(token string) <-chan askResult
-	ask           func(token string) askResult
 	wordRows      func() int64
 	candidateHits func() (hits int64, rows int64)
 	aDone         <-chan askResult
@@ -89,14 +93,14 @@ func raceEnvWith(t *testing.T, plan func(n int64) (string, bool)) *raceEnv {
 			t.Error(err)
 		}
 	})
+	t.Cleanup(model.release)
 	e := &raceEnv{base: base, a: a, b: b, model: model}
-	e.ask = func(token string) askResult {
-		code, body := doJSONBody(t, http.MethodPost, base+"/api/dictionary/ai-word", token, map[string]string{"word": "rizzler"})
-		return askResult{code, body}
-	}
 	e.askAsync = func(token string) <-chan askResult {
 		ch := make(chan askResult, 1)
-		go func() { ch <- e.ask(token) }()
+		go func() {
+			code, body, err := requestJSONBody(http.MethodPost, base+"/api/dictionary/ai-word", token, map[string]string{"word": "rizzler"})
+			ch <- askResult{code: code, body: body, err: err}
+		}()
 		return ch
 	}
 	e.wordRows = func() int64 {
@@ -123,12 +127,18 @@ func (e *raceEnv) await(t *testing.T, ch <-chan askResult) askResult {
 	t.Helper()
 	select {
 	case r := <-ch:
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
 		return r
 	case <-time.After(10 * time.Second):
 		t.Fatal("request did not finish")
 		return askResult{}
 	}
 }
+
+const candidateDefinition = "n. 善于吸引他人的人"
+const candidateReply = `{"is_word": true, "quality": 5, "senses": [{"pos": "n.", "zh": "善于吸引他人的人"}]}`
 
 func (e *raceEnv) admin(t *testing.T, action string) (int, map[string]any) {
 	t.Helper()
@@ -143,17 +153,18 @@ func holdAThenBCreatesTheCandidate(t *testing.T) *raceEnv {
 		if n == 1 {
 			return confidentReply, true
 		}
-		return lowQualityReply, false
+		return candidateReply, false
 	})
 	aDone := e.askAsync(e.a)
-	e.model.waitArrived(t)
-	if r := e.ask(e.b); r.code != http.StatusOK || r.body["found"] != true {
-		t.Fatalf("B's ask: %+v", r)
+	e.model.waitArrived(t, aDone, nil)
+	r := e.await(t, e.askAsync(e.b))
+	word, _ := r.body["word"].(map[string]any)
+	if r.code != http.StatusOK || r.body["found"] != true || word["Chinese"] != candidateDefinition {
+		t.Fatalf("B's answer = %+v, want B's candidate definition", r)
 	}
 	if _, rows := e.candidateHits(); rows != 1 {
 		t.Fatalf("candidate rows after B = %d, want 1", rows)
 	}
-	t.Cleanup(func() { e.model.release() })
 	e.aDone = aDone
 	return e
 }
@@ -173,7 +184,7 @@ func TestE2E_AICandidateRace_RejectBeatsAQualifyingWrite(t *testing.T) {
 		t.Fatalf("words rows = %d, want none: the rejected word must not reach words", n)
 	}
 	calls := e.model.calls.Load()
-	if r := e.ask(e.b); r.code != http.StatusOK || r.body["found"] != false || r.body["reason"] != "no_definition" {
+	if r := e.await(t, e.askAsync(e.b)); r.code != http.StatusOK || r.body["found"] != false || r.body["reason"] != "no_definition" {
 		t.Fatalf("later ask = %+v, want no_definition", r)
 	}
 	if got := e.model.calls.Load(); got != calls {
@@ -186,8 +197,10 @@ func TestE2E_AICandidateRace_AQualifyingWriteBeatsReject(t *testing.T) {
 	e.model.release()
 	r := e.await(t, e.aDone)
 	word, _ := r.body["word"].(map[string]any)
-	if r.code != http.StatusOK || r.body["found"] != true || word["Id"] == "" {
-		t.Fatalf("A's answer = %+v, want the definition with a word id", r)
+	persisted := persistedRizzler(t)
+	id, _ := word["Id"].(string)
+	if r.code != http.StatusOK || r.body["found"] != true || word["Chinese"] != "n. 很有魅力的人" || id != persisted.Id {
+		t.Fatalf("A's answer = %+v, want A's definition with persisted ID %q", r, persisted.Id)
 	}
 	if code, _ := e.admin(t, "reject"); code != http.StatusNotFound {
 		t.Fatalf("reject after A's write: code = %d, want 404", code)
@@ -204,11 +217,13 @@ func TestE2E_AICandidateRace_ConcurrentMissesLeaveOneCandidate(t *testing.T) {
 	e := raceEnvWith(t, func(int64) (string, bool) { return lowQualityReply, true })
 	aDone := e.askAsync(e.a)
 	bDone := e.askAsync(e.b)
-	e.model.waitArrived(t)
-	e.model.waitArrived(t)
+	e.model.waitArrived(t, aDone, bDone)
+	e.model.waitArrived(t, aDone, bDone)
 	e.model.release()
 	for name, ch := range map[string]<-chan askResult{"A": aDone, "B": bDone} {
-		if r := e.await(t, ch); r.code != http.StatusOK || r.body["found"] != true {
+		r := e.await(t, ch)
+		word, _ := r.body["word"].(map[string]any)
+		if r.code != http.StatusOK || r.body["found"] != true || word["Chinese"] != "n. 很有魅力的人" {
 			t.Fatalf("%s's answer = %+v, want the definition", name, r)
 		}
 	}
@@ -222,21 +237,19 @@ func TestE2E_AICandidateRace_ApproveBeatsAQualifyingWrite(t *testing.T) {
 	if code, body := e.admin(t, "approve"); code != http.StatusOK || body["created"] != true {
 		t.Fatalf("approve: code=%d body=%+v", code, body)
 	}
-	var approvedID string
-	if err := sqlitex.DB.Raw("SELECT id FROM words WHERE english = ?", "rizzler").Scan(&approvedID).Error; err != nil || approvedID == "" {
-		t.Fatalf("approved row id = %q, %v", approvedID, err)
-	}
+	approved := persistedRizzler(t)
 	e.model.release()
 	r := e.await(t, e.aDone)
 	word, _ := r.body["word"].(map[string]any)
-	if r.code != http.StatusOK || r.body["found"] != true || word["Id"] != approvedID {
-		t.Fatalf("A's answer = %+v, want the definition with the approved row's id %q", r, approvedID)
+	id, _ := word["Id"].(string)
+	if r.code != http.StatusOK || r.body["found"] != true || word["Chinese"] != "n. 很有魅力的人" || id != approved.Id {
+		t.Fatalf("A's answer = %+v, want A's definition with B's approved ID %q", r, approved.Id)
 	}
 	if n := e.wordRows(); n != 1 {
 		t.Fatalf("words rows = %d, want exactly 1", n)
 	}
-	var editedAt *int64
-	if err := sqlitex.DB.Raw("SELECT admin_edited_at FROM words WHERE english = ?", "rizzler").Scan(&editedAt).Error; err != nil || editedAt == nil {
-		t.Fatalf("admin_edited_at = %v, %v, want set", editedAt, err)
+	persisted := persistedRizzler(t)
+	if persisted.Id != approved.Id || persisted.Chinese == nil || *persisted.Chinese != candidateDefinition || persisted.AdminEditedAt == nil {
+		t.Fatalf("persisted row = %+v, want B's reviewed definition with approved ID %q", persisted, approved.Id)
 	}
 }
