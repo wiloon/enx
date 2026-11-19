@@ -84,7 +84,7 @@ Logto 与国内版的 enx-api / enx-ui 部署在同一个境内环境，使用�
 
 遵循 ADR-035 第 1、3、4 条：两个版本跑同一份代码，差异只在部署配置。**业务规则不知道用户是用哪个 IdP 登录的**：生词本、配额、积分、试用、注销都只认本地用户身份，IdP 的差异只在 adapter 里。
 
-- **enx-api**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，配置项是 issuer、JWKS URL、受众 / authorized party，以及「从哪个 claim 取 subject 和资料」。Clerk 和 Logto 都发 RS256 JWT + 公开 JWKS，验签路径（`keyfunc` + `golang-jwt`）不变，差异只在 claim 的校验和映射。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。注销时删除外部认证身份（ADR-062）也走同一个 seam：Clerk Backend API 或 Logto Management API。
+- **enx-api**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，配置项是 issuer、JWKS URL、受众 / authorized party，以及「从哪个 claim 取 subject 和资料」。Clerk 和 Logto 都发签名 JWT + 公开 JWKS，验签路径（`keyfunc` + `golang-jwt`）不变，差异在 claim 的校验和映射，以及**签名算法**：Clerk 用 RS256，自托管 Logto 默认用 ES384（#1026 原型实测）。允许的签名算法也是配置项（海外版 RS256、国内版 ES384），不在列表里的一律拒绝；不改 Logto 的密钥类型（所有者 2026-11-19 决定）。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。注销时删除外部认证身份（ADR-062）也走同一个 seam：Clerk Backend API 或 Logto Management API。
 - **enx-ui**：`useAuth` / `ApiAuthBridge` / 登录页 / `middleware.ts` / root layout 的 provider 收拢到一个 auth adapter 后面，运行期按 `AUTH_PROVIDER=clerk|logto` 选择（和 ADR-031 的运行期配置一致；两个 SDK 同时打进包里可以接受）。
 - **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
 - **改造顺序**：先抽接口、海外版行为不变，单独合并上线；再加 Logto 实现。每一步都由测试护住。
@@ -131,7 +131,9 @@ ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销，enx-a
 
 ### 9. 扩展登录
 
-国内版扩展用 `@logto/chrome-extension`：由后台 service worker 调 `launchWebAuthFlow` 打开 Logto 托管登录页。如果用户已经在国内版网站登录过、Logto 的会话 cookie 还在，这次授权**可能**自动完成、不用再扫码。这决定了能否接近海外版「会话同步」的体验，**需要在 Chrome 和 Edge 上实测**。不行的话，退路是沿用 ADR-020「网页登录后回跳扩展」的流程。
+国内版扩展用 `@logto/chrome-extension`：由后台 service worker 调 `launchWebAuthFlow` 打开 Logto 托管登录页。如果用户已经在国内版网站登录过、Logto 的会话 cookie 还在，这次授权会自动完成、不用再扫码：#1026 原型在 Chrome 和 Edge 上实测，`interactive: false` + `prompt=none` 的静默登录都直接拿到了 token，接近海外版「会话同步」的体验。用户从没在网站登录过时，扩展打开 Logto 登录页让用户扫码；ADR-020「网页登录后回跳扩展」的流程作为备选。
+
+Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.chromiumapp.org/` 和 CORS 允许来源 `chrome-extension://<扩展 id>`，否则用 code 换 token 时会被拒。所以国内版扩展要用 manifest `key` 固定扩展 id。
 
 ## 已确认（2026-11-19 调研）
 
@@ -140,12 +142,13 @@ ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销，enx-a
 - [x] **微信开放平台资质**：网站应用的微信登录要求开发者资质认证（企业，约 300 元/年），创建网站应用要填 ICP 备案号。
 - [x] **拿不到手机号**：网站应用和公众号网页授权都不返回手机号，只有小程序能拿。
 
-## 需要在编码前验证（原型）
+## 原型验证结果（#1026，2026-11-19）
 
-- [ ] `@logto/chrome-extension` 在 **Chrome 和 Edge** 上的登录流程，能否复用网站的 Logto 会话（Decision 9）。
-- [ ] Logto 登录页是否加载了大陆访问不到的外部资源（字体、CDN）。
-- [ ] Logto 的容器部署和数据库初始化（有人反映要手动跑初始化脚本，文档没写清）。
-- [ ] 自定义 JWT 脚本里能否读到微信社交身份的 `unionid`（Decision 7）。原型没有 AppID 时用 Logto 自带的用户名密码登录代替微信，先把「网站 → 托管登录页 → JWT → enx-api 验签」和扩展登录跑通；拿到 AppID 后再确认这一项。
+- [x] 扩展在 **Chrome 和 Edge** 上登录，并复用网站的 Logto 会话（Decision 9）：都可以。测的是 `launchWebAuthFlow` + PKCE，也就是 `@logto/chrome-extension` 底下用的机制。
+- [x] 登录页的外部资源：只有默认 logo 从 `logto.io` 加载，改用我们自己域名上的 logo。图形验证码脚本只在开启验证码时加载，我们不开。
+- [x] 容器部署和数据库初始化：官方启动命令 `npm run cli db seed -- --swe && npm start` 首次启动时自动初始化，之后跳过，不用手动操作。
+- [x] 自定义 JWT 脚本读微信社交身份（Decision 7）：`context.user.identities.wechat.userId` 能读到并写进 access token。测试用的是通过管理 API 加的假微信身份。
+- [ ] 拿到真实 AppID 后确认：微信 connector 的身份 target 名，以及它的 `userId` 就是 `unionid`。
 
 ## Consequences
 
