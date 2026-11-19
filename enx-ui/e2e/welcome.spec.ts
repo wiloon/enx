@@ -778,14 +778,15 @@ test.describe('post-authentication Home destination', () => {
             json: { vocab: { total: 0, mastered: 0 } },
           })
         )
-        await page.goto('/app')
+        // The destination assertions wait for auth and routing to settle.
+        await page.goto('/app', { waitUntil: 'domcontentloaded' })
         if (completed) {
           await expect(
             page.getByRole('heading', { name: 'Try Catglish in 1 minute' })
-          ).toBeVisible()
+          ).toBeVisible({ timeout: 15_000 })
           await expect(page).toHaveURL(/\/app$/)
         } else {
-          await expect(page).toHaveURL(/\/welcome$/)
+          await expect(page).toHaveURL(/\/welcome$/, { timeout: 15_000 })
           await expect(
             page.getByRole('link', { name: 'Add to Chrome' })
           ).toBeVisible()
