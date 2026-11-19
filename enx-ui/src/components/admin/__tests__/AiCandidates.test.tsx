@@ -79,9 +79,7 @@ it('approves a candidate and reads the list again', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
-  await waitFor(() =>
-    expect(review).toHaveBeenCalledWith('rizzler', 'approve')
-  )
+  await waitFor(() => expect(review).toHaveBeenCalledWith('rizzler', 'approve'))
   await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(1))
 })
 
