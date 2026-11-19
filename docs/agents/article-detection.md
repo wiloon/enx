@@ -94,8 +94,8 @@ When neither a selector nor step 6 finds an article (on the default adapter, or 
 
 Inside the lookup area, text under these is never looked up or highlighted:
 
-- Tags in `WordProcessor.LOOKUP_EXCLUDED_TAGS`: links, form controls, `code`/`pre`, `summary`, `label`, scripts and styles.
-- `WordProcessor.LOOKUP_EXCLUDED_SELECTORS`: X code blocks, `[data-enx-ui]`.
+- Tags in `WordProcessor.LOOKUP_EXCLUDED_TAGS`: form controls, `code`/`pre`, `summary`, `label`, scripts and styles.
+- `WordProcessor.LOOKUP_EXCLUDED_SELECTORS`: `a[href]`, X code blocks, `[data-enx-ui]`.
 - Default adapter only (`lookupExcludedSelectors`): ARIA interactive roles (`button`, `link`, `tab`, `menuitem`, …) and editable regions. Adapters with a `contentSelector` skip this list: X wraps a quoted tweet in `role="link"`.
 
 ## Failure reasons
