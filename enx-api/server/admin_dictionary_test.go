@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -96,17 +97,25 @@ func doJSON(t *testing.T, method, url, token string) (int, map[string]any) {
 // doJSONBody is doJSON with a JSON request body (nil sends none).
 func doJSONBody(t *testing.T, method, url, token string, payload any) (int, map[string]any) {
 	t.Helper()
+	code, body, err := requestJSONBody(method, url, token, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, body
+}
+
+func requestJSONBody(method, url, token string, payload any) (int, map[string]any, error) {
 	var reader io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			t.Fatalf("encode body: %v", err)
+			return 0, nil, fmt.Errorf("encode body: %w", err)
 		}
 		reader = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
-		t.Fatalf("new request: %v", err)
+		return 0, nil, fmt.Errorf("new request: %w", err)
 	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -116,12 +125,12 @@ func doJSONBody(t *testing.T, method, url, token string, payload any) (int, map[
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, url, err)
+		return 0, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var body map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	return resp.StatusCode, body
+	return resp.StatusCode, body, nil
 }
 
 func TestE2E_AdminDictionary_RequiresAdmin(t *testing.T) {
