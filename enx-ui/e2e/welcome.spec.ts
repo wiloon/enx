@@ -62,7 +62,10 @@ test.describe('/welcome (signed out)', () => {
       page.getByRole('link', { name: 'Add to Chrome' })
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Continue', exact: true })
+      page.getByRole('link', { name: 'Create free account', exact: true })
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('link', { name: 'Sign in', exact: true })
     ).toHaveCount(0)
     await expect(
       page.getByRole('region', { name: 'Sample article' })
@@ -87,7 +90,7 @@ test.describe('/welcome (signed out)', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 
-  test('asks a pinned installer to create a free account with one Continue', async ({
+  test('asks a pinned installer to create a free account or sign in', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -110,15 +113,24 @@ test.describe('/welcome (signed out)', () => {
     await expect(current.locator('p').first()).toHaveText(
       'Create your free account'
     )
-    await expect(current.getByText('Free to start.')).toBeVisible()
-    await expect(current.getByRole('link')).toHaveCount(1)
     await expect(
-      current.getByRole('link', { name: 'Continue', exact: true })
-    ).toHaveAttribute(
-      'href',
-      `/sign-in?redirect_url=${encodeURIComponent('/welcome?src=install')}`
-    )
-    await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
+      current.getByText('Look up words and translate sentences as you read.')
+    ).toBeVisible()
+    await expect(
+      current.getByText('Free AI credits included to get you started.')
+    ).toBeVisible()
+    await expect(current.getByText('Free to start.')).toHaveCount(0)
+    await expect(current.getByRole('link')).toHaveCount(2)
+    const returnTo = encodeURIComponent('/welcome?src=install')
+    await expect(
+      current.getByRole('link', { name: 'Create free account', exact: true })
+    ).toHaveAttribute('href', `/sign-up?redirect_url=${returnTo}`)
+    await expect(
+      current.getByRole('link', { name: 'Sign in', exact: true })
+    ).toHaveAttribute('href', `/sign-in?redirect_url=${returnTo}`)
+    await expect(
+      page.getByRole('link', { name: 'Continue', exact: true })
+    ).toHaveCount(0)
   })
 })
 
@@ -554,10 +566,13 @@ test('never offers Add to Chrome to an installed extension while Clerk loads slo
       page.evaluate(() => (window as unknown as { answered: number }).answered)
     )
     .toBeGreaterThan(0)
-  await expect(page.getByText('Loading…')).toBeVisible()
+  const loading = page.getByText('Loading…')
+  await expect(loading).toBeVisible()
   await page.waitForTimeout(2500)
-  await expect(page.getByText('Loading…')).toBeVisible()
+  await expect(loading).toBeVisible()
   releaseClerk()
+  // Releasing the route lets the real Clerk download and initialize.
+  await expect(loading).toBeHidden({ timeout: 15_000 })
   await expect(page.getByText('Catglish extension installed')).toBeVisible()
   await expect(page.locator('ol > li').first().getByLabel('Done')).toBeVisible()
   expect(
@@ -660,7 +675,10 @@ test('shows the checking state until the extension answers, and updates after in
   const skipPin = current.getByRole('button', { name: 'Skip', exact: true })
   await expect(skipPin).toBeVisible()
   await expect(
-    page.getByRole('link', { name: 'Continue', exact: true })
+    page.getByRole('link', { name: 'Create free account', exact: true })
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('link', { name: 'Sign in', exact: true })
   ).toHaveCount(0)
   const styles = await page.locator('ol > li > div > p').evaluateAll((titles) =>
     titles.map((title) => ({
@@ -695,17 +713,16 @@ test('shows the checking state until the extension answers, and updates after in
   })
   await skipPin.click()
   await expect(current.getByLabel('Skipped')).toBeVisible()
-  await expect(
-    page
-      .locator('ol > li')
-      .nth(2)
-      .getByRole('link', { name: 'Continue', exact: true })
-  ).toBeVisible()
-  await expect(page.getByRole('link', { name: /sign up/i })).toHaveCount(0)
+  const account = page.locator('ol > li').nth(2)
+  const createAccount = account.getByRole('link', {
+    name: 'Create free account',
+    exact: true,
+  })
+  const signIn = account.getByRole('link', { name: 'Sign in', exact: true })
+  await expect(createAccount).toBeVisible()
+  await expect(signIn).toBeVisible()
   await expect(skipPin).toHaveCount(0)
-  await expect(
-    page.getByRole('link', { name: 'Continue', exact: true })
-  ).toBeInViewport()
+  await expect(createAccount).toBeInViewport()
   await page.screenshot({
     animations: 'disabled',
     path: 'test-results/welcome-installed-mobile.png',
@@ -714,6 +731,24 @@ test('shows the checking state until the extension answers, and updates after in
   await page.screenshot({
     path: 'test-results/welcome-signed-out-desktop.png',
     animations: 'disabled',
+  })
+
+  await test.step('Sign in responds to hover, press, and keyboard focus', async () => {
+    const underline = await signIn.evaluate(
+      (link) => getComputedStyle(link).textDecorationThickness
+    )
+    await signIn.hover()
+    await expect(signIn).not.toHaveCSS('text-decoration-thickness', underline)
+    await page.mouse.down()
+    await expect(signIn).toHaveCSS('opacity', '0.8')
+    await page.mouse.move(0, 0)
+    await page.mouse.up()
+
+    await createAccount.focus()
+    await page.keyboard.press('Tab')
+    await expect(signIn).toBeFocused()
+    await expect(signIn).toHaveCSS('outline-style', 'solid')
+    await expect(signIn).toHaveCSS('outline-width', '2px')
   })
 })
 
@@ -743,14 +778,15 @@ test.describe('post-authentication Home destination', () => {
             json: { vocab: { total: 0, mastered: 0 } },
           })
         )
-        await page.goto('/app')
+        // The destination assertions wait for auth and routing to settle.
+        await page.goto('/app', { waitUntil: 'domcontentloaded' })
         if (completed) {
           await expect(
             page.getByRole('heading', { name: 'Try Catglish in 1 minute' })
-          ).toBeVisible()
+          ).toBeVisible({ timeout: 15_000 })
           await expect(page).toHaveURL(/\/app$/)
         } else {
-          await expect(page).toHaveURL(/\/welcome$/)
+          await expect(page).toHaveURL(/\/welcome$/, { timeout: 15_000 })
           await expect(
             page.getByRole('link', { name: 'Add to Chrome' })
           ).toBeVisible()

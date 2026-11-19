@@ -33,7 +33,20 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     async ({}, provide) => {
       // Worker-scoped rather than a setup project: it sets CLERK_TESTING_TOKEN
       // on process.env, which only reaches the worker that ran it.
-      await clerkSetup()
+      try {
+        await clerkSetup()
+      } catch (error) {
+        // A failed fetch is wrapped without the status or code the SDK retries.
+        if (
+          !(error instanceof Error) ||
+          error.name !== 'ClerkAPIResponseError' ||
+          !('status' in error) ||
+          error.status !== undefined
+        ) {
+          throw error
+        }
+        await clerkSetup()
+      }
       await provide()
     },
     { scope: 'worker' },

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import GetStartedPage from '../page'
 
 it('explains pinning, sign-in and a user-initiated first lookup', () => {
@@ -13,6 +13,13 @@ it('explains pinning, sign-in and a user-initiated first lookup', () => {
     'href',
     '/welcome'
   )
+  const signIn = screen.getByRole('link', { name: 'Open Welcome' })
+    .parentElement as HTMLElement
+  expect(signIn).toHaveTextContent(/choose Create free account if you are new/)
+  expect(signIn).toHaveTextContent(/Sign in if you already have an account/)
+  expect(within(signIn).getByText('Create free account').tagName).toBe('STRONG')
+  expect(within(signIn).getByText('Sign in').tagName).toBe('STRONG')
+  expect(signIn).not.toHaveTextContent('Continue')
   expect(screen.getByText(/Click the Catglish icon/)).toHaveTextContent(
     'Read with Catglish'
   )
