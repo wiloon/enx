@@ -56,10 +56,8 @@ async function sendOneSentenceFromPage(page: Page, wordIndex = 0) {
 function sentenceTranslatePosts(
   posts: { url: string; body: unknown }[]
 ): { url: string; body: unknown }[] {
-  return posts.filter(
-    p =>
-      p.url.includes('/api/translate/sentence') &&
-      !p.url.includes('sentence-with-word')
+  return posts.filter(p =>
+    /\/api\/translate\/sentence(-with-words)?(\?|$)/.test(p.url)
   )
 }
 
@@ -88,6 +86,44 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await expect
       .poll(async () => sentenceTranslatePosts(await translatePosts(context)))
       .toHaveLength(1)
+  })
+
+  test('a sentence absorbs the lookup card above it → one combined translate (ADR-023 Decision 9)', async ({
+    page,
+    context,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context, {
+      wordData: { Id: 'w-stub', LoadCount: 3, Known: false },
+    })
+    await page.goto(TEST_PAGE_PATH, { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+
+    const tabId = await readingTabId(page, extensionId)
+    const panel = await openPanel(context, extensionId, tabId)
+
+    await clickWordAndWaitForPopup(page, 0)
+    const lookupCard = panel.locator('[data-testid^="sidepanel-card-"]')
+    await expect(lookupCard).toHaveCount(1)
+    await page
+      .locator(
+        '#enx-anchored-overlay [data-testid="word-popover-sentence-translation"]'
+      )
+      .click()
+
+    await expect(panel.getByTestId('sidepanel-chinese')).toHaveText('译文')
+    await expect(lookupCard).toHaveCount(1)
+    await expect(lookupCard).toContainText('义')
+    await expect
+      .poll(async () => {
+        const posts = await translatePosts(context)
+        return posts
+          .filter(p => /\/api\/translate\/sentence/.test(p.url))
+          .map(p => new URL(p.url).pathname)
+      })
+      .toEqual(['/api/translate/sentence-with-words'])
   })
 
   test('panel opened after translations shows prior cards and sends no new request', async ({

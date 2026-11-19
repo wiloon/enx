@@ -4,6 +4,8 @@
 // written back by (sentenceId, key) and only while the card still carries
 // the token of the request it is waiting on.
 
+import { tokenizeWords } from './wordHighlight'
+
 export type Status = 'idle' | 'loading' | 'loaded' | 'error'
 
 export type FetchStatus = 'loading' | 'loaded' | 'error'
@@ -60,6 +62,10 @@ export interface WordCardData {
   // inside a SentenceEntry's `words` instead reads its owning entry's
   // `sentence` at retry time, so it's left unset there.
   contextSentence?: string
+  // A nested card a sentence absorbed from the top level (ADR-023 Decision
+  // 9): the sentence's Retry puts its failed context back in the combined
+  // request, also after a reload.
+  absorbed?: boolean
 }
 
 // A card in the Side Panel's unified history list (ADR-023): either a
@@ -308,24 +314,28 @@ export const moveSentenceToTop = (
   return index === -1 ? entries : toFront(entries, index)
 }
 
-// The top-level page-lookup card a sentence sent from `word` should absorb
-// (ADR-023 Decision 7): the user clicked `word` on the page, then sent its
-// sentence to the panel from the same popover, so the newest entry is that
-// word's dictionary-only card. Only the very first entry counts -- an older
-// lookup of the same word is its own history.
-export const adjacentPageCard = (
+// The top-level page-lookup cards a sentence absorbs (ADR-023 Decision 9):
+// scanning from the top, up to the first sentence card (the target's own
+// included), every page-lookup word card (dictionary loaded, no context) whose
+// key matches a word of `sentence` -- tokenized as page clicks are. Returned in
+// their top-level order; phrase cards, scoped cards and cards beyond the
+// window are never touched.
+export const absorbablePageCards = (
   entries: PanelEntry[],
-  word: string
-): WordEntry | undefined => {
-  const first = entries[0]
-  if (
-    first?.kind === 'word' &&
-    first.key === wordCardKey(word) &&
-    first.dictionaryStatus === 'loaded' &&
-    first.contextStatus === 'none'
-  )
-    return first
-  return undefined
+  sentence: string
+): WordEntry[] => {
+  const keys = new Set(tokenizeWords(sentence).map(t => wordCardKey(t.word)))
+  const found: WordEntry[] = []
+  for (const entry of entries) {
+    if (entry.kind === 'sentence') break
+    if (
+      entry.dictionaryStatus === 'loaded' &&
+      entry.contextStatus === 'none' &&
+      keys.has(entry.key)
+    )
+      found.push(entry)
+  }
+  return found
 }
 
 // -- Request timeout (ADR-090 Decision 5) ---------------------------------

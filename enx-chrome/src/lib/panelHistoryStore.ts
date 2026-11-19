@@ -7,7 +7,7 @@
 
 import {
   PANEL_REQUEST_TIMEOUT_MS,
-  adjacentPageCard,
+  absorbablePageCards,
   findCard,
   findSentence,
   isCardLoading,
@@ -60,12 +60,28 @@ export const emptyPanelHistory = (): StoredPanelHistory => ({
   clearGeneration: 0,
 })
 
+export type CombinedWordRequest = {
+  key: string
+  word: string
+  token: number
+  dictionaryChinese: string
+}
+
 export type PlannedRequest =
   | {
       type: 'translateSentence'
       sentenceId: string
       sentence: string
       token: number
+    }
+  | {
+      // One AI call for the sentence and the word cards it absorbed
+      // (ADR-023 Decision 9); each carries its own token.
+      type: 'translateSentenceWithWords'
+      sentenceId: string
+      sentence: string
+      token: number
+      words: CombinedWordRequest[]
     }
   | {
       type: 'fetchWordContext'
@@ -200,7 +216,9 @@ const retryCard = (
         key: card.key,
         token,
         dictionaryChinese:
-          card.dictionaryStatus === 'loaded' ? card.dictionaryChinese : undefined,
+          card.dictionaryStatus === 'loaded'
+            ? card.dictionaryChinese
+            : undefined,
       }
     : {
         type: 'fetchWordContext',
@@ -212,6 +230,52 @@ const retryCard = (
         counts: false,
       }
   return { state: { ...alloc.state, entries }, plan: [request] }
+}
+
+const combinedWord = (
+  card: WordCardData,
+  token: number
+): CombinedWordRequest => ({
+  key: card.key,
+  word: card.word,
+  token,
+  dictionaryChinese: card.dictionaryChinese ?? '',
+})
+
+// An absorbed card whose context failed with its dictionary half loaded goes
+// back into the sentence's combined request (Retry, errored resend).
+const isRetryableAbsorbed = (card: WordCardData): boolean =>
+  card.absorbed === true &&
+  card.contextStatus === 'error' &&
+  card.dictionaryStatus === 'loaded' &&
+  !isCardLoading(card)
+
+// Gives each card a new token and puts its context back to loading.
+const restartAbsorbed = (
+  start: StoredPanelHistory,
+  sentenceId: string,
+  cards: WordCardData[],
+  now: number
+): { state: StoredPanelHistory; words: CombinedWordRequest[] } => {
+  let state = start
+  const words: CombinedWordRequest[] = []
+  for (const card of cards) {
+    const alloc = allocateToken(state)
+    state = {
+      ...alloc.state,
+      entries: patchCard(alloc.state.entries, sentenceId, card.key, {
+        token: alloc.token,
+        startedAt: now,
+        contextStatus: 'loading',
+        contextError: undefined,
+        contextErrorHttpStatus: undefined,
+        contextSessionExpired: false,
+        contextSessionUnverified: false,
+      }),
+    }
+    words.push(combinedWord(card, alloc.token))
+  }
+  return { state, words }
 }
 
 export type SentenceEventInput = {
@@ -259,7 +323,13 @@ const claimSentence = (
         ),
       }
       if (existing.contextStatus === 'error' && !isCardLoading(existing)) {
-        const retried = retryCard(state, undefined, existing, event.sentence, now)
+        const retried = retryCard(
+          state,
+          undefined,
+          existing,
+          event.sentence,
+          now
+        )
         state = retried.state
         plan.push(...retried.plan)
       }
@@ -296,40 +366,76 @@ const claimSentence = (
     const anchorWord = event.word?.trim() || ''
     const clickedWord = anchorWord.toLowerCase()
     const anchorKey = wordCardKey(clickedWord)
+    const needsSentence =
+      !findSentence(state.entries, id) ||
+      findSentence(state.entries, id)!.status === 'error'
+
+    // An errored resend puts the failed absorbed words back into the one
+    // combined request, next to the newly absorbed ones.
+    const restarted: CombinedWordRequest[] = []
+    const errored = findSentence(state.entries, id)
+    if (errored && needsSentence) {
+      const again = restartAbsorbed(
+        state,
+        id,
+        errored.words.filter(isRetryableAbsorbed),
+        now
+      )
+      state = again.state
+      restarted.push(...again.words)
+    }
     const existing = findSentence(state.entries, id)
+    const nestedKeys = new Set(existing?.words.map(w => w.key))
     const nestedAnchor = clickedWord
       ? existing?.words.find(w => w.key === anchorKey)
       : undefined
-    const pageCard = clickedWord
-      ? adjacentPageCard(state.entries, clickedWord)
-      : undefined
-    const absorbed = nestedAnchor ? undefined : pageCard
+
+    // The window above the first sentence card: matching cards leave the top
+    // level; one the sentence already holds is dropped without copying data.
+    const reach = absorbablePageCards(state.entries, event.sentence)
+    const leaving = new Set<PanelEntry>(reach)
+    const absorbedCards: WordCardData[] = []
+    for (const card of reach) {
+      if (nestedKeys.has(card.key)) continue
+      const alloc = allocateToken(state)
+      state = alloc.state
+      absorbedCards.push({
+        word: card.word,
+        key: card.key,
+        token: alloc.token,
+        startedAt: now,
+        pronunciation: card.pronunciation,
+        loadCount: card.loadCount,
+        dictionaryChinese: card.dictionaryChinese,
+        dictionaryStatus: card.dictionaryStatus,
+        contextStatus: 'loading',
+        absorbed: true,
+      })
+    }
 
     let sentenceToken: number | undefined
-    if (!existing || existing.status === 'error') {
+    if (needsSentence) {
       const alloc = allocateToken(state)
       state = alloc.state
       sentenceToken = alloc.token
     }
 
-    let absorbedCard: WordCardData | undefined
-    if (absorbed) {
-      const alloc = allocateToken(state)
-      state = alloc.state
-      absorbedCard = {
-        word: absorbed.word,
-        key: absorbed.key,
-        token: alloc.token,
-        startedAt: now,
-        pronunciation: absorbed.pronunciation,
-        loadCount: absorbed.loadCount,
-        dictionaryChinese: absorbed.dictionaryChinese,
-        dictionaryStatus: absorbed.dictionaryStatus,
-        contextStatus: 'loading',
-      }
-    }
+    // Anchor first, then the absorbed cards in their prior top-level order,
+    // then whatever the sentence already held.
+    const words = [...absorbedCards, ...(existing?.words ?? [])]
+    const anchorAt = clickedWord
+      ? words.findIndex(w => w.key === anchorKey)
+      : -1
+    const ordered =
+      anchorAt > 0
+        ? [
+            words[anchorAt],
+            ...words.slice(0, anchorAt),
+            ...words.slice(anchorAt + 1),
+          ]
+        : words
 
-    const rest = state.entries.filter(e => e !== pageCard)
+    const rest = state.entries.filter(e => !leaving.has(e))
     if (!existing) {
       state = {
         ...state,
@@ -345,69 +451,100 @@ const claimSentence = (
             chinese: '',
             errorMessage: '',
             errorHttpStatus: undefined,
-            words: absorbedCard ? [absorbedCard] : [],
+            words: ordered,
           },
           ...rest,
         ],
       }
     } else {
-      let next = patchSentence(moveSentenceToTop(rest, id), id, {
-        ...(clickedWord ? { clickedWord } : {}),
-        ...(sentenceToken === undefined
-          ? {}
-          : {
-              token: sentenceToken,
-              startedAt: now,
-              status: 'loading' as const,
-              errorMessage: '',
-            }),
-      })
-      const anchorCard = nestedAnchor ?? absorbedCard
-      if (anchorCard) {
-        next = reorderOrInsertCard(next, id, anchorKey, () => anchorCard)
+      state = {
+        ...state,
+        entries: patchSentence(moveSentenceToTop(rest, id), id, {
+          ...(clickedWord ? { clickedWord } : {}),
+          ...(sentenceToken === undefined
+            ? {}
+            : {
+                token: sentenceToken,
+                startedAt: now,
+                status: 'loading' as const,
+                errorMessage: '',
+              }),
+          words: ordered,
+        }),
       }
-      state = { ...state, entries: next }
     }
 
+    const participants = new Set([
+      ...restarted.map(w => w.key),
+      ...absorbedCards.map(w => w.key),
+    ])
     if (sentenceToken !== undefined) {
-      plan.push({
-        type: 'translateSentence',
-        sentenceId: id,
-        sentence: event.sentence,
-        token: sentenceToken,
-      })
+      const combined = ordered
+        .filter(w => participants.has(w.key))
+        .map(w => combinedWord(w, w.token!))
+      plan.push(
+        combined.length === 0
+          ? {
+              type: 'translateSentence',
+              sentenceId: id,
+              sentence: event.sentence,
+              token: sentenceToken,
+            }
+          : {
+              type: 'translateSentenceWithWords',
+              sentenceId: id,
+              sentence: event.sentence,
+              token: sentenceToken,
+              words: combined,
+            }
+      )
+    } else {
+      // The sentence's own request is left alone: each newly absorbed word
+      // asks for its context on its own.
+      for (const card of absorbedCards) {
+        plan.push({
+          type: 'fetchContextTranslation',
+          word: card.word,
+          sentence: event.sentence,
+          sentenceId: id,
+          key: card.key,
+          token: card.token!,
+          dictionaryChinese: card.dictionaryChinese,
+        })
+      }
     }
 
     if (nestedAnchor) {
-      if (isFailedCard(nestedAnchor) && !isCardLoading(nestedAnchor)) {
+      if (
+        isFailedCard(nestedAnchor) &&
+        !isCardLoading(nestedAnchor) &&
+        !participants.has(anchorKey)
+      ) {
         const retried = retryCard(state, id, nestedAnchor, event.sentence, now)
         state = retried.state
         plan.push(...retried.plan)
       }
-    } else if (absorbedCard?.token !== undefined) {
-      plan.push({
-        type: 'fetchContextTranslation',
-        word: absorbedCard.word,
-        sentence: event.sentence,
-        sentenceId: id,
-        key: absorbedCard.key,
-        token: absorbedCard.token,
-        dictionaryChinese: absorbedCard.dictionaryChinese,
-      })
+    } else if (absorbedCards.some(c => c.key === anchorKey)) {
+      // Already planned above.
     } else if (anchorWord) {
       const existingAnchor = findCard(state.entries, id, anchorKey)
       if (!existingAnchor) {
         const alloc = allocateToken(state)
         state = {
           ...alloc.state,
-          entries: reorderOrInsertCard(alloc.state.entries, id, anchorKey, () => ({
-            word: clickedWord,
-            key: anchorKey,
-            token: alloc.token,
-            startedAt: now,
-            dictionaryStatus: 'loading',
-            contextStatus: 'loading',
-          })),
+          entries: reorderOrInsertCard(
+            alloc.state.entries,
+            id,
+            anchorKey,
+            () => ({
+              word: clickedWord,
+              key: anchorKey,
+              token: alloc.token,
+              startedAt: now,
+              dictionaryStatus: 'loading',
+              contextStatus: 'loading',
+            })
+          ),
         }
         plan.push({
           type: 'fetchWordContext',
@@ -427,6 +564,115 @@ const claimSentence = (
     state = { ...state, cleared: null }
   }
   return { state, plan }
+}
+
+export type CombinedPlan = Extract<
+  PlannedRequest,
+  { type: 'translateSentenceWithWords' }
+>
+
+export type CombinedResponse =
+  | {
+      success: true
+      chinese: string
+      words: { word: string; chinese: string; why: string }[]
+    }
+  | {
+      success: false
+      error?: string
+      status?: number
+      sessionExpired?: boolean
+      sessionUnverified?: boolean
+    }
+
+type FallbackRequest = Extract<
+  PlannedRequest,
+  { type: 'fetchContextTranslation' }
+>
+
+// Writes one combined result into `entries`. The sentence and every word
+// check their own token, so a stale sentence never blocks a current word.
+// A word the response left without a gloss is returned as an individual
+// request carrying its existing token (`refresh` re-records its startedAt).
+const applyCombined = (
+  start: PanelEntry[],
+  plan: CombinedPlan,
+  response: CombinedResponse,
+  now: number,
+  refresh: boolean
+): { entries: PanelEntry[]; fallbacks: FallbackRequest[] } => {
+  const failure = response.success ? undefined : response
+  const message = failure?.error || 'Translation service unavailable'
+  let entries = patchSentence(
+    start,
+    plan.sentenceId,
+    response.success
+      ? {
+          chinese: response.chinese,
+          status: 'loaded',
+          sessionExpired: false,
+          sessionUnverified: false,
+        }
+      : {
+          errorMessage: message,
+          errorHttpStatus: failure?.status,
+          sessionExpired: failure?.sessionExpired === true,
+          sessionUnverified: failure?.sessionUnverified === true,
+          status: 'error',
+        },
+    plan.token
+  )
+  const glosses = new Map<string, { chinese: string; why: string }>()
+  if (response.success) {
+    for (const g of response.words) {
+      const key = wordCardKey(g.word)
+      if (g.chinese?.trim() && !glosses.has(key)) glosses.set(key, g)
+    }
+  }
+  const sentence = findSentence(entries, plan.sentenceId)
+  const fallbacks: FallbackRequest[] = []
+  for (const request of plan.words) {
+    const card = findCard(entries, plan.sentenceId, request.key)
+    if (!card || card.token !== request.token) continue
+    const gloss = glosses.get(request.key)
+    if (failure) {
+      entries = patchCard(entries, plan.sentenceId, request.key, {
+        contextStatus: 'error',
+        contextChinese: undefined,
+        contextWhy: undefined,
+        contextError: message,
+        contextErrorHttpStatus: failure.status,
+        contextSessionExpired: failure.sessionExpired === true,
+        contextSessionUnverified: failure.sessionUnverified === true,
+      })
+    } else if (gloss) {
+      entries = patchCard(entries, plan.sentenceId, request.key, {
+        contextStatus: 'loaded',
+        contextChinese: gloss.chinese,
+        contextWhy: gloss.why || undefined,
+        contextError: undefined,
+        contextErrorHttpStatus: undefined,
+        contextSessionExpired: false,
+        contextSessionUnverified: false,
+      })
+    } else if (sentence) {
+      if (refresh) {
+        entries = patchCard(entries, plan.sentenceId, request.key, {
+          startedAt: now,
+        })
+      }
+      fallbacks.push({
+        type: 'fetchContextTranslation',
+        word: card.word,
+        sentence: sentence.sentence,
+        sentenceId: plan.sentenceId,
+        key: request.key,
+        token: request.token,
+        dictionaryChinese: request.dictionaryChinese,
+      })
+    }
+  }
+  return { entries, fallbacks }
 }
 
 export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
@@ -489,7 +735,9 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
     sweep: (tabId: number) => transact(tabId, state => ({ state })),
 
     claimSentenceEvent: (tabId: number, event: SentenceEventInput) =>
-      transact(tabId, (state, now) => fromDraft(claimSentence(state, event, now))),
+      transact(tabId, (state, now) =>
+        fromDraft(claimSentence(state, event, now))
+      ),
 
     claimPageWordEvent: (tabId: number, event: PageWordEventInput) =>
       transact(tabId, state => {
@@ -586,6 +834,47 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
       })),
 
     /**
+     * Writes a combined sentence-and-words response back in one transaction
+     * (ADR-023 Decision 9), to the active entries and any unexpired Clear
+     * snapshot. `plan` holds one individual request per still-current word
+     * without a gloss; `deferred` those current only in the snapshot, which
+     * the caller sends after Undo (via markContextSent).
+     */
+    applySentenceWithWords: async (
+      tabId: number,
+      combined: CombinedPlan,
+      response: CombinedResponse
+    ): Promise<TransactionOutcome & { deferred: FallbackRequest[] }> => {
+      let deferred: FallbackRequest[] = []
+      const outcome = await transact(tabId, (state, now) => {
+        const active = applyCombined(
+          state.entries,
+          combined,
+          response,
+          now,
+          true
+        )
+        const snapshot = state.cleared
+          ? applyCombined(state.cleared.entries, combined, response, now, false)
+          : undefined
+        const planned = new Set(active.fallbacks.map(f => f.key))
+        deferred = (snapshot?.fallbacks ?? []).filter(f => !planned.has(f.key))
+        return {
+          state: {
+            ...state,
+            entries: active.entries,
+            cleared:
+              state.cleared && snapshot
+                ? { ...state.cleared, entries: snapshot.entries }
+                : null,
+          },
+          plan: active.fallbacks,
+        }
+      })
+      return { ...outcome, deferred: outcome.committed ? deferred : [] }
+    },
+
+    /**
      * Retry of a sentence card (and the failed words nested in it, whose
      * failure the sentence's error row shares). No plan when the card is gone
      * or already loading.
@@ -607,17 +896,44 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
             sessionUnverified: false,
           }),
         }
+        // Failed absorbed words with a loaded dictionary share the one
+        // combined request; other failed words follow their own rules.
+        const absorbed = restartAbsorbed(
+          state,
+          entry.id,
+          entry.words.filter(isRetryableAbsorbed),
+          now
+        )
+        state = absorbed.state
         const plan: PlannedRequest[] = [
-          {
-            type: 'translateSentence',
-            sentenceId: entry.id,
-            sentence: entry.sentence,
-            token: alloc.token,
-          },
+          absorbed.words.length === 0
+            ? {
+                type: 'translateSentence',
+                sentenceId: entry.id,
+                sentence: entry.sentence,
+                token: alloc.token,
+              }
+            : {
+                type: 'translateSentenceWithWords',
+                sentenceId: entry.id,
+                sentence: entry.sentence,
+                token: alloc.token,
+                words: absorbed.words,
+              },
         ]
         for (const card of entry.words) {
-          if (isFailedCard(card) && !isCardLoading(card)) {
-            const retried = retryCard(state, entry.id, card, entry.sentence, now)
+          if (
+            isFailedCard(card) &&
+            !isCardLoading(card) &&
+            !isRetryableAbsorbed(card)
+          ) {
+            const retried = retryCard(
+              state,
+              entry.id,
+              card,
+              entry.sentence,
+              now
+            )
             state = retried.state
             plan.push(...retried.plan)
           }
@@ -648,7 +964,8 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
     ) =>
       transact(tabId, (start, now) => {
         const card = findCard(start.entries, sentenceId, key)
-        if (!card || card.dictionaryStatus === 'loading') return { state: start }
+        if (!card || card.dictionaryStatus === 'loading')
+          return { state: start }
         const keepToken =
           card.contextStatus === 'loading' && card.token !== undefined
         const alloc = keepToken
@@ -708,7 +1025,9 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
             ),
           }
           if (existing.contextStatus === 'error' && !isCardLoading(existing)) {
-            return fromDraft(retryCard(moved, sentenceId, existing, sentence, now))
+            return fromDraft(
+              retryCard(moved, sentenceId, existing, sentence, now)
+            )
           }
           return { state: moved }
         }
@@ -727,7 +1046,8 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
                 startedAt: now,
                 dictionaryStatus: 'none',
                 contextStatus: 'loading',
-                contextSentence: sentenceId === undefined ? sentence : undefined,
+                contextSentence:
+                  sentenceId === undefined ? sentence : undefined,
               })
             ),
           },

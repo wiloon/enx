@@ -4,11 +4,20 @@ import http from 'node:http'
 // There is deliberately no network client or real-provider fallback here.
 const fixtures = [
   ['rephrase', '"idiomatic"', { idiomatic: '[fake] Could you review this?', alternatives: [{ text: 'Please take a look.', register: 'casual' }], notes: [] }],
+  ['sentence-words', 'numbered list of target words', userContent => ({
+    sentence: '[fake] 这只猫在读书。',
+    words: listedWords(userContent).map(word => ({ word, chinese: `[fake] ${word}义`, why: '' })),
+  })],
   ['sentence-word', '"sentence"', { sentence: '[fake] 这只猫在读书。', word: '猫' }],
   ['word-context', '"why"', { word: '猫', why: '' }],
   ['word-definition', '"is_word"', { is_word: true, quality: 9, senses: [{ pos: 'n.', zh: '很有魅力的人' }] }],
   ['sentence', 'English-to-Chinese translator', '[fake] 这只猫在读书。'],
 ]
+
+// The user message lists targets as "N. word[ | Dictionary definition: ...]".
+function listedWords(userContent) {
+  return [...userContent.matchAll(/^\d+\. (.+?)(?: \| Dictionary definition: .*)?$/gm)].map(match => match[1])
+}
 
 const server = http.createServer(async (req, res) => {
   const send = (status, body) => {
@@ -36,7 +45,9 @@ const server = http.createServer(async (req, res) => {
   const prompt = request.messages.find(message => message.role === 'system')?.content ?? ''
   const fixture = fixtures.find(([, marker]) => prompt.includes(marker))
   if (!fixture) return send(422, { error: { message: 'Unsupported fake AI prompt' } })
-  const [feature, , answer] = fixture
+  const [feature, , fixtureAnswer] = fixture
+  const userContent = request.messages.filter(message => message.role === 'user').map(message => message.content).join('\n')
+  const answer = typeof fixtureAnswer === 'function' ? fixtureAnswer(userContent) : fixtureAnswer
   console.log(JSON.stringify({ event: 'completion', feature }))
   return send(200, {
     id: 'chatcmpl-fake', object: 'chat.completion', model: request.model ?? 'fake',

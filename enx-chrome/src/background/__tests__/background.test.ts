@@ -1850,6 +1850,98 @@ describe('background onMessage / translateSentenceWithWord (ADR-014)', () => {
   })
 })
 
+describe('background onMessage / translateSentenceWithWords (ADR-023 Decision 9)', () => {
+  const listener = onMessageListener
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const send = (request: unknown): Promise<unknown> =>
+    new Promise(resolve => listener(request, {}, resolve))
+
+  it('POSTs the sentence and every word to /api/translate/sentence-with-words and maps the glosses', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, {
+        success: true,
+        chinese: '猫是很棒的宠物。',
+        words: [
+          { word: 'cats', chinese: '猫', why: '' },
+          { word: 'great', chinese: '极好的', why: '语气更强' },
+        ],
+      })
+    )
+
+    const response = await send({
+      type: 'translateSentenceWithWords',
+      sentence: ' Cats are great pets. ',
+      sentenceWords: [
+        { word: 'cats', dictionaryChinese: '猫科动物' },
+        { word: 'great', dictionaryChinese: '' },
+      ],
+    })
+
+    expect(response).toEqual({
+      success: true,
+      chinese: '猫是很棒的宠物。',
+      words: [
+        { word: 'cats', chinese: '猫', why: '' },
+        { word: 'great', chinese: '极好的', why: '语气更强' },
+      ],
+    })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/api/translate/sentence-with-words')
+    expect(JSON.parse(init.body)).toEqual({
+      sentence: 'Cats are great pets.',
+      words: [
+        { word: 'cats', dictionaryChinese: '猫科动物' },
+        { word: 'great', dictionaryChinese: '' },
+      ],
+    })
+  })
+
+  it('normalizes a missing words array to an empty list', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, chinese: '猫。' })
+    )
+    const response = await send({
+      type: 'translateSentenceWithWords',
+      sentence: 'Cats.',
+      sentenceWords: [{ word: 'cats', dictionaryChinese: '' }],
+    })
+    expect(response).toEqual({ success: true, chinese: '猫。', words: [] })
+  })
+
+  it('propagates the HTTP status on failure', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(402, { success: false, message: 'Insufficient credit.' })
+    )
+    const response = (await send({
+      type: 'translateSentenceWithWords',
+      sentence: 'Cats.',
+      sentenceWords: [{ word: 'cats', dictionaryChinese: '' }],
+    })) as { success: boolean; status?: number }
+    expect(response.success).toBe(false)
+    expect(response.status).toBe(402)
+  })
+
+  it('rejects a request without words before calling the API', async () => {
+    const response = await send({
+      type: 'translateSentenceWithWords',
+      sentence: 'Cats.',
+      sentenceWords: [],
+    })
+    expect(response).toEqual({
+      success: false,
+      error: 'sentence and words are required',
+    })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('background onMessage / submitPageReport (ADR-010 Decision 8)', () => {
   const listener = onMessageListener
 
