@@ -292,18 +292,27 @@ func (r errRecorder) Record(context.Context, string, string) (int, bool, error) 
 	return 0, false, r.err
 }
 
-type quotaSubscriber bool
+type quotaSubscriber struct {
+	active bool
+	err    error
+}
 
 func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, error) {
-	return bool(s), nil
+	return s.active, s.err
 }
 
 func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 	for _, tc := range []struct {
-		active bool
+		name   string
+		sub    quotaSubscriber
 		want   string
-	}{{true, "contact support"}, {false, "Upgrade"}} {
-		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(quotaSubscriber(tc.active))
+		upsell bool
+	}{
+		{"subscriber", quotaSubscriber{active: true}, "contact support", false},
+		{"free", quotaSubscriber{}, "Upgrade", true},
+		{"lookup error", quotaSubscriber{err: errors.New("db down")}, "Upgrade", false},
+	} {
+		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(tc.sub)
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)
@@ -312,7 +321,16 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
-			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
+			t.Fatalf("%s: %d %s", tc.name, w.Code, w.Body.String())
+		}
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		upgrade, present := body["upgrade"]
+		if tc.upsell && upgrade != true {
+			t.Fatalf("%s: upgrade = %v, want true", tc.name, upgrade)
+		}
+		if !tc.upsell && present {
+			t.Fatalf("%s: upgrade present: %s", tc.name, w.Body.String())
 		}
 	}
 }

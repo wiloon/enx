@@ -142,6 +142,12 @@ func TestEntriesOverQuotaAnswersTheLookupQuota429(t *testing.T) {
 	if w.Code != http.StatusTooManyRequests || body["code"] != "lookup_quota_exceeded" {
 		t.Fatalf("got %d %s, want 429 lookup_quota_exceeded", w.Code, w.Body)
 	}
+	if body["upgrade"] != true {
+		t.Fatalf("upgrade = %v, want true for a confirmed free user", body["upgrade"])
+	}
+	if msg, _ := body["message"].(string); !strings.Contains(msg, "Upgrade to Catglish Pro") {
+		t.Fatalf("message = %q, want the upgrade message", msg)
+	}
 }
 
 func TestEntriesRejectsAnUnauthenticatedRequest(t *testing.T) {

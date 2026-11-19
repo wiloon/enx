@@ -1,18 +1,34 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiService } from '@/services/api'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { recordLookup } from '@/lib/queryCount'
 import {
   lookupAnswer,
+  offersPlans,
   shownLookupSource,
   type LookupAnswer,
 } from '@/lib/lookupAnswer'
 import WordSearchForm from './WordSearchForm'
 import WordResultCard from './WordResultCard'
+import WordResultCardSkeleton from './WordResultCardSkeleton'
 import PageHeader from '@/components/app/PageHeader'
+
+function PlansLink() {
+  return (
+    <div className="mt-2">
+      <Link
+        href="/billing"
+        className="rounded-sm font-medium text-brand underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring active:opacity-70"
+      >
+        See plans
+      </Link>
+    </div>
+  )
+}
 
 export default function WordLookupPage() {
   const [searchWord, setSearchWord] = useState('')
@@ -26,6 +42,8 @@ export default function WordLookupPage() {
     isPending: boolean
     data?: LookupAnswer
     error?: string
+    code?: string
+    upgrade?: true
   }>({ isPending: false })
   const [currentWord, setCurrentWord] = useState('')
 
@@ -45,6 +63,8 @@ export default function WordLookupPage() {
         setLookup({
           isPending: false,
           error: response.error || 'Failed to look up the word',
+          code: response.code,
+          upgrade: response.upgrade,
         })
         return
       }
@@ -58,10 +78,16 @@ export default function WordLookupPage() {
       void queryClient.invalidateQueries({ queryKey: ['word-list'] })
       void queryClient.invalidateQueries({ queryKey: ['stats-overview'] })
       if (request !== generation.current) return
-      const { message, ...state } = recorded
+      const { message, code, upgrade, ...state } = recorded
       setLookup({
         isPending: false,
-        data: { ...answer, word: { ...answer.word, ...state }, message },
+        data: {
+          ...answer,
+          word: { ...answer.word, ...state },
+          message,
+          code,
+          upgrade,
+        },
       })
     } catch {
       if (request === generation.current)
@@ -99,22 +125,12 @@ export default function WordLookupPage() {
         pending={lookup.isPending}
       />
 
-      {lookup.isPending && (
-        <div
-          data-testid="word-result-skeleton"
-          className="animate-pulse space-y-4 rounded-xl border p-6"
-          aria-hidden="true"
-        >
-          <div className="h-8 w-40 rounded bg-muted" />
-          <div className="h-4 w-24 rounded bg-muted" />
-          <div className="h-6 w-full rounded bg-muted" />
-          <div className="h-4 w-1/2 rounded bg-muted" />
-        </div>
-      )}
+      {lookup.isPending && <WordResultCardSkeleton />}
 
       {lookup.error && (
         <div className="py-8 text-center text-sm text-destructive">
           {lookup.error}
+          {offersPlans(lookup) && <PlansLink />}
         </div>
       )}
 
@@ -128,7 +144,10 @@ export default function WordLookupPage() {
       )}
 
       {lookup.data?.kind === 'result' && lookup.data.message && (
-        <div className="text-sm text-destructive">{lookup.data.message}</div>
+        <div className="text-sm text-destructive">
+          {lookup.data.message}
+          {offersPlans(lookup.data) && <PlansLink />}
+        </div>
       )}
 
       {lookup.data?.kind === 'no-answer' && (

@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-query'
 import WordLookupPage from '../page'
 import { apiService } from '@/services/api'
-import type { ApiResponse, WordData } from '@/types'
+import type { ApiResponse, WordData, WordLookupRecord } from '@/types'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -49,7 +49,7 @@ const found = (word: WordData): ApiResponse<unknown> => ({
   ],
 })
 
-const recorded: ApiResponse<{ queryCount: number; known: boolean }> = {
+const recorded: ApiResponse<WordLookupRecord> = {
   success: true,
   data: { queryCount: 4, known: false },
 }
@@ -394,6 +394,50 @@ it.each(['Daily lookup limit reached.', 'Too many requests'])(
     expect(screen.getByText('v. 跑')).toBeInTheDocument()
     expect(screen.queryByTitle(/^Looked up/)).not.toBeInTheDocument()
     expect(mockRecord).toHaveBeenCalledTimes(1)
+  }
+)
+const quota = (extra: Record<string, unknown>) => ({
+  success: false,
+  status: 429,
+  error: 'Daily dictionary lookup limit reached.',
+  ...extra,
+})
+const upgradeCases: [string, Record<string, unknown>, boolean][] = [
+  [
+    'a free-tier quota 429',
+    { code: 'lookup_quota_exceeded', upgrade: true },
+    true,
+  ],
+  ['a subscriber quota 429', { code: 'lookup_quota_exceeded' }, false],
+  [
+    'a quota 429 with upgrade false',
+    { code: 'lookup_quota_exceeded', upgrade: false },
+    false,
+  ],
+  ['a rate-limit 429', { code: 'too_many_requests', upgrade: true }, false],
+]
+describe.each([['definition'], ['recording']])(
+  'quota refusal on the %s',
+  (path) => {
+    it.each(upgradeCases)('for %s', async (_, extra, link) => {
+      const refusal = quota(extra)
+      if (path === 'definition') mockLookup.mockResolvedValue(refusal)
+      else {
+        mockLookup.mockResolvedValue(found(run))
+        mockRecord.mockImplementation(async () => refusal)
+      }
+      renderPage()
+      submit('run')
+      expect(await screen.findByText(refusal.error)).toBeInTheDocument()
+      if (path === 'definition') expect(mockRecord).not.toHaveBeenCalled()
+      else {
+        expect(screen.getByText('v. 跑')).toBeInTheDocument()
+        expect(mockRecord).toHaveBeenCalledTimes(1)
+      }
+      const billing = screen.queryByRole('link', { name: 'See plans' })
+      if (link) expect(billing).toHaveAttribute('href', '/billing')
+      else expect(billing).not.toBeInTheDocument()
+    })
   }
 )
 it.each([404, 500, 'network'])(

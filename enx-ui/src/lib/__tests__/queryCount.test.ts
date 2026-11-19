@@ -2,6 +2,16 @@ import { recordLookup } from '../queryCount'
 
 it.each([
   [
+    {
+      success: false,
+      status: 429,
+      error: 'Quota reached',
+      code: 'lookup_quota_exceeded',
+      upgrade: true,
+    },
+    { message: 'Quota reached', code: 'lookup_quota_exceeded', upgrade: true },
+  ],
+  [
     { success: true, data: { queryCount: 4, known: false } },
     { LoadCount: 4, Known: false },
   ],

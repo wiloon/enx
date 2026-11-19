@@ -31,6 +31,7 @@ import {
   StatsSeries,
   VersionData,
   WordListPage,
+  WordLookupRecord,
   WordListSort,
   WordListStatus,
   MarkedWord,
@@ -150,6 +151,8 @@ export class ApiService {
     let status: number | undefined
     let reason: string | undefined
     let subscriptionId: string | undefined
+    let code: string | undefined
+    let upgrade: true | undefined
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -181,6 +184,8 @@ export class ApiService {
         if (typeof errorBody?.reason === 'string') reason = errorBody.reason
         if (typeof errorBody?.subscriptionId === 'string')
           subscriptionId = errorBody.subscriptionId
+        if (typeof errorBody?.code === 'string') code = errorBody.code
+        if (errorBody?.upgrade === true) upgrade = true
         const friendly = apiErrorMessage(response.status, errorBody)
         if (friendly) {
           throw new Error(friendly)
@@ -211,6 +216,8 @@ export class ApiService {
         status,
         ...(reason !== undefined && { reason }),
         ...(subscriptionId !== undefined && { subscriptionId }),
+        ...(code !== undefined && { code }),
+        ...(upgrade !== undefined && { upgrade }),
       }
     }
   }
@@ -468,7 +475,7 @@ export class ApiService {
   // count and known state (ADR-079). Never retried by the caller.
   async recordWordLookup(
     wordId: string
-  ): Promise<ApiResponse<{ queryCount: number; known: boolean }>> {
+  ): Promise<ApiResponse<WordLookupRecord>> {
     return this.makeRequest('/api/me/word-lookups', {
       method: 'POST',
       body: JSON.stringify({ wordId }),

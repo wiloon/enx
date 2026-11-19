@@ -184,6 +184,7 @@ describe('ApiService auth token', () => {
       success: false,
       error: 'Too many requests. Please slow down and try again in a moment.',
       status: 429,
+      code: 'too_many_requests',
     })
     expect(global.fetch).toHaveBeenCalledTimes(1)
     expect(errorLog).toHaveBeenCalledWith(

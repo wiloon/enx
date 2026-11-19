@@ -4,8 +4,19 @@ import type { WordData } from '@/types'
 export type LookupWord = Omit<WordData, 'LoadCount' | 'Known'> &
   Partial<Pick<WordData, 'LoadCount' | 'Known'>>
 export type LookupAnswer =
-  | { kind: 'result'; word: LookupWord; message?: string }
+  | {
+      kind: 'result'
+      word: LookupWord
+      message?: string
+      code?: string
+      upgrade?: true
+    }
   | { kind: 'miss' | 'no-answer' }
+
+// Only a quota refusal for a confirmed free-tier user earns the upgrade link;
+// a rate limit (too_many_requests) or a subscriber never does.
+export const offersPlans = (e: { code?: string; upgrade?: true }): boolean =>
+  e.code === 'lookup_quota_exceeded' && e.upgrade === true
 
 export const lookupAnswer = (
   requested: string,
