@@ -123,7 +123,7 @@ _Avoid_: 词组翻译、idiom lookup
 _Avoid_: 合并翻译、combined translate
 
 **AI 翻译按 token 计费**：
-`aitranslate` 的整句翻译 / 上下文词义 / 整句+词义合并三个功能都按 provider 返回的实际 prompt/completion token 用量扣费（`Balance` 预检 + `Settle` 实扣，公式同「地道表达」），不再是固定 1 积分/次。共用 `[stripe.costs.translate]` 一组权重。见 adr-014（推翻 adr-009 Decision 4 翻译部分、adr-012 Decision 1）。
+`aitranslate` 的整句翻译 / 上下文词义 / 整句+词义合并三个功能都按 provider 返回的实际 prompt/completion token 用量扣费（`Balance` 预检 + `Settle` 实扣，公式同「地道表达」），不再是固定 1 积分/次。默认都按 `[stripe.costs.default]` 一组权重计价；某个功能把 `[stripe.costs.<功能>]` 三个键都配齐时，才改用它单独定价。见 adr-014「默认 token 价格与按功能覆盖」（推翻 adr-009 Decision 4 翻译部分、adr-012 Decision 1）。
 
 **站点适配器（SiteAdapter）**：
 把「某个网站与默认行为的差异」（正文选择器、最小文本长度阈值、哪个匹配节点才是正文、页面是否在支持范围内、点击监听绑定方式、内容易变程度等）收在一处的对象。默认适配器逐字段等于历史行为。见 adr-010、adr-011。
