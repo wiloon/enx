@@ -396,31 +396,53 @@ it.each(['Daily lookup limit reached.', 'Too many requests'])(
     expect(mockRecord).toHaveBeenCalledTimes(1)
   }
 )
-const quota = (extra: Record<string, unknown>) => ({
-  success: false,
-  status: 429,
-  error: 'Daily dictionary lookup limit reached.',
-  ...extra,
-})
-const upgradeCases: [string, Record<string, unknown>, boolean][] = [
+const upgradeMessage =
+  'Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit.'
+const supportMessage =
+  'Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support.'
+const rateLimitMessage =
+  'Too many requests. Please slow down and try again in a moment.'
+const upgradeCases: [
+  string,
+  { error: string; code: string; upgrade?: boolean },
+  boolean,
+][] = [
   [
     'a free-tier quota 429',
-    { code: 'lookup_quota_exceeded', upgrade: true },
+    { code: 'lookup_quota_exceeded', error: upgradeMessage, upgrade: true },
     true,
   ],
-  ['a subscriber quota 429', { code: 'lookup_quota_exceeded' }, false],
   [
-    'a quota 429 with upgrade false',
-    { code: 'lookup_quota_exceeded', upgrade: false },
+    'a subscriber quota 429',
+    { code: 'lookup_quota_exceeded', error: supportMessage },
     false,
   ],
-  ['a rate-limit 429', { code: 'too_many_requests', upgrade: true }, false],
+  [
+    'a quota 429 after a subscription lookup error',
+    { code: 'lookup_quota_exceeded', error: upgradeMessage },
+    false,
+  ],
+  [
+    'a quota 429 with upgrade false',
+    { code: 'lookup_quota_exceeded', error: upgradeMessage, upgrade: false },
+    false,
+  ],
+  [
+    'a rate-limit 429',
+    { code: 'too_many_requests', error: rateLimitMessage },
+    false,
+  ],
+  [
+    'a rate-limit 429 with upgrade true',
+    { code: 'too_many_requests', error: rateLimitMessage, upgrade: true },
+    false,
+  ],
 ]
 describe.each([['definition'], ['recording']])(
   'quota refusal on the %s',
   (path) => {
     it.each(upgradeCases)('for %s', async (_, extra, link) => {
-      const refusal = quota(extra)
+      const refusal = { success: false, status: 429, ...extra }
       if (path === 'definition') mockLookup.mockResolvedValue(refusal)
       else {
         mockLookup.mockResolvedValue(found(run))
