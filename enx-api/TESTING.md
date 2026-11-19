@@ -22,7 +22,7 @@ This document explains the testing strategy and how to run different types of te
 - **Examples**:
   - `enx/ecp_integration_test.go` - Tests word save/translate with database
   - `repo/repo_test.go` - Tests repository layer with database
-  - `ecdict/ecdict_test.go` - Tests ECDICT lookup (exact, case-insensitive, sw/exchange word forms)
+  - `ecdict/ecdict_test.go` - Tests ECDICT lookup (exact, case-insensitive, sw; exchange-only forms are misses)
   - `dictionary/lookup_test.go` - Tests lookup unavailable without ECDICT
   - `repo/ecp_lookup_test.go` - Tests local words exact-then-case-insensitive match
   - `translate/service_test.go` - Tests sentence-not-available response
