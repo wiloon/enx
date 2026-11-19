@@ -1367,6 +1367,7 @@ function SidePanelContent() {
   const translateSentenceWithWords = useCallback(
     (combined: CombinedPlan) => {
       const current = accountFence.capture()
+      const isActive = lookupScope.capture()
       const failure = (response?: BackgroundResponse): CombinedResponse => ({
         success: false,
         error: response?.error || 'Translation service unavailable',
@@ -1380,29 +1381,29 @@ function SidePanelContent() {
           .applySentenceWithWords(tabId, combined, response)
           .then(result => {
             if (!result.committed) return
-            publish(result.state)
-            dispatchPlanRef.current(result.plan)
-            for (const d of result.deferred) {
-              const card = {
-                sentenceId: d.sentenceId,
-                key: d.key,
-                token: d.token,
-              }
-              void history.whenVisible(card, async () => {
-                const committed = await store.markContextSent(
+            for (const request of [...result.plan, ...result.deferred]) {
+              if (request.type !== 'fetchContextTranslation') continue
+              const dispatch = () => {
+                if (!isActive()) return
+                void store.dispatchContextFallback(
                   tabId,
-                  d.sentenceId,
-                  d.key,
-                  d.token
+                  request,
+                  () => {
+                    if (!isActive()) return
+                    fetchContextTranslation(
+                      request.word,
+                      request.sentence,
+                      request,
+                      request.dictionaryChinese
+                    )
+                  },
+                  state => {
+                    history.mirrorFromStore(state.entries, state.cleared)
+                    void history.whenVisible(request, dispatch)
+                  }
                 )
-                if (committed)
-                  fetchContextTranslation(
-                    d.word,
-                    d.sentence,
-                    card,
-                    d.dictionaryChinese
-                  )
-              })
+              }
+              dispatch()
             }
           })
       }
@@ -1435,7 +1436,7 @@ function SidePanelContent() {
           write(failure())
         })
     },
-    [accountFence, store, tabId, publish, history, fetchContextTranslation]
+    [accountFence, lookupScope, store, tabId, history, fetchContextTranslation]
   )
 
   const dispatchPlan = useCallback(

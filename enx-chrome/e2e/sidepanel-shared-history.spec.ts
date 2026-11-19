@@ -9,6 +9,7 @@ import type { BrowserContext, Page } from '@playwright/test'
 import { FIXTURE_ORIGIN, loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
+  clickWord,
   clickWordAndWaitForPopup,
   enableLearningMode,
   mockBackendFetch,
@@ -104,25 +105,23 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     const tabId = await readingTabId(page, extensionId)
     const panel = await openPanel(context, extensionId, tabId)
 
-    await clickWordAndWaitForPopup(page, 0)
-    const lookupCard = panel.locator('[data-testid^="sidepanel-card-"]')
+    const popover = await clickWord(page, 'development')
+    const lookupCard = panel.getByTestId('sidepanel-card-development')
     await expect(lookupCard).toHaveCount(1)
-    await page
-      .locator(
-        '#enx-anchored-overlay [data-testid="word-popover-sentence-translation"]'
-      )
-      .click()
+    await popover.getByTestId('word-popover-sentence-translation').click()
 
     await expect(panel.getByTestId('sidepanel-chinese')).toHaveText('译文')
+    const nestedCard = panel
+      .getByTestId('sidepanel-sentence-words')
+      .getByTestId('sidepanel-card-development')
+    await expect(
+      nestedCard.getByText('development义', { exact: true })
+    ).toBeVisible()
     await expect(lookupCard).toHaveCount(1)
-    await expect(lookupCard).toContainText('义')
     await expect
-      .poll(async () => {
-        const posts = await translatePosts(context)
-        return posts
-          .filter(p => /\/api\/translate\/sentence/.test(p.url))
-          .map(p => new URL(p.url).pathname)
-      })
+      .poll(async () =>
+        (await translatePosts(context)).map(p => new URL(p.url).pathname)
+      )
       .toEqual(['/api/translate/sentence-with-words'])
   })
 

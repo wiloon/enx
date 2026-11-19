@@ -143,6 +143,8 @@ export type Mutator = (
   /** Return the received state object itself for "nothing to change". */
   state: StoredPanelHistory
   plan?: PlannedRequest[]
+  /** Start a continuation after the write, while the history lock is held. */
+  afterWrite?: () => void
 }
 
 type Draft = { state: StoredPanelHistory; plan: PlannedRequest[] }
@@ -656,11 +658,10 @@ const applyCombined = (
         contextSessionUnverified: false,
       })
     } else if (sentence) {
-      if (refresh) {
-        entries = patchCard(entries, plan.sentenceId, request.key, {
-          startedAt: now,
-        })
-      }
+      entries = patchCard(entries, plan.sentenceId, request.key, {
+        contextFallbackPending: true,
+        ...(refresh && { startedAt: now }),
+      })
       fallbacks.push({
         type: 'fetchContextTranslation',
         word: card.word,
@@ -722,6 +723,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
         console.error('panelHistoryStore: failed to write panel history', error)
         return { committed: false, plan: [], state: base }
       }
+      drafted.afterWrite?.()
       return { committed: true, plan: drafted.plan ?? [], state: capped }
     })
 
@@ -784,12 +786,23 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
       }),
 
     undo: (tabId: number) =>
-      transact(tabId, state =>
+      transact(tabId, (state, now) =>
         state.cleared
           ? {
               state: {
                 ...state,
-                entries: state.cleared.entries,
+                entries: state.cleared.entries.map(entry =>
+                  entry.kind === 'sentence'
+                    ? {
+                        ...entry,
+                        words: entry.words.map(word =>
+                          word.contextFallbackPending
+                            ? { ...word, startedAt: now }
+                            : word
+                        ),
+                      }
+                    : entry
+                ),
                 cleared: null,
               },
             }
@@ -838,7 +851,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
      * (ADR-023 Decision 9), to the active entries and any unexpired Clear
      * snapshot. `plan` holds one individual request per still-current word
      * without a gloss; `deferred` those current only in the snapshot, which
-     * the caller sends after Undo (via markContextSent).
+     * the caller sends after Undo.
      */
     applySentenceWithWords: async (
       tabId: number,
@@ -872,6 +885,43 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
         }
       })
       return { ...outcome, deferred: outcome.committed ? deferred : [] }
+    },
+
+    /** Start a fallback while the shared history still holds its visible token. */
+    dispatchContextFallback: (
+      tabId: number,
+      request: FallbackRequest,
+      send: () => void,
+      defer: (state: StoredPanelHistory) => void
+    ) => {
+      const { sentenceId, key, token } = request
+      const holds = (entries: PanelEntry[]) => {
+        const card = findCard(entries, sentenceId, key)
+        return (
+          card?.token === token &&
+          card.contextStatus === 'loading' &&
+          card.contextFallbackPending === true
+        )
+      }
+      return transact(tabId, (state, now) => {
+        if (!holds(state.entries)) {
+          if (state.cleared && holds(state.cleared.entries)) defer(state)
+          return { state }
+        }
+        return {
+          state: {
+            ...state,
+            entries: patchCard(
+              state.entries,
+              sentenceId,
+              key,
+              { contextFallbackPending: undefined, startedAt: now },
+              token
+            ),
+          },
+          afterWrite: send,
+        }
+      })
     },
 
     /**

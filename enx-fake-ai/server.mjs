@@ -16,7 +16,11 @@ const fixtures = [
 
 // The user message lists targets as "N. word[ | Dictionary definition: ...]".
 function listedWords(userContent) {
-  return [...userContent.matchAll(/^\d+\. (.+?)(?: \| Dictionary definition: .*)?$/gm)].map(match => match[1])
+  const header = '\nWords:\n'
+  const start = userContent.lastIndexOf(header)
+  if (start === -1) return []
+  const targets = userContent.slice(start + header.length)
+  return [...targets.matchAll(/^\d+\. (.+?)(?: \| Dictionary definition: .*)?$/gm)].map(match => match[1])
 }
 
 const server = http.createServer(async (req, res) => {

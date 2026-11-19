@@ -56,6 +56,8 @@ export interface WordCardData {
   contextSessionExpired?: boolean
   contextSessionUnverified?: boolean
   contextStatus: FetchStatus | 'none'
+  // A blank combined gloss is waiting for its first individual request.
+  contextFallbackPending?: boolean
   // The sentence text this card's context translation was fetched against,
   // set only for a TOP-LEVEL card (ADR-023: a main-page phrase lookup,
   // ADR-008, has no owning SentenceEntry to recall it from). A card nested
@@ -377,6 +379,7 @@ const timedOutCard = <C extends WordCardData>(
       : {}),
     token: undefined,
     startedAt: undefined,
+    ...(card.contextFallbackPending && { contextFallbackPending: undefined }),
   }
 }
 

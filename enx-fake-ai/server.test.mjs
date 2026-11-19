@@ -56,7 +56,7 @@ test('multi-word sentence prompt returns one gloss per listed word, not the sing
   const response = await fetch(`http://127.0.0.1:${JSON.parse(data).port}/chat/completions`, {
     method: 'POST', body: JSON.stringify({ messages: [
       { role: 'system', content: 'You are given an English sentence and a numbered list of target words. {"sentence": "...", "words": []}' },
-      { role: 'user', content: 'Sentence: The cat reads a book.\nWords:\n1. cat | Dictionary definition: 猫\n2. book' },
+      { role: 'user', content: 'Sentence: The cat reads a book.\n1. Cats\nWords:\n1. cat | Dictionary definition: 猫\n2. book' },
     ] }),
   })
   assert.equal(response.status, 200)

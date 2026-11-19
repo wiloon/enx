@@ -750,6 +750,29 @@ describe('panelHistoryStore (ADR-090)', () => {
       expect(countOf(again.plan, 'fetchContextTranslation')).toBe(0)
     })
 
+    it('a loading sentence asks context individually for a newly absorbed word and keeps its request', async () => {
+      const { store } = await setup()
+      const first = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      const combined = combinedOf(first.plan)
+      await lookup(store, 'are')
+      const again = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(again.plan).toEqual([
+        {
+          type: 'fetchContextTranslation',
+          sentenceId: SENTENCE_ID,
+          sentence: SENTENCE,
+          key: 'are',
+          word: 'are',
+          token: expect.any(Number),
+          dictionaryChinese: 'are-dict',
+        },
+      ])
+      expect(findSentence(again.state.entries, SENTENCE_ID)).toMatchObject({
+        status: 'loading',
+        token: combined.token,
+      })
+    })
+
     const failSentence = (
       store: ReturnType<typeof createPanelHistoryStore>,
       combined: Combined
@@ -975,19 +998,20 @@ describe('panelHistoryStore (ADR-090)', () => {
         )!
         expect(snapshot.status).toBe('loaded')
 
+        now = 3_000
         const undone = await store.undo(7)
         expect(findSentence(undone.state.entries, SENTENCE_ID)!.chinese).toBe(
           '猫很棒。'
         )
         const cats = findCard(undone.state.entries, SENTENCE_ID, 'cats')!
-        now = 3_000
-        expect(
-          await store.markContextSent(7, SENTENCE_ID, 'cats', cats.token!)
-        ).toBe(true)
-        expect(
-          findCard((await store.read(7)).entries, SENTENCE_ID, 'cats')!
-            .startedAt
-        ).toBe(3_000)
+        expect(cats.startedAt).toBe(3_000)
+        expect(cats.token).toBe(combined.words[0].token)
+        const send = jest.fn()
+        const defer = jest.fn()
+        await store.dispatchContextFallback(7, result.deferred[0], send, defer)
+        await store.dispatchContextFallback(7, result.deferred[0], send, defer)
+        expect(send).toHaveBeenCalledTimes(1)
+        expect(defer).not.toHaveBeenCalled()
       })
 
       it('a failure reaches the Clear snapshot too', async () => {
@@ -1008,6 +1032,34 @@ describe('panelHistoryStore (ADR-090)', () => {
           'error',
         ])
       })
+
+      it.each(['expiry', 'a new lookup'] as const)(
+        'drops a late combined response after %s discards the snapshot',
+        async discard => {
+          let now = 1_000
+          const store = createPanelHistoryStore(
+            createFakePanelHistoryDeps({ now: () => now })
+          )
+          await lookup(store, 'cats')
+          const claimed = await store.claimSentenceEvent(7, sentenceEvent(''))
+          const combined = combinedOf(claimed.plan)
+          await store.clear(7)
+          if (discard === 'expiry') now += PANEL_HISTORY_UNDO_MS
+          else await lookup(store, 'dogs')
+
+          const result = await store.applySentenceWithWords(
+            7,
+            combined,
+            successOf(combined.words, ['cats'])
+          )
+          expect(result.state.cleared).toBeNull()
+          expect(
+            findSentence(result.state.entries, SENTENCE_ID)
+          ).toBeUndefined()
+          expect(result.plan).toEqual([])
+          expect(result.deferred).toEqual([])
+        }
+      )
     })
   })
 })

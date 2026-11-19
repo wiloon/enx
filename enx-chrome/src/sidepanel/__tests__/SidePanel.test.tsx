@@ -28,6 +28,10 @@ jest.mock('@/services/api', () => ({
 
 import { sendMessageToBackground } from '@/services/api'
 import { BackgroundResponse } from '@/types'
+import {
+  panelHistoryKey,
+  type StoredPanelHistory,
+} from '@/lib/panelHistoryStore'
 import { latestPageWordKey, pendingSentenceKey } from '@/lib/sidePanel'
 import { WORD_HIGHLIGHT_KEY } from '@/config/preferences'
 import SidePanel from '../SidePanel'
@@ -3320,6 +3324,53 @@ describe('SidePanel', () => {
         expect(combinedCalls()).toHaveLength(1)
       })
 
+      it.each(['clear', 'remove'] as const)(
+        'rechecks a blank gloss after a second panel queues %s at commit',
+        async action => {
+          deferAll()
+          const first = render(<SidePanel />)
+          await within(first.container).findByTestId('sidepanel-empty-state')
+          const second = render(<SidePanel />)
+          const otherPanel = within(second.container)
+          await otherPanel.findByTestId('sidepanel-empty-state')
+          await pageClick('cats', 'cats页面')
+          await send({ sentence: SENTENCE })
+          await otherPanel.findByTestId('sidepanel-remove-cats')
+          const set = chrome.storage.session.set as jest.Mock
+          const write = set.getMockImplementation()!
+          set.mockImplementationOnce(async items => {
+            await write(items)
+            fireEvent.click(
+              otherPanel.getByTestId(
+                action === 'clear'
+                  ? 'sidepanel-clear-all'
+                  : 'sidepanel-remove-cats'
+              )
+            )
+          })
+
+          await settle(take('translateSentenceWithWords'), {
+            success: true,
+            chinese: '整句译文',
+            words: [{ word: 'cats', chinese: '', why: '' }],
+          })
+          await flushMicrotasks()
+          expect(callsOf('translateWordInContext')).toBe(0)
+          if (action === 'clear') {
+            fireEvent.click(
+              await otherPanel.findByTestId('sidepanel-undo-clear')
+            )
+            await waitFor(() =>
+              expect(callsOf('translateWordInContext', 'cats')).toBe(1)
+            )
+          } else {
+            await waitFor(() =>
+              expect(otherPanel.queryByTestId('sidepanel-card-cats')).toBeNull()
+            )
+          }
+        }
+      )
+
       it('holds an omitted-word follow-up during Clear and sends it once on Undo', async () => {
         deferAll()
         await renderEmpty()
@@ -3355,6 +3406,65 @@ describe('SidePanel', () => {
           act(() => jest.advanceTimersByTime(5000))
           await flushMicrotasks()
           expect(callsOf('translateWordInContext')).toBe(0)
+        } finally {
+          jest.useRealTimers()
+        }
+      })
+
+      it('drops a deferred fallback when the account changes before Undo', async () => {
+        deferAll()
+        await renderEmpty()
+        await pageClick('cats', 'cats页面')
+        await send({ sentence: SENTENCE })
+        await clickClear()
+        await settle(take('translateSentenceWithWords'), {
+          success: true,
+          chinese: '整句译文',
+          words: [{ word: 'cats', chinese: '', why: '' }],
+        })
+        expect(callsOf('translateWordInContext')).toBe(0)
+
+        await act(async () => {
+          for (const [listener] of (
+            chrome.runtime.onMessage.addListener as jest.Mock
+          ).mock.calls) {
+            listener({ action: 'accountInvalidated', cause: 'switched' })
+          }
+        })
+        await clickUndo()
+        expect(screen.getByTestId('sidepanel-card-cats')).toBeInTheDocument()
+        expect(callsOf('translateWordInContext')).toBe(0)
+      })
+
+      it('dispatches once with the original token when Undo crosses the combined timeout', async () => {
+        jest.useFakeTimers()
+        try {
+          deferAll()
+          await renderEmpty()
+          await pageClick('cats', 'cats页面')
+          await send({ sentence: SENTENCE })
+          const historyKey = panelHistoryKey(PANEL_TAB_ID)
+          const word = () =>
+            (sessionBag[historyKey] as StoredPanelHistory).entries.find(
+              entry => entry.kind === 'sentence'
+            )?.words[0]
+          const token = word()?.token
+          expect(token).toEqual(expect.any(Number))
+
+          act(() => jest.advanceTimersByTime(118_000))
+          await clickClear()
+          act(() => jest.advanceTimersByTime(1_000))
+          await settle(take('translateSentenceWithWords'), {
+            success: true,
+            chinese: '整句译文',
+            words: [{ word: 'cats', chinese: '', why: '' }],
+          })
+          expect(callsOf('translateWordInContext')).toBe(0)
+          act(() => jest.advanceTimersByTime(2_000))
+          await clickUndo()
+          await flushMicrotasks()
+          expect(callsOf('translateWordInContext', 'cats')).toBe(1)
+          expect(word()?.token).toBe(token)
         } finally {
           jest.useRealTimers()
         }
