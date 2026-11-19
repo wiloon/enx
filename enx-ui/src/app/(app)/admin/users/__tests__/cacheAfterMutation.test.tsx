@@ -114,9 +114,7 @@ function newClient() {
 }
 
 function renderIn(client: QueryClient, ui: React.ReactElement) {
-  return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>
-  )
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
 }
 
 async function warmList(client: QueryClient) {
