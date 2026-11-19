@@ -48,15 +48,16 @@ func (AICandidates) HitCandidate(ctx context.Context, english string) error {
 // AddCandidate is one statement: it inserts the row unless words has a live
 // row for the word, and on a conflict with an existing candidate (pending or
 // rejected) it keeps that row's status and definition and only counts a hit.
-func (AICandidates) AddCandidate(ctx context.Context, c dictionary.Candidate) error {
+func (AICandidates) AddCandidate(ctx context.Context, c dictionary.Candidate) (bool, error) {
 	now := time.Now().UnixMilli()
 	english := repo.CanonicalEnglish(c.English)
-	return sqlitex.DB.WithContext(ctx).Exec(
+	result := sqlitex.DB.WithContext(ctx).Exec(
 		`INSERT INTO ai_candidates (english, chinese, quality, prompt_version, status, hit_count, first_hit_at, last_hit_at)
 		 SELECT ?, ?, ?, ?, ?, 1, ?, ?
 		 WHERE NOT EXISTS (SELECT 1 FROM words WHERE english = ? AND deleted_at IS NULL)
 		 ON CONFLICT(english) DO UPDATE SET hit_count = hit_count + 1, last_hit_at = excluded.last_hit_at`,
-		english, c.Chinese, c.Quality, c.PromptVersion, string(dictionary.CandidatePending), now, now, english).Error
+		english, c.Chinese, c.Quality, c.PromptVersion, string(dictionary.CandidatePending), now, now, english)
+	return result.RowsAffected > 0, result.Error
 }
 
 // AddAIWord is the guarded words write (ADR-091 Decision 9), one transaction

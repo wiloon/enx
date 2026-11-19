@@ -103,10 +103,11 @@ type Entitlements interface {
 
 // Service resolves user word lookups (ADR-018's single lookup seam).
 type Service struct {
-	words    WordStore
-	external ExternalDictionary
-	ent      Entitlements
-	ai       *aiFallback // nil until EnableAI
+	words      WordStore
+	external   ExternalDictionary
+	ent        Entitlements
+	ai         *aiFallback // nil until EnableAI
+	aiRecorder AIWordRecorder
 }
 
 func NewService(words WordStore, external ExternalDictionary, ent Entitlements) *Service {

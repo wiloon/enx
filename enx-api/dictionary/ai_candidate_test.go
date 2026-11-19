@@ -12,8 +12,10 @@ type fakeCandidates struct {
 	rows       map[string]*Candidate // keyed by lower-case english
 	hits       []string
 	findErr    error
+	findCalls  int
 	hitErr     error
 	addErr     error
+	skipAdd    bool
 	added      []Candidate
 	wordResult *guardedResult // what AddAIWord answers; nil = insert via words
 	words      *fakeWords
@@ -32,6 +34,7 @@ func newFakeCandidates(words *fakeWords) *fakeCandidates {
 func (f *fakeCandidates) seed(c Candidate) { f.rows[strings.ToLower(c.English)] = &c }
 
 func (f *fakeCandidates) FindCandidate(_ context.Context, english string) (Candidate, bool, error) {
+	f.findCalls++
 	if f.findErr != nil {
 		return Candidate{}, false, f.findErr
 	}
@@ -53,13 +56,16 @@ func (f *fakeCandidates) HitCandidate(_ context.Context, english string) error {
 	return nil
 }
 
-func (f *fakeCandidates) AddCandidate(_ context.Context, c Candidate) error {
+func (f *fakeCandidates) AddCandidate(_ context.Context, c Candidate) (bool, error) {
 	if f.addErr != nil {
-		return f.addErr
+		return false, f.addErr
+	}
+	if f.skipAdd {
+		return false, nil
 	}
 	f.added = append(f.added, c)
 	f.rows[strings.ToLower(c.English)] = &c
-	return nil
+	return true, nil
 }
 
 func (f *fakeCandidates) AddAIWord(ctx context.Context, e Entry) (string, bool, error) {
@@ -77,10 +83,8 @@ func (r *fakeRecorder) RecordAIWordOutcome(o string) { r.outcomes = append(r.out
 func newCandidateEnv() (*aiEnv, *fakeCandidates, *fakeRecorder) {
 	env := newAIEnv()
 	cands := newFakeCandidates(env.words)
-	rec := &fakeRecorder{}
 	env.svc.UseCandidates(cands)
-	env.svc.RecordAIWordOutcomes(rec)
-	return env, cands, rec
+	return env, cands, env.recorder
 }
 
 func TestDefineWithAIKeepsALowQualityDefinitionAsACandidate(t *testing.T) {
@@ -116,6 +120,26 @@ func TestDefineWithAIKeepsADefinitionOverTheCacheWriteLimitAsACandidate(t *testi
 	}
 	if res.ID != "" || len(cands.added) != 1 || len(env.words.added) != 0 {
 		t.Fatalf("res=%+v candidates=%v words=%v", res, cands.added, env.words.added)
+	}
+}
+
+func TestDefineWithAIReturnsThePaidDefinitionWhenCandidateWriteIsSkipped(t *testing.T) {
+	env, cands, rec := newCandidateEnv()
+	env.definer.def.Quality = minQuality - 1
+	cands.skipAdd = true // Another writer stored the word during the model call.
+
+	res, err := env.define("rizzler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Source != SourceAI || res.ID != "" || res.Chinese != goodDefinition.Chinese {
+		t.Fatalf("got %+v, want the model's definition with no ID", res)
+	}
+	if len(env.billing.settled) != 1 {
+		t.Fatalf("billed %v, want one charged call", env.billing.settled)
+	}
+	if len(rec.outcomes) != 1 || rec.outcomes[0] != "unstored" {
+		t.Fatalf("outcomes = %v, want [unstored]", rec.outcomes)
 	}
 }
 
@@ -244,5 +268,8 @@ func TestResolveNeverReadsCandidates(t *testing.T) {
 	}
 	if res.Source != SourceMiss {
 		t.Fatalf("got %+v, want a miss", res)
+	}
+	if cands.findCalls != 0 {
+		t.Fatalf("FindCandidate calls = %d, want 0", cands.findCalls)
 	}
 }

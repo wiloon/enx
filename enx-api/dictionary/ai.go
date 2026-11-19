@@ -125,7 +125,6 @@ type aiFallback struct {
 	trialGate  TrialGate
 	cfg        AIConfig
 	candidates CandidateStore
-	recorder   AIWordRecorder
 }
 
 // CandidateStatus is where an AI candidate definition stands (ADR-091).
@@ -159,8 +158,8 @@ type CandidateStore interface {
 	HitCandidate(ctx context.Context, english string) error
 	// AddCandidate inserts c with hit count 1. On conflict with an existing
 	// row it keeps that row's status and definition and only counts a hit; it
-	// inserts nothing when words has a live row for the word.
-	AddCandidate(ctx context.Context, c Candidate) error
+	// returns affected=false when words has a live row for the word.
+	AddCandidate(ctx context.Context, c Candidate) (affected bool, err error)
 	// AddAIWord is the qualifying write into words. With a rejected candidate
 	// it writes nothing (stored false); with a pending one it inserts the row
 	// and deletes the candidate; with a live words row it leaves that row
@@ -196,12 +195,10 @@ func (s *Service) UseCandidates(store CandidateStore) {
 	}
 }
 
-// RecordAIWordOutcomes reports each DefineWithAI outcome to rec. Call it after
-// EnableAI; without it nothing is recorded.
+// RecordAIWordOutcomes reports each DefineWithAI outcome to rec, even when
+// the AI fallback is unavailable.
 func (s *Service) RecordAIWordOutcomes(rec AIWordRecorder) {
-	if s.ai != nil {
-		s.ai.recorder = rec
-	}
+	s.aiRecorder = rec
 }
 
 // EnableAI switches the AI word fallback on. Without it DefineWithAI returns
@@ -243,15 +240,15 @@ func (s *Service) AIConfigured() bool {
 // are not billed -- those are not the user's doing.
 func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Result, error) {
 	res, outcome, err := s.defineWithAI(ctx, english, userID)
-	if s.ai != nil && s.ai.recorder != nil && outcome != "" {
-		s.ai.recorder.RecordAIWordOutcome(outcome)
+	if s.aiRecorder != nil {
+		s.aiRecorder.RecordAIWordOutcome(outcome)
 	}
 	return res, err
 }
 
 func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Result, string, error) {
 	if !s.AIConfigured() {
-		return Result{}, "", ErrAIUnavailable
+		return Result{}, outcomeFailed, ErrAIUnavailable
 	}
 	if !ValidAIWord(english) {
 		return Result{}, outcomeRefused, ErrInvalidWord
@@ -264,10 +261,17 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 		return Result{}, outcomeRefused, ErrNotEntitled
 	}
 
-	if res, known, err := s.alreadyKnown(ctx, english); err != nil {
+	res, err := s.lookupDictionaries(ctx, english)
+	if err != nil {
 		return res, outcomeFailed, err
-	} else if known {
+	}
+	switch res.Source {
+	case SourceLocal, SourceEcdict:
 		return res, outcomeKnown, nil
+	case SourceMiss:
+		// Only a clean miss can fall through to candidate and model lookups.
+	default:
+		return res, outcomeFailed, nil
 	}
 
 	if res, outcome, done, err := s.answerFromCandidate(ctx, english); done {
@@ -344,15 +348,12 @@ func (s *Service) answerFromCandidate(ctx context.Context, english string) (res 
 	return Result{English: english, Chinese: c.Chinese, Source: SourceAI, Origin: OriginAI}, outcomeCandidateHit, true, nil
 }
 
-// alreadyKnown answers from the words table or ECDICT when either has the
-// word, so the AI is only asked about words nobody else knows. known is false
-// on a clean miss from both; ECDICT being down or slow is reported as a
-// result without a definition, not as a miss, because the AI must not paper
-// over a dictionary that merely could not answer.
-func (s *Service) alreadyKnown(ctx context.Context, english string) (res Result, known bool, err error) {
+// lookupDictionaries checks the words table and ECDICT before AI fallback.
+// Only a clean miss from both allows fallback.
+func (s *Service) lookupDictionaries(ctx context.Context, english string) (Result, error) {
 	id, entry, ok, err := s.words.Find(ctx, english, true)
 	if err != nil {
-		return Result{}, false, err
+		return Result{}, err
 	}
 	if ok {
 		return Result{
@@ -362,13 +363,12 @@ func (s *Service) alreadyKnown(ctx context.Context, english string) (res Result,
 			Pronunciation: entry.Pronunciation,
 			Source:        SourceLocal,
 			Origin:        originOrECDICT(entry.Origin),
-		}, true, nil
+		}, nil
 	}
 	if !s.external.Available() {
-		return Result{}, false, ErrEcdictUnavailable
+		return Result{}, ErrEcdictUnavailable
 	}
-	res = s.fromExternal(ctx, english)
-	return res, res.Source != SourceMiss, nil
+	return s.fromExternal(ctx, english), nil
 }
 
 // keepAIDefinition answers with the model's definition. When it is confident
@@ -420,7 +420,7 @@ func (s *Service) keepCandidate(ctx context.Context, e Entry) string {
 	if s.ai.candidates == nil {
 		return outcomeUnstored
 	}
-	err := s.ai.candidates.AddCandidate(ctx, Candidate{
+	affected, err := s.ai.candidates.AddCandidate(ctx, Candidate{
 		English:       e.English,
 		Chinese:       e.Chinese,
 		Quality:       e.Quality,
@@ -430,6 +430,8 @@ func (s *Service) keepCandidate(ctx context.Context, e Entry) string {
 	})
 	if err != nil {
 		logger.Errorf("dictionary: could not keep the AI candidate definition of %s: %v", e.English, err)
+	}
+	if err != nil || !affected {
 		return outcomeUnstored
 	}
 	return outcomeCandidateStored

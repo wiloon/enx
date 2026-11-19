@@ -61,11 +61,11 @@ func TestAICandidatesAreOneRowPerWordWhateverTheCaseOrApostrophe(t *testing.T) {
 	setupCandidatesDB(t)
 	ctx := context.Background()
 	store := AICandidates{}
-	if err := store.AddCandidate(ctx, newCandidate("Don’t")); err != nil {
-		t.Fatal(err)
+	if affected, err := store.AddCandidate(ctx, newCandidate("Don’t")); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
-	if err := store.AddCandidate(ctx, newCandidate("DON'T")); err != nil {
-		t.Fatal(err)
+	if affected, err := store.AddCandidate(ctx, newCandidate("DON'T")); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
 	if n := candidateCount(t); n != 1 {
 		t.Fatalf("rows = %d, want 1", n)
@@ -83,18 +83,19 @@ func TestAICandidateInsertConflictKeepsStatusAndDefinition(t *testing.T) {
 	setupCandidatesDB(t)
 	ctx := context.Background()
 	store := AICandidates{}
-	if err := store.AddCandidate(ctx, newCandidate("rizzler")); err != nil {
-		t.Fatal(err)
+	if affected, err := store.AddCandidate(ctx, newCandidate("rizzler")); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
-	if err := sqlitex.DB.Model(&sqlitex.AICandidate{}).Where("english = ?", "rizzler").
-		Update("status", string(dictionary.CandidateRejected)).Error; err != nil {
-		t.Fatal(err)
+	update := sqlitex.DB.Model(&sqlitex.AICandidate{}).Where("english = ?", "rizzler").
+		Update("status", string(dictionary.CandidateRejected))
+	if update.Error != nil || update.RowsAffected != 1 {
+		t.Fatalf("reject candidate: affected %d rows, err = %v", update.RowsAffected, update.Error)
 	}
 
 	second := newCandidate("rizzler")
 	second.Chinese = "n. 另一个"
-	if err := store.AddCandidate(ctx, second); err != nil {
-		t.Fatal(err)
+	if affected, err := store.AddCandidate(ctx, second); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
 	row := candidateRow(t, "rizzler")
 	if row.Status != "rejected" || row.Chinese != "n. 候选" || row.HitCount != 2 {
@@ -106,8 +107,8 @@ func TestAICandidateInsertIsSkippedWhenWordsHasALiveRow(t *testing.T) {
 	setupCandidatesDB(t)
 	seedWord(t, "rizzler", "n. 已有")
 
-	if err := (AICandidates{}).AddCandidate(context.Background(), newCandidate("rizzler")); err != nil {
-		t.Fatal(err)
+	if affected, err := (AICandidates{}).AddCandidate(context.Background(), newCandidate("rizzler")); err != nil || affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want false and no error", affected, err)
 	}
 	if n := candidateCount(t); n != 0 {
 		t.Fatalf("rows = %d, want none", n)
@@ -118,8 +119,8 @@ func TestAICandidateHitCountIncrementsAtomically(t *testing.T) {
 	setupCandidatesDB(t)
 	ctx := context.Background()
 	store := AICandidates{}
-	if err := store.AddCandidate(ctx, newCandidate("rizzler")); err != nil {
-		t.Fatal(err)
+	if affected, err := store.AddCandidate(ctx, newCandidate("rizzler")); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -155,7 +156,9 @@ func TestGuardedWordWriteSkipsARejectedCandidate(t *testing.T) {
 		t.Fatalf("got %q %v %v, want nothing stored", id, stored, err)
 	}
 	var n int64
-	sqlitex.DB.Model(&sqlitex.Word{}).Count(&n)
+	if err := sqlitex.DB.Model(&sqlitex.Word{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
 	if n != 0 {
 		t.Fatalf("words rows = %d, want 0", n)
 	}
@@ -167,8 +170,8 @@ func TestGuardedWordWriteSkipsARejectedCandidate(t *testing.T) {
 func TestGuardedWordWriteWithAPendingCandidateInsertsAndDeletesIt(t *testing.T) {
 	setupCandidatesDB(t)
 	ctx := context.Background()
-	if err := (AICandidates{}).AddCandidate(ctx, newCandidate("rizzler")); err != nil {
-		t.Fatal(err)
+	if affected, err := (AICandidates{}).AddCandidate(ctx, newCandidate("rizzler")); err != nil || !affected {
+		t.Fatalf("AddCandidate affected = %v, err = %v, want true and no error", affected, err)
 	}
 
 	id, stored, err := AICandidates{}.AddAIWord(ctx, dictionary.Entry{
@@ -210,7 +213,9 @@ func TestGuardedWordWriteWithALiveRowReturnsItsIDAndLeavesItUnchanged(t *testing
 		t.Fatalf("got %q %v %v, want the winner %q", id, stored, err, winner)
 	}
 	var w sqlitex.Word
-	sqlitex.DB.Where("id = ?", winner).First(&w)
+	if err := sqlitex.DB.Where("id = ?", winner).First(&w).Error; err != nil {
+		t.Fatal(err)
+	}
 	if w.Chinese == nil || *w.Chinese != "n. 先到的" {
 		t.Fatalf("existing row changed: %+v", w)
 	}

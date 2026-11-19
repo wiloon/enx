@@ -150,6 +150,9 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// before it resolves; dictionaryService itself never does.
 	lookupQuota := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, subscriptions, cfg.Stripe.Quota, time.Now)
 	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, entitlements)
+	if m != nil {
+		dictionaryService.RecordAIWordOutcomes(m)
+	}
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
@@ -205,9 +208,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 			)
 			dictionaryService.LimitTrial(trialGate)
 			dictionaryService.UseCandidates(adapters.AICandidates{})
-			if m != nil {
-				dictionaryService.RecordAIWordOutcomes(m)
-			}
 			if !dictionaryService.AIConfigured() {
 				logger.Warnf("AI word lookup is off: define-word has no price; set a complete [stripe.costs.default] (STRIPE_COSTS_DEFAULT_WEIGHT_IN/_WEIGHT_OUT/_DIVISOR) or a complete [stripe.costs.define-word] block")
 			}
