@@ -6,7 +6,7 @@
 | **日期** | 2026-09-24 起草；2026-11-19 修订并接受 |
 | **决策者** | wiloon |
 | **前提** | [`adr-035`](./adr-035-global-and-china-editions-dual-deployment.md)（海外版 / 国内版双部署，版本差异只允许以部署配置存在） |
-| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见 Decision 5；[`adr-062`](./adr-062-account-deletion-and-disable.md) **Decision 3**（试用发放记录只按邮箱）与 **Decision 2 的自助注销确认方式** —— 只对国内版，见 Decision 7、8。两份 ADR 的其余内容不变 |
+| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见 Decision 5；[`adr-062`](./adr-062-account-deletion-and-disable.md) **Decision 3**（试用发放记录只按邮箱）—— 只对国内版，见 Decision 7；ADR-062 **Decision 2 的自助注销确认方式**（输入邮箱）—— **两个版本**都改为输入 `DELETE`，见 Decision 8。两份 ADR 的其余内容不变 |
 | **相关** | [`adr-020`](./adr-020-extension-sign-in-return-flow.md)（扩展登录回跳）、[`adr-048`](./adr-048-free-trial-ai-credits.md)（试用积分）、[`adr-051`](./adr-051-referral-credits.md)（邀请积分）、#1023（可选绑定手机号） |
 
 ---
@@ -118,9 +118,16 @@ ADR-062 Decision 3 按邮箱 HMAC 记录试用发放，保证一个邮箱只领�
 - 记录的键在代码里叫「试用身份键」，按版本取：海外版 = 邮箱，国内版 = `unionid`。表的列名在实现时去掉 `email` 字样。
 - 刷试用的成本从「换一个邮箱」变为「换一个微信号」。
 
-### 8. 国内版自助注销的确认方式
+### 8. 自助注销统一输入 `DELETE` 确认（两个版本）
 
-ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销。国内版没有邮箱，改为输入一个固定确认词（例如 `DELETE`），确认文案的其余要求（作废积分、注销不退款、重新注册不再有试用和邀请奖励）不变，其中「同一邮箱」改为「同一微信」。
+ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销，enx-api 的 `account.Service.DeleteOwn` 在服务端比对邮箱。国内版没有邮箱，这一步做不了。
+
+所有者 2026-11-19 决定**两个版本统一**：用户输入大写英文 **`DELETE`** 来确认，不再输入邮箱。
+
+- 确认词由 enx-api 在服务端校验，大小写敏感、去掉首尾空格后必须等于 `DELETE`；不匹配时拒绝删除，和现在邮箱不匹配时一样。只在前端校验不够，接口可能被直接调用。
+- `DELETE /api/me` 的请求体从邮箱改为确认词，enx-ui `/settings` 同步改。
+- 确认文案的其余要求不变：作废积分、注销本身不退款、重新注册不再有试用和邀请奖励。其中「同一邮箱」在国内版写成「同一微信」。
+- 这一条对海外版也是改动，不依赖国内版的其他工作，可以先做。
 
 ### 9. 扩展登录
 
