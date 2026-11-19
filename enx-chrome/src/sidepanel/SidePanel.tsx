@@ -767,7 +767,7 @@ function SentenceBlock({
       </div>
 
       {entry.words.length > 0 && (
-        <div data-testid="sidepanel-sentence-words" className="space-y-2">
+        <div data-testid="sidepanel-sentence-words" className="space-y-2 pb-3">
           {entry.words.map(card => (
             <WordCard
               key={card.key}

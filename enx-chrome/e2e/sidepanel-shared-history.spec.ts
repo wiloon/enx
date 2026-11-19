@@ -117,6 +117,13 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await expect(
       nestedCard.getByText('development义', { exact: true })
     ).toBeVisible()
+    const bottomInset = await nestedCard.evaluate(card => {
+      const list = card.parentElement!
+      return (
+        list.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom
+      )
+    })
+    expect(bottomInset).toBeCloseTo(12)
     await expect(lookupCard).toHaveCount(1)
     await expect
       .poll(async () =>
