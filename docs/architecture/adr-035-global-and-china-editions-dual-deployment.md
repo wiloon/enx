@@ -11,6 +11,15 @@
 
 ---
 
+## 修订记录
+
+- **2026-11-19**：国内版托管定为**阿里云华东1（杭州，`cn-hangzhou`）**，第 3 条的「托管」一行和「待定」里的云厂商选型随之更新。
+  - **为什么是杭州**：用户分布在全国，网民集中在华东和华南，杭州到京、广深的延迟都在 30ms 左右，覆盖最均衡；杭州是阿里云产品最全的地域。地域选定后，VPC、ECS 和磁盘都没法搬，要换只能重建。
+  - **账号与主体**：云账号是企业主体（星钺（大连）科技有限公司）的阿里云账号，基础设施代码（OpenTofu + Ansible）放在企业 GitHub 组织的私有仓库 `xingyue-dalian/xingyue-dalian-infra` 的 `aliyun/` 下，state 存在该账号的 OSS（境内）。海外版的部署代码不动。
+  - **现状**：网络（VPC、交换机、安全组）和一台备案用的包年包月 ECS 已经建好（2 vCPU / 2 GiB）。ICP 备案已于 2026-11-19 提交，审核中。正式上线用什么规格、要不要拆数据库，等国内版开工时再定。
+
+---
+
 ## Context
 
 目前只有一个生产部署：AWS 东京（ADR-031），Clerk 登录（Google / GitHub），Stripe 收款，Bedrock 上的 Claude 做 AI，Chrome Web Store 分发扩展，运营主体是**个人**。
@@ -55,7 +64,7 @@
 | 身份认证 | Clerk（Google / GitHub） | 自托管 Logto（微信扫码 / 手机号） | 见 [`adr-036`](./adr-036-china-edition-authentication-logto.md) |
 | 收款 | Stripe | 微信支付 / 支付宝 | 另起 ADR；ADR-009 的积分 / 订阅领域模型（键在本地 `users.Id`）原则上复用，只换支付通道 |
 | AI provider | Bedrock（Claude） | **已完成大模型备案**的国内模型 API（如 DeepSeek / Kimi / MiniMax） | `aitranslate/` 已有这几个 provider 的实现，本来就是给境内部署留的 |
-| 托管 | AWS 东京 EC2 | 大陆云（选型待定：阿里云 / 腾讯云 / AWS 中国区） | 必须能办 ICP 备案 |
+| 托管 | AWS 东京 EC2 | 阿里云华东1（杭州） | 必须能办 ICP 备案；见「修订记录 2026-11-19」 |
 | CDN / DNS | Cloudflare | 大陆 CDN | Cloudflare 免费档在大陆没有节点 |
 | 扩展分发 | Chrome Web Store | **Edge 加载项商店**（大陆可访问）+ 官网离线包 | 国内版扩展是独立的构建产物和独立的商店条目（不同扩展 id） |
 | 前端外部资源 | — | 不得在运行时依赖大陆访问不到的第三方资源 | Google Fonts CDN、Clerk JS、Stripe.js、Google Analytics 之类 |
@@ -109,5 +118,5 @@
 ## 待定（不阻塞本 ADR 被接受）
 
 - 国内版的品牌名 / 域名（须以企业主体备案）。
-- 国内版的云厂商选型。
+- ~~国内版的云厂商选型。~~ 已定：阿里云华东1（杭州），见「修订记录 2026-11-19」。
 - 国内版收款 ADR（微信支付 / 支付宝，订阅还是一次性购买积分）。
