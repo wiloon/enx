@@ -109,18 +109,28 @@ func TestBackgroundShutdownHasDeadline(t *testing.T) {
 func TestBackgroundTaskDuplicateNamePanics(t *testing.T) {
 	work := &backgroundTasks{}
 	release := make(chan struct{})
-	t.Cleanup(func() {
-		closeIfOpen(release)
-		work.wait(time.Second)
-	})
+	defer closeIfOpen(release)
 	work.start("same name", func() { <-release })
 
-	defer func() {
-		if recover() == nil {
-			t.Fatal("start with a running name did not panic")
-		}
+	duplicateRan := make(chan struct{})
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("start with a running name did not panic")
+			}
+		}()
+		work.start("same name", func() { close(duplicateRan) })
 	}()
-	work.start("same name", func() {})
+
+	close(release)
+	if !work.wait(time.Second) {
+		t.Fatal("background tasks did not stop after release")
+	}
+	select {
+	case <-duplicateRan:
+		t.Error("start ran the duplicate callback")
+	default:
+	}
 }
 
 func TestMetricsShutdownDrainsActiveRequest(t *testing.T) {

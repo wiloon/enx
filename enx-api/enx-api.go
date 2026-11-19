@@ -32,19 +32,16 @@ import (
 )
 
 const (
-	// shutdownGrace bounds how long the process waits for its long-lived
-	// workers to return, so a SIGTERM cannot leave the process exiting with
-	// work in flight. The full budget starts after application.Serve returns;
-	// the API server's own drain is not part of it, because Serve bounds that
-	// by srv.WriteTimeout + shutdownGraceMargin (server package) before it
-	// returns.
+	// shutdownGrace gives background workers up to five seconds to finish
+	// after application.Serve returns. Inside Serve, application context
+	// cancellation or a listener return starts a separate API drain deadline
+	// of srv.WriteTimeout + shutdownGraceMargin.
 	shutdownGrace = 5 * time.Second
 
-	// metricsShutdownGrace is the metrics listener's own drain budget. It
-	// starts when the listener sees the application context cancelled, which
-	// runs in parallel with the API server's drain, not inside shutdownGrace's
-	// window. It is shorter than shutdownGrace so a scrape that runs to this
-	// deadline still lets the join finish in time.
+	// metricsShutdownGrace gives the metrics listener up to three seconds to
+	// drain when it observes application context cancellation. On an API
+	// listener error, serveUntilStopped cancels that context after Serve
+	// returns, so the metrics drain can overlap the background join.
 	metricsShutdownGrace = 3 * time.Second
 )
 
@@ -288,8 +285,8 @@ func runTrialExpiry(ctx context.Context) {
 // shutdown signal doing its job, not an error: logging it at Error level
 // would make every normal SIGTERM look like a fault.
 //
-// A SQLite statement interrupted mid-run fails with "interrupted (9)", which
-// does not wrap context.Canceled, so the job's own ctx counts too.
+// SQLite can report "interrupted (9)" for a cancelled DELETE without wrapping
+// context.Canceled, so the job's own ctx counts too.
 func logJobFailure(ctx context.Context, what string, err error) {
 	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 		logger.Infof("%s: cancelled by shutdown", what)
