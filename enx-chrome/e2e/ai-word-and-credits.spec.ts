@@ -103,7 +103,7 @@ test.describe('AI word fallback and running out of credits', () => {
       '很有魅力的人'
     )
     await expect(popover.getByTestId('word-popover-ai-badge')).toBeVisible()
-    await expect(popover.getByTestId('word-popover-lookup-notice')).toHaveCount(0)
+    await expect(popover.getByTitle(/^Looked up \d+ times?$/)).toHaveCount(0)
     await expect(popover.getByTestId('word-popover-mark-known')).toHaveCount(0)
     expect(aiCompletionCount('word-definition')).toBe(definitionsBefore + 1)
 

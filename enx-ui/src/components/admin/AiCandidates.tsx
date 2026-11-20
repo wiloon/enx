@@ -22,6 +22,8 @@ export default function AiCandidates() {
 
   const query = useQuery({
     queryKey: ['admin-ai-candidates', status, page],
+    // A later page emptied by a review may have been filled again.
+    staleTime: 0,
     queryFn: async () => {
       const resp = await apiService.adminListAiCandidates(
         status,
@@ -32,9 +34,15 @@ export default function AiCandidates() {
     },
   })
 
-  // Reviewing the last row of a later page leaves it empty: step back.
+  // Step back only when the current visit confirms the page is empty.
   const rowCount = query.data?.candidates.length
-  if (rowCount === 0 && page > 0) {
+  if (
+    page > 0 &&
+    rowCount === 0 &&
+    query.isSuccess &&
+    query.isFetchedAfterMount &&
+    !query.isFetching
+  ) {
     setPage(page - 1)
   }
 
@@ -67,7 +75,8 @@ export default function AiCandidates() {
             key={tab.value}
             role="tab"
             aria-selected={status === tab.value}
-            variant={status === tab.value ? 'default' : 'outline'}
+            variant="outline"
+            className="aria-selected:border-brand aria-selected:bg-brand/10 aria-selected:text-brand"
             size="sm"
             onClick={() => switchTab(tab.value)}
           >
@@ -76,13 +85,19 @@ export default function AiCandidates() {
         ))}
       </div>
 
-      {query.isLoading && <p className="text-muted-foreground">Loading…</p>}
+      {(query.isLoading ||
+        (page > 0 && rowCount === 0 && query.isFetching)) && (
+        <p className="text-muted-foreground">Loading…</p>
+      )}
       {query.error && (
-        <div className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-900">
+        <div
+          role="alert"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {(query.error as Error).message}
         </div>
       )}
-      {query.data && query.data.candidates.length === 0 && (
+      {page === 0 && rowCount === 0 && (
         <p className="text-muted-foreground">
           {status === 'pending'
             ? 'No pending candidates.'
@@ -96,8 +111,8 @@ export default function AiCandidates() {
         ))}
       </div>
 
-      {query.data && total > 0 && (
-        <div className="mt-6 flex items-center justify-between text-sm">
+      {rowCount != null && rowCount > 0 && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-muted-foreground">
             Showing {from}–{to} of {total}
           </span>
@@ -134,30 +149,33 @@ function CandidateCard({ row }: { row: AdminAiCandidate }) {
       if (resp.success && resp.data?.ok) return resp.data
       throw new Error(resp.error || 'Update failed')
     },
-    onSuccess: () => {
+    onSuccess: (_result, action) => {
       queryClient.invalidateQueries({ queryKey: ['admin-ai-candidates'] })
-      queryClient.invalidateQueries({ queryKey: ['admin-word', row.english] })
-      queryClient.invalidateQueries({ queryKey: ['admin-ai-words'] })
+      if (action === 'approve') {
+        queryClient.invalidateQueries({ queryKey: ['admin-word'] })
+        queryClient.invalidateQueries({ queryKey: ['admin-ai-words'] })
+      }
     },
   })
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle className="text-lg">{row.english}</CardTitle>
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <CardTitle className="text-lg wrap-anywhere">{row.english}</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             quality {row.quality}/10 · {row.hitCount}{' '}
             {row.hitCount === 1 ? 'hit' : 'hits'} · first{' '}
-            {new Date(row.firstHitAt).toLocaleDateString()} · last{' '}
+            {new Date(row.firstHitAt).toLocaleString()} · last{' '}
             {new Date(row.lastHitAt).toLocaleString()}
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           {row.status === 'pending' ? (
             <>
               <Button
                 size="sm"
+                variant="outline"
                 disabled={act.isPending}
                 onClick={() => act.mutate('approve')}
                 title="Add the definition to the words table for every user"
@@ -188,7 +206,7 @@ function CandidateCard({ row }: { row: AdminAiCandidate }) {
       <CardContent className="space-y-2">
         <p className="whitespace-pre-wrap text-sm">{row.chinese}</p>
         {act.error && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-destructive">
             {(act.error as Error).message}
           </p>
         )}

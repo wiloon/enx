@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AiCandidates from '../AiCandidates'
 import { apiService } from '@/services/api'
@@ -33,7 +33,7 @@ const page = (candidates: AdminAiCandidate[], total = candidates.length) => ({
 
 function renderList() {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
   })
   return render(
     <QueryClientProvider client={client}>
@@ -57,6 +57,16 @@ it('lists pending candidates with definition, quality and hit count', async () =
   expect(list).toHaveBeenCalledWith('pending', 25, 0)
 })
 
+it('shows the times of distinct hits on the same day', async () => {
+  list.mockResolvedValue(page([candidate()]))
+  renderList()
+
+  const details = await screen.findByText(/7 hits/)
+  expect(details).toHaveTextContent(
+    `first ${new Date(1700000000000).toLocaleString()} · last ${new Date(1700000100000).toLocaleString()}`
+  )
+})
+
 it('says so when there are no candidates', async () => {
   list.mockResolvedValue(page([]))
   renderList()
@@ -71,27 +81,17 @@ it('reports a failure to load', async () => {
   expect(await screen.findByText('Forbidden')).toBeInTheDocument()
 })
 
-it('approves a candidate and reads the list again', async () => {
-  list.mockResolvedValue(page([candidate()]))
+it('removes an approved candidate from the pending list', async () => {
+  list.mockResolvedValueOnce(page([candidate()])).mockResolvedValue(page([]))
   review.mockResolvedValue({ success: true, data: { ok: true, created: true } })
   renderList()
   await screen.findByText('rizzler')
 
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
-  await waitFor(() => expect(review).toHaveBeenCalledWith('rizzler', 'approve'))
-  await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(1))
-})
-
-it('rejects a candidate', async () => {
-  list.mockResolvedValue(page([candidate()]))
-  review.mockResolvedValue({ success: true, data: { ok: true } })
-  renderList()
-  await screen.findByText('rizzler')
-
-  fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
-
-  await waitFor(() => expect(review).toHaveBeenCalledWith('rizzler', 'reject'))
+  expect(await screen.findByText('No pending candidates.')).toBeInTheDocument()
+  expect(screen.queryByText('rizzler')).not.toBeInTheDocument()
+  expect(review).toHaveBeenCalledWith('rizzler', 'approve')
 })
 
 it('shows the server message when a review fails', async () => {
@@ -103,28 +103,6 @@ it('shows the server message when a review fails', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('not found')
-})
-
-it('switches to rejected candidates, which offer Un-reject', async () => {
-  list
-    .mockResolvedValueOnce(page([candidate()]))
-    .mockResolvedValue(
-      page([candidate({ english: 'doomscroll', status: 'rejected' })])
-    )
-  review.mockResolvedValue({ success: true, data: { ok: true } })
-  renderList()
-  await screen.findByText('rizzler')
-
-  fireEvent.click(screen.getByRole('tab', { name: 'Rejected' }))
-
-  expect(await screen.findByText('doomscroll')).toBeInTheDocument()
-  expect(list).toHaveBeenLastCalledWith('rejected', 25, 0)
-  expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
-
-  fireEvent.click(screen.getByRole('button', { name: 'Un-reject' }))
-  await waitFor(() =>
-    expect(review).toHaveBeenCalledWith('doomscroll', 'unreject')
-  )
 })
 
 it('pages through a long list', async () => {
@@ -144,4 +122,44 @@ it('pages through a long list', async () => {
   expect(await screen.findByText('Showing 26–30 of 30')).toBeInTheDocument()
   expect(list).toHaveBeenLastCalledWith('pending', 25, 25)
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+})
+
+it('reopens a page after its only candidate is rejected and un-rejected', async () => {
+  const firstPage = Array.from({ length: 25 }, (_, i) =>
+    candidate({ english: `word${i}` })
+  )
+  let rejected = false
+  list.mockImplementation(async (status, _limit, offset) => {
+    if (status === 'rejected') {
+      return page(rejected ? [candidate({ status: 'rejected' })] : [])
+    }
+    const total = rejected ? 25 : 26
+    return page(offset === 0 ? firstPage : rejected ? [] : [candidate()], total)
+  })
+  review.mockImplementation(async (_word, action) => {
+    rejected = action === 'reject'
+    return { success: true, data: { ok: true } }
+  })
+  renderList()
+
+  await screen.findByText('Showing 1–25 of 26')
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('rizzler')
+  fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+  expect(await screen.findByText('Showing 1–25 of 25')).toBeInTheDocument()
+  expect(screen.queryByText('rizzler')).not.toBeInTheDocument()
+  expect(review).toHaveBeenCalledWith('rizzler', 'reject')
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Rejected' }))
+  expect(await screen.findByText('rizzler')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Un-reject' }))
+  expect(await screen.findByText('No rejected candidates.')).toBeInTheDocument()
+  expect(screen.queryByText('rizzler')).not.toBeInTheDocument()
+  expect(review).toHaveBeenCalledWith('rizzler', 'unreject')
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Pending' }))
+  await screen.findByText('Showing 1–25 of 26')
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  expect(await screen.findByText('Showing 26–26 of 26')).toBeInTheDocument()
+  expect(screen.getByText('rizzler')).toBeInTheDocument()
 })
