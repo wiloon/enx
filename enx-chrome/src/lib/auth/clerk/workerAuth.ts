@@ -28,7 +28,7 @@ export function createClerkWorkerAuth(
     classifyLoaded: client =>
       classifyLoadedClerk(client as unknown as LoadedClerk),
     subject: clerkSubject,
-    registerSessionChangeListener: (cookies, syncHost, onChange) =>
-      registerClerkSessionCookieListener(cookies, syncHost, onChange),
+    registerSessionChangeListener: (cookies, onChange) =>
+      registerClerkSessionCookieListener(cookies, config.syncHost, onChange),
   }
 }

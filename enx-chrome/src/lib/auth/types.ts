@@ -64,7 +64,6 @@ export interface WorkerAuthAdapter {
         ) => void
       }
     },
-    syncHost: string,
     onChange: (
       change: SessionCookieChangeInfo
     ) => void | Promise<void>

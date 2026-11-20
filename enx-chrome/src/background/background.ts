@@ -507,7 +507,6 @@ const handleSessionExpiry = async () => {
 // the adapter (ADR-036).
 authAdapter.registerSessionChangeListener(
   chrome.cookies,
-  config.auth.syncHost,
   change => {
     sessionCookies.record(change)
     // A rewrite that leaves the cookies as the cached client saw them changes

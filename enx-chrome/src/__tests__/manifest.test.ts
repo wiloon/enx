@@ -97,6 +97,29 @@ describe('manifest stamping (ADR-019)', () => {
     )
   })
 
+  it('flows the Clerk overrides into the manifest permissions', () => {
+    const key = 'pk_live_Y2xlcmsuY2F0Z2xpc2guY29tJA'
+    const manifest = stamp(
+      resolveBuildTarget('production', {
+        VITE_CLERK_PUBLISHABLE_KEY: key,
+        VITE_CLERK_SYNC_HOST: 'https://sync.override.example:8443',
+      })
+    )
+    expect(manifest.host_permissions).toContain(
+      `https://${clerkFrontendApiHost(key)}/*`
+    )
+    // Cookie events ignore the port, so the permission is portless.
+    expect(manifest.host_permissions).toContain(
+      'https://sync.override.example/*'
+    )
+  })
+
+  it('grants a portless cookie-host permission for a port-bearing sync host', () => {
+    expect(TARGETS.development.auth.syncHost).toBe('http://localhost:3000')
+    const manifest = stamp(TARGETS.development)
+    expect(manifest.host_permissions).toContain('http://localhost/*')
+  })
+
   it('marks non-production builds in the extension name', () => {
     expect(stamp(TARGETS.production).name).toBe(base.name)
     expect(stamp(TARGETS.homelab).name).toBe(`${base.name} (Lab)`)

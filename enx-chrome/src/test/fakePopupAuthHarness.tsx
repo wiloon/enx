@@ -18,8 +18,8 @@ export function FakeAuthProvider({ children }: { children: ReactNode }) {
   const user = useMemo(
     () => ({
       id: snapshot,
-      fullName: snapshot,
-      username: snapshot,
+      fullName: `Name ${snapshot}`,
+      username: `handle-${snapshot}`,
       primaryEmail: `${snapshot}@example.com`,
     }),
     [snapshot]

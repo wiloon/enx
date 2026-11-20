@@ -96,17 +96,42 @@ jest.mock('@clerk/chrome-extension/client', () => ({
   createClerkClient: jest.fn(),
 }))
 
+// Plain (non-jest.fn) records: resetAllMocks() must not wipe them.
+const mockAdapterCalls: string[] = []
+const mockSelected: { config: unknown; adapter: unknown }[] = []
+
 jest.mock('@/lib/auth/selectWorkerAuth', () => {
   const actual = jest.requireActual(
     '@/lib/auth/selectWorkerAuth'
   ) as typeof import('@/lib/auth/selectWorkerAuth')
   return {
-    selectWorkerAuth: jest.fn(actual.selectWorkerAuth),
+    selectWorkerAuth: (
+      config: Parameters<typeof actual.selectWorkerAuth>[0]
+    ) => {
+      const real = actual.selectWorkerAuth(config)
+      const calls = mockAdapterCalls
+      const adapter: typeof real = {
+        ...real,
+        createClient: () => {
+          calls.push('createClient')
+          return real.createClient()
+        },
+        subject: client => {
+          calls.push('subject')
+          return real.subject(client)
+        },
+        registerSessionChangeListener: (cookies, onChange) => {
+          calls.push('registerSessionChangeListener')
+          return real.registerSessionChangeListener(cookies, onChange)
+        },
+      }
+      mockSelected.push({ config, adapter })
+      return adapter
+    },
   }
 })
 
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import { selectWorkerAuth } from '@/lib/auth/selectWorkerAuth'
 import { TOGGLE_LEARNING_MODE_COMMAND } from '@/lib/learningModeCommand'
 import { sanitizePageUrl } from '@/lib/pageReport'
 import {
@@ -139,19 +164,41 @@ const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
 const onCookieChanged = (chrome.cookies.onChanged.addListener as jest.Mock).mock
   .calls[0]?.[0]
 
-it('selects the worker auth adapter from the stamped provider at module load', () => {
-  expect(selectWorkerAuth).toHaveBeenCalledWith(
+// Snapshot at import time: registration is a module-load side effect.
+const loadTimeAdapterCalls = [...mockAdapterCalls]
+
+it('registers the cookie listener at module load through the selected adapter', () => {
+  expect(mockSelected).toHaveLength(1)
+  expect(mockSelected[0].config).toEqual(
     expect.objectContaining({
       provider: 'clerk',
       syncHost: 'https://clerk.localhost.test',
     })
   )
-  // Cookie listener registered synchronously through that adapter (before any
-  // await), so a matching Clerk cookie change can wake an evicted MV3 worker.
+  // Registered synchronously by the adapter the selector returned (before any
+  // await), so a matching cookie change can wake an evicted MV3 worker.
+  expect(loadTimeAdapterCalls).toContain('registerSessionChangeListener')
   expect(onCookieChanged).toEqual(expect.any(Function))
-  expect(
-    (chrome.cookies.onChanged.addListener as jest.Mock).mock.calls.length
-  ).toBeGreaterThanOrEqual(1)
+})
+
+describe('worker session calls reach the selected adapter', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(200, {}))
+  })
+
+  it('creates the client and reads the subject through the adapter', async () => {
+    mockAdapterCalls.length = 0
+    await makeApiRequest('/api/me')
+    expect(mockAdapterCalls).toContain('createClient')
+    expect(mockAdapterCalls).toContain('subject')
+  })
 })
 
 // ADR-019: the one web -> extension channel. enx-ui (an externally_connectable

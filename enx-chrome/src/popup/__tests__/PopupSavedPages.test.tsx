@@ -124,7 +124,6 @@ describe('Popup saved pages through the selected auth adapter', () => {
     expect(harness.selectPopupAuth).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'clerk' })
     )
-    render(<Popup />)
   })
 
   it('shows user-a saved state, then user-b after the adapter subject switches', async () => {

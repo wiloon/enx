@@ -36,7 +36,7 @@ describe('auth adapter boundary', () => {
       // E2E helpers talk to Clerk's testing package, not the extension SDK.
       if (rel.startsWith('e2e/') || rel.includes('/e2e/')) continue
       const source = readFileSync(file, 'utf8')
-      if (/from ['"]@clerk\/chrome-extension/.test(source)) {
+      if (/['"]@clerk\/chrome-extension(\/[^'"]*)?['"]/.test(source)) {
         offenders.push(rel)
       }
     }
