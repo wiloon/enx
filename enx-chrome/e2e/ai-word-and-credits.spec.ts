@@ -85,6 +85,38 @@ test.describe('AI word fallback and running out of credits', () => {
     expect(await trialCredits(trial)).toBeLessThan(before)
   })
 
+  test('a low-quality AI definition becomes a candidate that a second lookup serves without an AI call', async ({
+    page,
+    extensionId,
+    newUser: _,
+  }) => {
+    // "zlq" words get quality 5 from the fake AI, below ai-word.min-quality, so
+    // enx-api keeps the definition as an AI candidate instead of in `words`.
+    const word = `zlq${newMissingWord().slice(2)}`
+    await openArticleWith(page, word)
+    await enableLearningMode(page, extensionId)
+
+    let popover = await clickWord(page, word)
+    const definitionsBefore = aiCompletionCount('word-definition')
+    await popover.getByTestId('word-popover-ai-lookup').click()
+    await expect(popover.getByTestId('word-popover-content')).toContainText(
+      '很有魅力的人'
+    )
+    await expect(popover.getByTestId('word-popover-ai-badge')).toBeVisible()
+    await expect(popover.getByTitle(/^Looked up \d+ times?$/)).toHaveCount(0)
+    await expect(popover.getByTestId('word-popover-mark-known')).toHaveCount(0)
+    expect(aiCompletionCount('word-definition')).toBe(definitionsBefore + 1)
+
+    await page.keyboard.press('Escape')
+    popover = await clickWord(page, word)
+    await popover.getByTestId('word-popover-ai-lookup').click()
+    await expect(popover.getByTestId('word-popover-content')).toContainText(
+      '很有魅力的人'
+    )
+    await expect(popover.getByTestId('word-popover-ai-badge')).toBeVisible()
+    expect(aiCompletionCount('word-definition')).toBe(definitionsBefore + 1)
+  })
+
   test('a trial user out of credits gets a link to Billing instead of an AI word lookup', async ({
     page,
     extensionId,

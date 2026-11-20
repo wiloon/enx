@@ -1,4 +1,5 @@
 import {
+  AdminAiCandidatesPage,
   AdminAiWordsPage,
   AdminCreditAdjustment,
   AdminEcdictRow,
@@ -321,6 +322,31 @@ export class ApiService {
       offset: String(offset),
     })
     return this.makeRequest(`/api/admin/ai-words?${params}`)
+  }
+
+  // AI candidate definitions (ADR-091): AI answers kept out of `words` until an
+  // admin approves them. Busiest first.
+  async adminListAiCandidates(
+    status: 'pending' | 'rejected',
+    limit: number,
+    offset: number
+  ): Promise<ApiResponse<AdminAiCandidatesPage>> {
+    const params = new URLSearchParams({
+      status,
+      limit: String(limit),
+      offset: String(offset),
+    })
+    return this.makeRequest(`/api/admin/ai-candidates?${params}`)
+  }
+
+  async adminReviewAiCandidate(
+    word: string,
+    action: 'approve' | 'reject' | 'unreject'
+  ): Promise<ApiResponse<{ ok: boolean; created?: boolean }>> {
+    return this.makeRequest(
+      `/api/admin/ai-candidates/${encodeURIComponent(word)}/${action}`,
+      { method: 'POST' }
+    )
   }
 
   // The feedback queue (ADR-076): an empty kind or status matches all.

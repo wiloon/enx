@@ -93,6 +93,26 @@ for (const scenario of [
   })
 }
 
+test('word definition answers quality 5 for zlq words so they become candidates', async t => {
+  const server = spawn(process.execPath, ['server.mjs'], {
+    cwd: import.meta.dirname, env: { ...process.env, PORT: '0', HOST: '127.0.0.1' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
+  t.after(() => server.kill())
+  const [data] = await once(server.stdout, 'data')
+  const ask = async word => {
+    const response = await fetch(`http://127.0.0.1:${JSON.parse(data).port}/chat/completions`, {
+      method: 'POST', body: JSON.stringify({ messages: [
+        { role: 'system', content: '{"is_word": true, "quality": 9, "senses": []}' },
+        { role: 'user', content: `Word: ${word}` },
+      ] }),
+    })
+    return JSON.parse((await response.json()).choices[0].message.content)
+  }
+  assert.equal((await ask('zlqfoo')).quality, 5)
+  assert.equal((await ask('rizz')).quality, 9)
+})
+
 test('health is ready and unsupported or malformed requests fail without stopping the server', async t => {
   const server = spawn(process.execPath, ['server.mjs'], {
     cwd: import.meta.dirname, env: { ...process.env, PORT: '0', HOST: '127.0.0.1' },

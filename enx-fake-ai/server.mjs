@@ -10,7 +10,13 @@ const fixtures = [
   })],
   ['sentence-word', '"sentence"', { sentence: '[fake] 这只猫在读书。', word: '猫' }],
   ['word-context', '"why"', { word: '猫', why: '' }],
-  ['word-definition', '"is_word"', { is_word: true, quality: 9, senses: [{ pos: 'n.', zh: '很有魅力的人' }] }],
+  // Words starting with "zlq" come back below ai-word.min-quality, so an e2e
+  // word can become an AI candidate definition (ADR-091).
+  ['word-definition', '"is_word"', userContent => ({
+    is_word: true,
+    quality: /^Word:\s*zlq/im.test(userContent) ? 5 : 9,
+    senses: [{ pos: 'n.', zh: '很有魅力的人' }],
+  })],
   ['sentence', 'English-to-Chinese translator', '[fake] 这只猫在读书。'],
 ]
 

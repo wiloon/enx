@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeCandidates is an in-memory CandidateStore (ADR-091).
@@ -63,8 +64,17 @@ func (f *fakeCandidates) AddCandidate(_ context.Context, c Candidate) (bool, err
 	if f.skipAdd {
 		return false, nil
 	}
+	key := strings.ToLower(c.English)
+	now := time.Now()
+	if existing, ok := f.rows[key]; ok {
+		existing.HitCount++
+		existing.LastHitAt = now
+		return true, nil
+	}
+	c.FirstHitAt = now
+	c.LastHitAt = now
 	f.added = append(f.added, c)
-	f.rows[strings.ToLower(c.English)] = &c
+	f.rows[key] = &c
 	return true, nil
 }
 
@@ -163,6 +173,30 @@ func TestDefineWithAIPendingCandidateHitMakesNoCallAndNoCharge(t *testing.T) {
 	}
 	if len(rec.outcomes) != 1 || rec.outcomes[0] != "candidate_hit" {
 		t.Fatalf("outcomes = %v", rec.outcomes)
+	}
+}
+
+func TestDefineWithAILowQualityWritePreservesAnInFlightRejection(t *testing.T) {
+	env, cands, _ := newCandidateEnv()
+	env.definer.def.Quality = minQuality - 1
+	env.definer.onCall = func() {
+		cands.seed(Candidate{English: "rizzler", Chinese: "旧释义", Status: CandidateRejected, HitCount: 1})
+	}
+
+	res, err := env.define("rizzler")
+	if err != nil || res.Source != SourceAI || res.ID != "" || res.Chinese != goodDefinition.Chinese {
+		t.Fatalf("got %+v, err %v; want the paid definition with no ID", res, err)
+	}
+	if row := cands.rows["rizzler"]; row.Chinese != "旧释义" || row.HitCount != 2 {
+		t.Errorf("conflicting candidate = %+v, want the original definition and two hits", row)
+	}
+
+	res, err = env.define("rizzler")
+	if err != nil || res.Source != SourceAIMiss || res.Chinese != "" {
+		t.Fatalf("later lookup got %+v, err %v; want SourceAIMiss", res, err)
+	}
+	if len(env.definer.calls) != 1 || len(env.billing.settled) != 1 {
+		t.Fatalf("calls = %v, charges = %v; want one call and one charge", env.definer.calls, env.billing.settled)
 	}
 }
 

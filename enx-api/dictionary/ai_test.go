@@ -14,6 +14,7 @@ type fakeDefiner struct {
 	def     Definition
 	usage   AIUsage
 	err     error
+	onCall  func()
 	calls   []string
 	ctxLive []bool // whether ctx was still live at each call
 }
@@ -21,6 +22,9 @@ type fakeDefiner struct {
 func (f *fakeDefiner) DefineWord(ctx context.Context, word string) (Definition, AIUsage, error) {
 	f.calls = append(f.calls, word)
 	f.ctxLive = append(f.ctxLive, ctx.Err() == nil)
+	if f.onCall != nil {
+		f.onCall()
+	}
 	return f.def, f.usage, f.err
 }
 

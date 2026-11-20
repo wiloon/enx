@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AdminDictionaryPage from '../page'
 import { apiService } from '@/services/api'
+import type { AdminAiCandidate } from '@/types'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -9,6 +10,8 @@ jest.mock('@/services/api', () => ({
     adminGetEcdict: jest.fn(),
     adminSyncWordFromEcdict: jest.fn(),
     adminEditWord: jest.fn(),
+    adminListAiCandidates: jest.fn(),
+    adminReviewAiCandidate: jest.fn(),
   },
 }))
 
@@ -16,6 +19,8 @@ const mockGetWord = apiService.adminGetWord as jest.Mock
 const mockGetEcdict = apiService.adminGetEcdict as jest.Mock
 const mockSync = apiService.adminSyncWordFromEcdict as jest.Mock
 const mockEdit = apiService.adminEditWord as jest.Mock
+const mockCandidates = apiService.adminListAiCandidates as jest.Mock
+const mockReview = apiService.adminReviewAiCandidate as jest.Mock
 
 function renderPage() {
   const client = new QueryClient({
@@ -37,7 +42,66 @@ function lookUp(word: string) {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockCandidates.mockResolvedValue({
+    success: true,
+    data: { candidates: [], total: 0 },
+  })
 })
+
+it.each([
+  ['Rizzler', 'rizzler'],
+  ['O’clock', "o'clock"],
+])(
+  'refreshes the open lookup for %s when its equivalent candidate is approved',
+  async (english, lookup) => {
+    const row: AdminAiCandidate = {
+      english,
+      chinese: '候选释义',
+      quality: 5,
+      promptVersion: 'v1',
+      status: 'pending',
+      hitCount: 1,
+      firstHitAt: 1700000000000,
+      lastHitAt: 1700000000000,
+    }
+    let approved = false
+    mockCandidates.mockImplementation(async () => ({
+      success: true,
+      data: approved
+        ? { candidates: [], total: 0 }
+        : { candidates: [row], total: 1 },
+    }))
+    mockGetWord.mockImplementation(async () => ({
+      success: true,
+      data: approved
+        ? { found: true, english: lookup, chinese: row.chinese }
+        : { found: false },
+    }))
+    mockGetEcdict.mockResolvedValue({ success: true, data: { found: false } })
+    mockReview.mockImplementation(async () => {
+      approved = true
+      return { success: true, data: { ok: true, created: true } }
+    })
+    renderPage()
+    lookUp(lookup)
+    await screen.findByText('This word is not in the words table.')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+
+    expect(
+      await screen.findByText('No pending candidates.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(english)).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('No ECDICT entry — nothing to sync from.')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('This word is not in the words table.')
+    ).not.toBeInTheDocument()
+    expect(mockGetWord).toHaveBeenLastCalledWith(lookup)
+    expect(mockReview).toHaveBeenCalledWith(english, 'approve')
+  }
+)
 
 it('reports "in sync" when the words row matches ECDICT', async () => {
   mockGetWord.mockResolvedValue({

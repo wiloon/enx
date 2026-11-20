@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiService } from '@/services/api'
 import WordEditor from '@/components/admin/WordEditor'
+import AiCandidates from '@/components/admin/AiCandidates'
 import type { AdminEcdictRow, AdminWordRow } from '@/types'
 import PageHeader from '@/components/app/PageHeader'
 import { unwrap } from '@/lib/apiResult'
@@ -68,10 +69,10 @@ function ConsistencyBanner({ c }: { c: Consistency }) {
   const style: Record<Consistency['kind'], string> = {
     loading: 'bg-muted text-muted-foreground',
     neither: 'bg-muted text-muted-foreground',
-    'missing-word': 'bg-amber-100 text-amber-900',
+    'missing-word': 'bg-warning-muted text-warning-foreground',
     'no-ecdict': 'bg-muted text-muted-foreground',
-    'in-sync': 'bg-green-100 text-green-900',
-    'out-of-sync': 'bg-amber-100 text-amber-900',
+    'in-sync': 'bg-brand/10 text-brand',
+    'out-of-sync': 'bg-warning-muted text-warning-foreground',
   }
   let text: string
   switch (c.kind) {
@@ -205,7 +206,7 @@ export default function AdminDictionaryPage() {
       </div>
 
       <form onSubmit={submit} className="mb-6 flex items-end gap-3">
-        <div className="flex-1 space-y-2">
+        <div className="min-w-0 flex-1 space-y-2">
           <Label htmlFor="admin-word-input">English word</Label>
           <Input
             id="admin-word-input"
@@ -214,13 +215,15 @@ export default function AdminDictionaryPage() {
             placeholder="Type a word to inspect…"
           />
         </div>
-        <Button type="submit">Look Up</Button>
+        <Button type="submit" variant="brand">
+          Look Up
+        </Button>
       </form>
 
       {word && (
         <div className="space-y-4">
           {(wordQuery.error || ecdictQuery.error) && (
-            <div className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-900">
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {(wordQuery.error as Error)?.message ||
                 (ecdictQuery.error as Error)?.message}
             </div>
@@ -229,12 +232,12 @@ export default function AdminDictionaryPage() {
           <ConsistencyBanner c={consistency} />
 
           {sync.error && (
-            <div className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-900">
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {(sync.error as Error).message}
             </div>
           )}
           {sync.isSuccess && (
-            <div className="rounded-md bg-green-100 px-3 py-2 text-sm text-green-900">
+            <div className="rounded-md bg-brand/10 px-3 py-2 text-sm text-brand">
               Synced from ECDICT.
             </div>
           )}
@@ -250,7 +253,7 @@ export default function AdminDictionaryPage() {
                     </span>
                   )}
                   {wordQuery.data?.deletedAt != null && (
-                    <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-normal text-red-800">
+                    <span className="ml-2 rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-normal text-destructive">
                       soft-deleted
                     </span>
                   )}
@@ -303,7 +306,7 @@ export default function AdminDictionaryPage() {
                     {wordQuery.data.source === 'ai' && (
                       <div
                         role="status"
-                        className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900"
+                        className="rounded-md bg-warning-muted px-3 py-2 text-sm text-warning-foreground"
                       >
                         {wordQuery.data.adminEditedAt
                           ? 'AI-made definition, reviewed by an admin — visible to every user.'
@@ -341,7 +344,7 @@ export default function AdminDictionaryPage() {
                       </>
                     )}
                     {save.error && !editing && (
-                      <p role="alert" className="text-sm text-red-700">
+                      <p role="alert" className="text-sm text-destructive">
                         {(save.error as Error).message}
                       </p>
                     )}
@@ -439,6 +442,8 @@ export default function AdminDictionaryPage() {
           </div>
         </div>
       )}
+
+      <AiCandidates />
     </div>
   )
 }
