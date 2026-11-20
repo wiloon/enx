@@ -47,7 +47,7 @@ func insertWinnerBeforeCreate(t *testing.T, db *gorm.DB, w racingWinner) {
 		done = true
 		now := time.Now()
 		if err := tx.Session(&gorm.Session{NewDB: true}).Exec(
-			`INSERT INTO users (id, clerk_user_id, name, email, status, created_at, updated_at, last_login_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO users (id, auth_subject, name, email, status, created_at, updated_at, last_login_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			w.id, w.clerkUserID, "Winner", w.email, w.status, now, now, now,
 		).Error; err != nil {
 			t.Errorf("insert winner: %v", err)
@@ -86,13 +86,13 @@ func countUsers(t *testing.T) int64 {
 
 // #580: two first requests of a new Clerk user race; the one whose insert
 // loses carries on as the user the winner created.
-func TestGetOrCreateClerkUser_LostInsertReturnsTheWinnersRow(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_LostInsertReturnsTheWinnersRow(t *testing.T) {
 	db := newProductionUserDB(t)
 	hook := &recordingHook{}
 	withNewUserHook(t, hook)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "disabled"})
 
-	got, err := GetOrCreateClerkUser("user_race", ClerkProfile{Email: "token@example.com"}, time.Nanosecond)
+	got, err := GetOrCreateAuthSubjectUser("user_race", AuthProfile{Email: "token@example.com"}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("lost insert failed the request: %v", err)
 	}
@@ -109,11 +109,11 @@ func TestGetOrCreateClerkUser_LostInsertReturnsTheWinnersRow(t *testing.T) {
 
 // The loser applies the existing-user profile sync (ADR-015, 2026-10-20
 // note §2) to the winner's row.
-func TestGetOrCreateClerkUser_LostInsertSyncsTheProfile(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_LostInsertSyncsTheProfile(t *testing.T) {
 	db := newProductionUserDB(t)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "disabled"})
 
-	got, err := GetOrCreateClerkUser("user_race", ClerkProfile{Email: "token@example.com"}, time.Nanosecond)
+	got, err := GetOrCreateAuthSubjectUser("user_race", AuthProfile{Email: "token@example.com"}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("lost insert failed the request: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestGetOrCreateClerkUser_LostInsertSyncsTheProfile(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateClerkUser_LostInsertWithTheRowGoneIsNotFound(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_LostInsertWithTheRowGoneIsNotFound(t *testing.T) {
 	db := newProductionUserDB(t)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "active"})
 	afterCreate(t, db, func(tx *gorm.DB) {
@@ -134,7 +134,7 @@ func TestGetOrCreateClerkUser_LostInsertWithTheRowGoneIsNotFound(t *testing.T) {
 		}
 	})
 
-	got, err := GetOrCreateClerkUser("user_race", ClerkProfile{Email: "token@example.com"}, time.Nanosecond)
+	got, err := GetOrCreateAuthSubjectUser("user_race", AuthProfile{Email: "token@example.com"}, time.Nanosecond)
 	if got != nil {
 		t.Fatalf("returned user %+v, want none", got)
 	}
@@ -169,18 +169,18 @@ type provisioned struct {
 // #596: a concurrent first request of the same Clerk user sees no user until
 // the hook's writes commit with it, so it never reads a user without its
 // sign-up trial.
-func TestGetOrCreateClerkUser_ConcurrentFirstRequestWaitsForTheHook(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_ConcurrentFirstRequestWaitsForTheHook(t *testing.T) {
 	db := newProductionUserDB(t)
 	if err := db.Exec(`CREATE TABLE hook_writes (user_id TEXT)`).Error; err != nil {
 		t.Fatal(err)
 	}
 	hook := &blockingHook{entered: make(chan struct{}), release: make(chan struct{})}
 	withNewUserHook(t, hook)
-	p := ClerkProfile{Email: "first@example.com"}
+	p := AuthProfile{Email: "first@example.com"}
 
 	first := make(chan provisioned, 1)
 	go func() {
-		u, err := GetOrCreateClerkUser("user_blocked", p, time.Hour)
+		u, err := GetOrCreateAuthSubjectUser("user_blocked", p, time.Hour)
 		first <- provisioned{u, err}
 	}()
 	select {
@@ -190,7 +190,7 @@ func TestGetOrCreateClerkUser_ConcurrentFirstRequestWaitsForTheHook(t *testing.T
 	}
 	second := make(chan provisioned, 1)
 	go func() {
-		u, err := GetOrCreateClerkUser("user_blocked", p, time.Hour)
+		u, err := GetOrCreateAuthSubjectUser("user_blocked", p, time.Hour)
 		second <- provisioned{u, err}
 	}()
 
@@ -229,12 +229,12 @@ func (h *rollbackHook) NewUser(_ context.Context, tx *gorm.DB, _, _ string) (fun
 	return func() { h.called = true }, nil
 }
 
-func TestGetOrCreateClerkUser_FailedCommitSkipsTheAfterCommitCallback(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_FailedCommitSkipsTheAfterCommitCallback(t *testing.T) {
 	newProductionUserDB(t)
 	hook := &rollbackHook{}
 	withNewUserHook(t, hook)
 
-	got, err := GetOrCreateClerkUser("user_commit_fails", ClerkProfile{Email: "c@example.com"}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_commit_fails", AuthProfile{Email: "c@example.com"}, time.Hour)
 	if !errors.Is(err, sql.ErrTxDone) || got != nil {
 		t.Fatalf("got user %+v, err %v; want no user and sql.ErrTxDone", got, err)
 	}
@@ -253,12 +253,12 @@ func (h *failingHook) NewUser(_ context.Context, _ *gorm.DB, _, _ string) (func(
 	return func() { h.called = true }, errors.New("hook failed")
 }
 
-func TestGetOrCreateClerkUser_FailedHookSkipsTheAfterCommitCallback(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_FailedHookSkipsTheAfterCommitCallback(t *testing.T) {
 	newProductionUserDB(t)
 	hook := &failingHook{}
 	withNewUserHook(t, hook)
 
-	got, err := GetOrCreateClerkUser("user_hook_fails", ClerkProfile{Email: "h@example.com"}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_hook_fails", AuthProfile{Email: "h@example.com"}, time.Hour)
 	if err != nil || got == nil {
 		t.Fatalf("got user %+v, err %v; want the user and no error", got, err)
 	}
@@ -285,12 +285,12 @@ func (h *committingHook) NewUser(_ context.Context, _ *gorm.DB, _, _ string) (fu
 	}, nil
 }
 
-func TestGetOrCreateClerkUser_CommittedUserRunsTheAfterCommitCallback(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_CommittedUserRunsTheAfterCommitCallback(t *testing.T) {
 	newProductionUserDB(t)
 	hook := &committingHook{t: t}
 	withNewUserHook(t, hook)
 
-	got, err := GetOrCreateClerkUser("user_commits", ClerkProfile{Email: "ok@example.com"}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_commits", AuthProfile{Email: "ok@example.com"}, time.Hour)
 	if err != nil || got == nil {
 		t.Fatalf("got user %+v, err %v; want the user and no error", got, err)
 	}
@@ -302,7 +302,7 @@ func TestGetOrCreateClerkUser_CommittedUserRunsTheAfterCommitCallback(t *testing
 	}
 }
 
-func TestGetOrCreateClerkUser_LostInsertWithAFailedReReadKeepsTheCause(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_LostInsertWithAFailedReReadKeepsTheCause(t *testing.T) {
 	db := newProductionUserDB(t)
 	insertWinnerBeforeCreate(t, db, racingWinner{id: "winner-id", clerkUserID: "user_race", email: "winner@example.com", status: "active"})
 	readDown := errors.New("read failed")
@@ -318,7 +318,7 @@ func TestGetOrCreateClerkUser_LostInsertWithAFailedReReadKeepsTheCause(t *testin
 		t.Fatal(err)
 	}
 
-	got, err := GetOrCreateClerkUser("user_race", ClerkProfile{Email: "token@example.com"}, time.Nanosecond)
+	got, err := GetOrCreateAuthSubjectUser("user_race", AuthProfile{Email: "token@example.com"}, time.Nanosecond)
 	if got != nil {
 		t.Fatalf("returned user %+v, want none", got)
 	}

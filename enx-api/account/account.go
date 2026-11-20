@@ -27,7 +27,7 @@ const (
 // User is what the account rules need to know about a local user.
 type User struct {
 	ID          string
-	ClerkUserID string
+	AuthSubject string
 	Email       string
 	Status      Status
 }
@@ -68,16 +68,16 @@ type TrialGrants interface {
 	Delete(ctx context.Context, emailHMAC string) error
 }
 
-// Clerk is the Clerk Backend API.
-type Clerk interface {
-	// DeleteUser deletes the Clerk user and with it all their sessions. A
-	// user Clerk no longer has counts as deleted.
-	DeleteUser(ctx context.Context, clerkUserID string) error
-	// BanUser signs the user out everywhere and stops them signing in.
-	BanUser(ctx context.Context, clerkUserID string) error
-	UnbanUser(ctx context.Context, clerkUserID string) error
+// ExternalIdentity is the external IdP account API (Clerk today; Logto later).
+type ExternalIdentity interface {
+	// DeleteUser deletes the IdP user and with it all their sessions. A
+	// user the IdP no longer has counts as deleted.
+	DeleteUser(ctx context.Context, authSubject string) error
+	// DisableUser signs the user out everywhere and stops them signing in.
+	DisableUser(ctx context.Context, authSubject string) error
+	EnableUser(ctx context.Context, authSubject string) error
 	// RevokeSessions signs the user out on every device.
-	RevokeSessions(ctx context.Context, clerkUserID string) error
+	RevokeSessions(ctx context.Context, authSubject string) error
 }
 
 // Subscriptions answers whether a user's subscription will renew.
@@ -91,7 +91,7 @@ type DeletionChecker interface {
 
 // Admins is the ADMIN_AUTH_SUBJECTS allowlist.
 type Admins interface {
-	Contains(clerkUserID string) bool
+	Contains(authSubject string) bool
 }
 
 // Hasher is the email HMAC; "" means it cannot be computed.

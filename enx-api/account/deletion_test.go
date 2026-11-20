@@ -80,8 +80,8 @@ func TestCoordinatedDeleteFencesClerkBetweenPrepareAndComplete(t *testing.T) {
 	if c.preparedHMAC != hmacOf(alice.Email) {
 		t.Fatalf("Prepare got email HMAC %q, want %q", c.preparedHMAC, hmacOf(alice.Email))
 	}
-	if !reflect.DeepEqual(e.clerk.deleted, []string{alice.ClerkUserID}) {
-		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.ClerkUserID)
+	if !reflect.DeepEqual(e.clerk.deleted, []string{alice.AuthSubject}) {
+		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.AuthSubject)
 	}
 }
 
@@ -152,8 +152,8 @@ func TestCoordinatedDeleteResumesAnIrreversibleAttemptWithoutRecheckingBilling(t
 	if want := []string{"acquire", "complete"}; !reflect.DeepEqual(c.calls, want) {
 		t.Fatalf("coordinator calls = %v, want %v", c.calls, want)
 	}
-	if !reflect.DeepEqual(e.clerk.deleted, []string{alice.ClerkUserID}) {
-		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.ClerkUserID)
+	if !reflect.DeepEqual(e.clerk.deleted, []string{alice.AuthSubject}) {
+		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.AuthSubject)
 	}
 }
 

@@ -144,7 +144,7 @@ func TestGetUsersByEmailReturnsEveryMatchOldestFirst(t *testing.T) {
 		{Id: "a-older", Email: "shared@example.com", CreateTime: day},
 		{Id: "other", Email: "other@example.com", CreateTime: day},
 	} {
-		u.ClerkUserID = "clerk_" + u.Id
+		u.AuthSubject = "clerk_" + u.Id
 		if err := sqlitex.DB.Create(u).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestUserUpdatePasswordClearsResetToken(t *testing.T) {
 // #211: the join date travels as createdAt; the Clerk user id never leaves
 // enx-api.
 func TestUserJSONNamesTheJoinDateCreatedAtAndHidesTheClerkID(t *testing.T) {
-	b, err := json.Marshal(User{Id: "u1", ClerkUserID: "user_secret", CreateTime: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)})
+	b, err := json.Marshal(User{Id: "u1", AuthSubject: "user_secret", CreateTime: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)})
 	if err != nil {
 		t.Fatal(err)
 	}

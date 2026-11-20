@@ -38,7 +38,7 @@ func requireAdminResult(t *testing.T, admins AdminAllowlist, setClerkID bool, cl
 	router := gin.New()
 	router.GET("/x", func(c *gin.Context) {
 		if setClerkID {
-			c.Set("clerk_user_id", clerkUserID)
+			c.Set("auth_subject", clerkUserID)
 		}
 		c.Next()
 	}, admins.Require(), func(c *gin.Context) {

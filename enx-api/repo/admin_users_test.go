@@ -170,7 +170,7 @@ func TestAdminUsersListAccountsSortsByBalanceAndLastLogin(t *testing.T) {
 		{"d", now.Add(-2 * time.Hour), nil},
 	} {
 		if err := sqlitex.DB.Create(&sqlitex.User{
-			Id: u.id, ClerkUserID: "user_" + u.id, Email: u.id + "@example.com", Status: "active", CreatedAt: now, LastLoginTime: u.lastLogin,
+			Id: u.id, AuthSubject: "user_" + u.id, Email: u.id + "@example.com", Status: "active", CreatedAt: now, LastLoginTime: u.lastLogin,
 		}).Error; err != nil {
 			t.Fatal(err)
 		}

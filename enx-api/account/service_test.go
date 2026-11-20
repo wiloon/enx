@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	alice = User{ID: "u-alice", ClerkUserID: "user_alice", Email: "Alice@example.com", Status: StatusActive}
-	admin = User{ID: "u-admin", ClerkUserID: "user_admin", Email: "admin@example.com", Status: StatusActive}
+	alice = User{ID: "u-alice", AuthSubject: "user_alice", Email: "Alice@example.com", Status: StatusActive}
+	admin = User{ID: "u-admin", AuthSubject: "user_admin", Email: "admin@example.com", Status: StatusActive}
 )
 
 type env struct {
@@ -21,7 +21,7 @@ type env struct {
 
 func newEnv(users ...User) *env {
 	e := &env{store: newFakeStore(users...), clerk: &fakeClerk{}, subs: fakeSubscriptions{}}
-	e.svc = NewService(e.store, e.store, e.clerk, e.subs, fakeAdmins{admin.ClerkUserID},
+	e.svc = NewService(e.store, e.store, e.clerk, e.subs, fakeAdmins{admin.AuthSubject},
 		NewEmailHMAC("test-key"), func() time.Time { return testNow })
 	return e
 }
@@ -39,8 +39,8 @@ func TestDeleteOwnRemovesTheUserDataAndTheClerkUserButKeepsTheLedger(t *testing.
 	if len(e.store.ledger[alice.ID]) != 2 {
 		t.Fatalf("ledger rows must stay: %v", e.store.ledger[alice.ID])
 	}
-	if len(e.clerk.deleted) != 1 || e.clerk.deleted[0] != alice.ClerkUserID {
-		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.ClerkUserID)
+	if len(e.clerk.deleted) != 1 || e.clerk.deleted[0] != alice.AuthSubject {
+		t.Fatalf("Clerk deletes = %v, want [%s]", e.clerk.deleted, alice.AuthSubject)
 	}
 }
 
@@ -145,7 +145,7 @@ func TestDisableMarksTheUserDisabledAndBansThemInClerk(t *testing.T) {
 	if e.store.users[alice.ID].Status != StatusDisabled {
 		t.Fatalf("status = %q, want disabled", e.store.users[alice.ID].Status)
 	}
-	if len(e.clerk.banned) != 1 || e.clerk.banned[0] != alice.ClerkUserID {
+	if len(e.clerk.banned) != 1 || e.clerk.banned[0] != alice.AuthSubject {
 		t.Fatalf("bans = %v", e.clerk.banned)
 	}
 }

@@ -83,7 +83,7 @@ func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient 
 // clerkBackend is the Clerk Backend API client (ADR-062 Decision 8); nil
 // without CLERK_SECRET_KEY, which leaves deletion, disabling and signing out
 // off (503) and everything else working.
-func clerkBackend(c config.Clerk) account.Clerk {
+func clerkBackend(c config.Clerk) account.ExternalIdentity {
 	if c.SecretKey == "" {
 		logger.Warnf("account deletion, disable and session revoke are off: CLERK_SECRET_KEY is not set")
 		return nil
@@ -93,11 +93,11 @@ func clerkBackend(c config.Clerk) account.Clerk {
 
 // setupRouterWithClients is setupRouterWithStripe with the Clerk Backend API
 // client given too (nil: not configured).
-func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk) *gin.Engine {
+func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity) *gin.Engine {
 	return setupRouterWithBilling(cfg, m, stripeClient, clerk, nil)
 }
 
-func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk, assembly *billingapp.Assembly) *gin.Engine {
+func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity, assembly *billingapp.Assembly) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is

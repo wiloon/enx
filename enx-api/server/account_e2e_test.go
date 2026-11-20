@@ -35,7 +35,7 @@ func (f *fakeClerkBackend) recorded() []string {
 	return slices.Clone(f.calls)
 }
 
-func (f *fakeClerkBackend) client(t *testing.T) account.Clerk {
+func (f *fakeClerkBackend) client(t *testing.T) account.ExternalIdentity {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -93,7 +93,7 @@ func newAccountEnv(t *testing.T) *accountEnv {
 func (e *accountEnv) userID(t *testing.T, sub string) string {
 	t.Helper()
 	var u sqlitex.User
-	if err := sqlitex.DB.Where("clerk_user_id = ?", sub).First(&u).Error; err != nil {
+	if err := sqlitex.DB.Where("auth_subject = ?", sub).First(&u).Error; err != nil {
 		t.Fatalf("load user %s: %v", sub, err)
 	}
 	return u.Id

@@ -15,7 +15,7 @@ func signedInUserID(t *testing.T, base, token, sub string) string {
 		t.Fatalf("GET /api/me as %s: status %d", sub, code)
 	}
 	var u sqlitex.User
-	if err := sqlitex.DB.Where("clerk_user_id = ?", sub).First(&u).Error; err != nil {
+	if err := sqlitex.DB.Where("auth_subject = ?", sub).First(&u).Error; err != nil {
 		t.Fatalf("load user %s: %v", sub, err)
 	}
 	return u.Id

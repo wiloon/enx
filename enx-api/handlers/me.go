@@ -36,6 +36,6 @@ func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
 		"avatarUrl": user.AvatarUrl,
 		"createdAt": user.CreateTime.UTC().Format(time.RFC3339),
 		"status":    user.Status,
-		"isAdmin":   admins.Contains(c.GetString("clerk_user_id")),
+		"isAdmin":   admins.Contains(c.GetString("auth_subject")),
 	})
 }
