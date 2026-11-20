@@ -294,11 +294,15 @@ func TestAdminAccountActionsAnswerSuccessOrNotConfigured(t *testing.T) {
 
 func TestAdminAccountActionsRefuseAProtectedAdmin(t *testing.T) {
 	h := newAccountHandler(accountSetup{})
+	const message = "An admin account cannot be disabled or deleted. Remove the account from the configured admin allowlist first."
 	for name, action := range map[string]gin.HandlerFunc{"delete": h.Delete, "disable": h.Disable} {
 		t.Run(name, func(t *testing.T) {
 			r := callAccount(t, action, accountAdmin.ID, accountAdmin.ID, "")
 			if r.status != http.StatusForbidden || r.body.Code != "admin_account" {
 				t.Fatalf("got %d %+v, want 403 admin_account", r.status, r.body)
+			}
+			if r.body.Message != message {
+				t.Errorf("message = %q, want %q", r.body.Message, message)
 			}
 		})
 	}

@@ -78,6 +78,14 @@ func TestMain_DatabaseInitFailureExitsBeforeServing(t *testing.T) {
 	)
 	out, err := cmd.CombinedOutput()
 
+	requireBillingSchemaFailure(t, out, err)
+	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {
+		t.Fatalf("the process went on past the failed initialisation:\n%s", out)
+	}
+}
+
+func requireBillingSchemaFailure(t *testing.T, out []byte, err error) {
+	t.Helper()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
 		t.Fatalf("process ended with %v, want exit status 1; output:\n%s", err, out)
@@ -85,8 +93,69 @@ func TestMain_DatabaseInitFailureExitsBeforeServing(t *testing.T) {
 	if !strings.Contains(string(out), "unsupported billing schema") {
 		t.Fatalf("output does not name the initialisation error:\n%s", out)
 	}
-	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {
-		t.Fatalf("the process went on past the failed initialisation:\n%s", out)
+}
+
+// runFailingStart starts the real process against a database that fails to
+// initialise, so it logs its startup lines and exits before serving.
+func runFailingStart(t *testing.T, cfgBody string, extraEnv ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "enx.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		"CREATE TABLE users (id TEXT PRIMARY KEY, clerk_user_id TEXT, name TEXT UNIQUE, email TEXT, status TEXT)",
+		"CREATE UNIQUE INDEX idx_users_email_live ON users(email) WHERE status = 'active'",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	cfgPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), runMainEnv+"=1", "ENX_API_TEST_CONFIG="+cfgPath,
+		"DB_PATH="+dbPath, "LOG_LEVEL=info", "METRICS_ADDR=127.0.0.1:0",
+		"ADMIN_AUTH_SUBJECTS=", "ADMIN_CLERK_USER_IDS=")
+	cmd.Env = append(cmd.Env, extraEnv...)
+	out, err := cmd.CombinedOutput()
+	requireBillingSchemaFailure(t, out, err)
+	return string(out)
+}
+
+func TestMain_WarnsOnceWhenTheDeprecatedAdminInputSuppliesTheList(t *testing.T) {
+	out := runFailingStart(t, "", "ADMIN_CLERK_USER_IDS=user_secret_1 user_secret_2")
+	if n := strings.Count(out, "ADMIN_CLERK_USER_IDS"); n != 1 {
+		t.Fatalf("deprecated input named %d times, want once; output:\n%s", n, out)
+	}
+	if !strings.Contains(out, "deprecated") || !strings.Contains(out, "ADMIN_AUTH_SUBJECTS") {
+		t.Fatalf("warning does not say what to use instead:\n%s", out)
+	}
+	if strings.Contains(out, "user_secret") {
+		t.Fatalf("warning leaks subject values:\n%s", out)
+	}
+}
+
+func TestMain_WarnsAboutTheDeprecatedTOMLAdminKey(t *testing.T) {
+	out := runFailingStart(t, "[admin]\nclerk-user-ids = [\"user_secret_1\"]\n")
+	if n := strings.Count(out, "admin.clerk-user-ids"); n != 1 || strings.Contains(out, "user_secret") {
+		t.Fatalf("want one warning naming admin.clerk-user-ids and no values; output:\n%s", out)
+	}
+}
+
+func TestMain_NoFallbackWarningWhenTheCurrentAdminInputWins(t *testing.T) {
+	out := runFailingStart(t, "", "ADMIN_AUTH_SUBJECTS=user_a", "ADMIN_CLERK_USER_IDS=user_b")
+	if strings.Contains(out, "ADMIN_CLERK_USER_IDS") || strings.Contains(out, "deprecated") {
+		t.Fatalf("unexpected fallback warning:\n%s", out)
 	}
 }
 

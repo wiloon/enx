@@ -34,7 +34,7 @@ func deletionRecoveryEnv(t *testing.T) (func(account.Clerk) *httptest.Server, fu
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 	cfg.Account.EmailHMACKey = "test-key"
 
 	sqlitex.Init(filepath.Join(t.TempDir(), "recovery.db"))

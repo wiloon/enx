@@ -155,7 +155,7 @@ export interface VersionData {
   build_time: string
 }
 
-// GET /api/me (enx-api GetMe). isAdmin reflects the ADMIN_CLERK_USER_IDS
+// GET /api/me (enx-api GetMe). isAdmin reflects the server's effective admin
 // allowlist (ADR-021) and is the only signal the UI uses to decide whether
 // to show the admin navigation.
 export interface MeData {

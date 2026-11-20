@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminAllowlist is the ADMIN_CLERK_USER_IDS allowlist (config
-// admin.clerk-user-ids) of Clerk user ids (`sub`) allowed to call the admin
+// AdminAllowlist is the ADMIN_AUTH_SUBJECTS allowlist (config
+// admin.auth-subjects) of external auth subjects (`sub`) allowed to call the admin
 // endpoints. The zero value, like an empty list, admits nobody -- the admin
 // endpoints are then effectively off.
 //

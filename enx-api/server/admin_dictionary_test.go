@@ -53,7 +53,7 @@ func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T,
 
 	env := clerktest.NewEnv(t)
 	cfg.Clerk = env.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
 	sqlitex.Init(dbPath)

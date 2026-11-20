@@ -260,8 +260,61 @@ type Account struct {
 	EmailHMACKey Secret `mapstructure:"email-hmac-key"`
 }
 
+// Admin is the admin allowlist of external auth subjects (ADR-036). Load
+// resolves it from ADMIN_AUTH_SUBJECTS and the deprecated ADMIN_CLERK_USER_IDS;
+// read AuthSubjects only.
 type Admin struct {
-	ClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	AuthSubjects []string `mapstructure:"auth-subjects"`
+	// LegacyClerkUserIDs only receives the deprecated admin.clerk-user-ids
+	// binding as decoded; authorization reads AuthSubjects only.
+	LegacyClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	// DeprecatedSource names the deprecated input that supplied AuthSubjects
+	// ("" when a current one did, or nothing is set).
+	DeprecatedSource string `mapstructure:"-"`
+}
+
+const (
+	adminLegacyEnv  = "ADMIN_CLERK_USER_IDS"
+	adminLegacyTOML = "admin.clerk-user-ids"
+)
+
+// nonBlank trims every entry and drops the empty ones.
+func nonBlank(in []string) []string {
+	var out []string
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// resolveAdmin picks the first non-empty list from ADMIN_AUTH_SUBJECTS,
+// ADMIN_CLERK_USER_IDS, admin.auth-subjects and admin.clerk-user-ids, in that
+// order. fileAdmin contains the admin keys before the environment was merged.
+func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
+	if subjects := strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		return nil
+	}
+	if subjects := strings.Fields(os.Getenv(adminLegacyEnv)); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		c.Admin.DeprecatedSource = adminLegacyEnv
+		return nil
+	}
+
+	admin, err := decode[Admin](fileAdmin)
+	if err != nil {
+		return err
+	}
+	c.Admin.AuthSubjects = nonBlank(admin.AuthSubjects)
+	if len(c.Admin.AuthSubjects) == 0 {
+		c.Admin.AuthSubjects = nonBlank(admin.LegacyClerkUserIDs)
+		if len(c.Admin.AuthSubjects) > 0 {
+			c.Admin.DeprecatedSource = adminLegacyTOML
+		}
+	}
+	return nil
 }
 
 // Ops is the operator-facing endpoints outside Clerk (ADR-058 Decision 4).
@@ -565,15 +618,19 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	fileAdmin := k.Cut("admin")
 	if err := k.Load(confmap.Provider(envValues(), "."), nil); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
 
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg.File = file
+	if err := cfg.resolveAdmin(fileAdmin); err != nil {
+		return nil, fmt.Errorf("config: admin: %w", err)
+	}
 
 	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
 		return strings.TrimSpace(party) != ""
@@ -595,7 +652,7 @@ func Default() *Config {
 	if err := k.Load(confmap.Provider(defaults(), "."), nil); err != nil {
 		panic(fmt.Sprintf("config: defaults do not load: %v", err))
 	}
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
 	}
@@ -674,11 +731,11 @@ func envValues() map[string]any {
 	return m
 }
 
-// decode fills a Config from k. Unknown keys are an error, so a typo in
+// decode fills a config struct from k. Unknown keys are an error, so a typo in
 // config.toml stops the process instead of being ignored. Input is weakly
 // typed because environment values are all strings ("9001" -> int).
-func decode(k *koanf.Koanf) (*Config, error) {
-	var cfg Config
+func decode[T any](k *koanf.Koanf) (*T, error) {
+	var cfg T
 	err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
 		Tag: "mapstructure",
 		DecoderConfig: &mapstructure.DecoderConfig{
@@ -1010,8 +1067,10 @@ var envBindings = map[string]string{
 	"oidc.image-url-claim":            "OIDC_IMAGE_URL_CLAIM",
 	// ADR-062 Decision 3: the trial grant record's email HMAC key.
 	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
-	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
-	// Empty => admin endpoints are effectively off.
+	// Space-separated external auth subjects allowed to call POST /api/admin/*.
+	// Empty => admin endpoints are effectively off. ADMIN_CLERK_USER_IDS is
+	// the deprecated name, still read while deployments transition.
+	"admin.auth-subjects":  "ADMIN_AUTH_SUBJECTS",
 	"admin.clerk-user-ids": "ADMIN_CLERK_USER_IDS",
 
 	// Sentence translation (TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md

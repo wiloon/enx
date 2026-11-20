@@ -72,7 +72,7 @@ func newAccountEnv(t *testing.T) *accountEnv {
 	cfg.Credits.Trial.Amount = 100
 	cfg.Account.EmailHMACKey = "e2e-hmac-key"
 	cfg.Clerk = jwks.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 
 	sqlitex.Init(filepath.Join(t.TempDir(), "enx-account.db"))
 	if sqlitex.DB == nil {

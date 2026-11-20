@@ -100,7 +100,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	cfg.Clerk = env.Config()
 
 	sub := "user_e2egetme_admin"
-	cfg.Admin.ClerkUserIDs = []string{sub}
+	cfg.Admin.AuthSubjects = []string{sub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
 	sqlitex.Init(dbPath)
@@ -154,7 +154,7 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 	cfg.Clerk = env.Config()
 	cfg.Feedback.DailyLimit = 1
 	adminSub := "user_e2efeedback_admin"
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-feedback.db"))
 
 	user := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2efeedback", "email": "user@example.com", "name": "user"})
