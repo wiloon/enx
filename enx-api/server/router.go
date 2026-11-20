@@ -425,6 +425,12 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// numbers only, nothing about any user.
 	router.GET("/api/referral/offer", referralHandler.Offer)
 
+	// Free-tier daily lookup ceiling for enx-ui's signed-out /pricing page
+	// (ADR-029). Not in apiGroup: visitors have no session. Config number
+	// only; the subscribed ceiling stays off the wire.
+	router.GET("/api/dictionary/free-daily-lookup-limit",
+		dictionaryhttp.FreeDailyLookupLimit(cfg.Stripe.Quota.DictionaryLookupDailyFree))
+
 	// Site-wide user numbers for Grafana's Infinity datasource (ADR-058
 	// Decision 4). Not in apiGroup: Grafana has no Clerk session and presents
 	// the OPS_STATS_TOKEN bearer instead; without the token the handler

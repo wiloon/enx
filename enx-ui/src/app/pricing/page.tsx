@@ -4,9 +4,11 @@ import SiteHeader from '@/components/site/SiteHeader'
 import SiteFooter from '@/components/site/SiteFooter'
 import PriceCard from '@/components/site/PriceCard'
 import PricingCta from '@/components/site/PricingCta'
+import { loadFreeDailyLookupLimit } from '@/lib/freeDailyLookupLimit'
 import {
   CREDIT_COST_RULE,
   FREE_PLAN,
+  freePlanFeatures,
   SUBSCRIPTION_CREDITS_RULE,
   SUBSCRIPTION_PLANS,
   TOPUP_CREDITS_RULE,
@@ -19,14 +21,20 @@ import { SITE } from '@/lib/site'
 // account. It only shows prices: checkout lives on the signed-in /billing
 // page, which renders the same plans.ts data through the same PriceCard.
 // Annual billing is not offered yet (LAUNCH-CHECKLIST §0.3), so none is shown.
-export const dynamic = 'force-static'
+//
+// Dynamic: the Free card reads the effective free daily lookup ceiling from
+// enx-api on each request (ADR-029), including deployment env overrides.
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: `Pricing — ${SITE.name}`,
-  description: `${SITE.name} is free to use. Paid plans add a higher daily lookup limit and monthly AI translation credits.`,
+  description: `${SITE.name} is free to use. Paid plans add monthly AI translation credits.`,
 }
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const freeDailyLookupLimit = await loadFreeDailyLookupLimit()
+  const freeFeatures = freePlanFeatures(freeDailyLookupLimit)
+
   return (
     <>
       <SiteHeader />
@@ -50,7 +58,7 @@ export default function PricingPage() {
             <PriceCard
               name={FREE_PLAN.name}
               priceLabel={FREE_PLAN.priceLabel}
-              features={FREE_PLAN.features}
+              features={freeFeatures}
               action={<PricingCta label="Get started" variant="outline" />}
             >
               <p className="text-xs text-muted-foreground">{FREE_PLAN.note}</p>

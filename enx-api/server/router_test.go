@@ -100,6 +100,31 @@ func TestReferralRoutes(t *testing.T) {
 	}
 }
 
+// ADR-029: the pricing page reads the free daily lookup ceiling without a
+// session. Exact one-field payload: the subscribed ceiling stays off the wire.
+func TestFreeDailyLookupLimitRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
+	if w.Code != http.StatusOK || w.Body.String() != `{"free_daily_lookup_limit":2000}` {
+		t.Fatalf("signed-out GET /api/dictionary/free-daily-lookup-limit = %d %s, want 200 with {\"free_daily_lookup_limit\":2000}", w.Code, w.Body.String())
+	}
+
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("STRIPE_QUOTA_DICTIONARY_LOOKUP_DAILY_FREE", "3456")
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	w = httptest.NewRecorder()
+	setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
+	if w.Code != http.StatusOK || w.Body.String() != `{"free_daily_lookup_limit":3456}` {
+		t.Fatalf("env-overridden GET /api/dictionary/free-daily-lookup-limit = %d %s, want 200 with {\"free_daily_lookup_limit\":3456}", w.Code, w.Body.String())
+	}
+}
+
 // A cross-origin QUERY is preflighted; the preflight must allow it.
 func TestCORSPreflightAllowsQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
