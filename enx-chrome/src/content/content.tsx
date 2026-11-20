@@ -10,10 +10,7 @@ import type { ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Provider } from 'jotai'
 import { autoUpdate } from '@floating-ui/dom'
-import {
-  positionAnchoredOverlay,
-  positionSelectionHint,
-} from '@/lib/overlayPositioning'
+import { positionAnchoredOverlay } from '@/lib/overlayPositioning'
 import { WordProcessor, lookupAreaFeatures } from '@/lib/wordProcessor'
 import {
   createPaintWindow,
@@ -67,6 +64,7 @@ import {
   onWordHighlightEnabledChange,
 } from '@/config/preferences'
 import { createHoverSentenceSession } from './hoverSentenceSession'
+import { mountSentenceTranslateButton } from './sentenceTranslateButton'
 import {
   BackgroundResponse,
   ContentMessage,
@@ -106,7 +104,6 @@ import {
   runAiLookup,
   type AiLookupDeps,
 } from '@/lib/aiLookupFlow'
-import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import PinHint from '@/components/PinHint'
 import tailwindCss from '@/index.css?inline'
 import { config } from '@/config/env'
@@ -534,6 +531,8 @@ const showWordPopover = async (word: string, reference: Range) => {
 
   // Remove existing overlay
   hideCurrentOverlay()
+  // A newer word popover supersedes any pending hover-panel hint.
+  hoverSession.invalidatePendingFeedback()
 
   const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
   currentRoot = root
@@ -1252,6 +1251,7 @@ const hoverSession = createHoverSentenceSession({
   caretFromPoint: (x, y) => caretFromPoint(x, y),
   pointInRange: (range, x, y) => pointInRange(range, x, y),
   getLookupExclusions: () => articleLookupExclusions,
+  getArticleRoots: () => articleRoots,
   getWordCache: () => wordCache,
   recordReadingPosition: range => readingPositions.record(range),
   setActiveSentenceHighlight: range => setActiveSentenceHighlight(range),
@@ -1264,6 +1264,7 @@ const hoverSession = createHoverSentenceSession({
       wordStates,
     }),
   isCurrentArticle: () => isEnxEnabled && !standDown.isStoodDown(),
+  captureAccount: () => accountScope.capture(),
   mountShadowRoot: host => mountShadowRoot(host),
   now: () => Date.now(),
 })
@@ -1277,7 +1278,7 @@ const setArticleRoots = (
   clearArticleRoots()
   articleRoots = roots
   articleLookupExclusions = lookupExclusions
-  hoverSession.start()
+  if (articleRoots.length > 0) hoverSession.start()
   articleRoots.forEach(root => {
     root.addEventListener('click', handleArticleClick)
     root.addEventListener('mousemove', hoverMouseMove)
@@ -1427,22 +1428,14 @@ const triggerPhraseContextLookup = async (
 // the phrase/sentence result (the two-overlays bug). Now nothing is sent
 // until the user deliberately clicks this icon.
 let selectionButtonOverlay: OverlayElement | null = null
-let selectionButtonRoot: Root | null = null
 let selectionButtonCleanup: (() => void) | null = null
 
 const hideSelectionTranslateButton = () => {
-  if (selectionButtonRoot) {
-    selectionButtonRoot.unmount()
-    selectionButtonRoot = null
-  }
-  if (selectionButtonOverlay) {
-    selectionButtonOverlay.remove()
-    selectionButtonOverlay = null
-  }
   if (selectionButtonCleanup) {
     selectionButtonCleanup()
     selectionButtonCleanup = null
   }
+  selectionButtonOverlay = null
 }
 
 // Global mousedown handler (enableEnx/disableEnx) that dismisses a
@@ -1498,90 +1491,24 @@ const showSelectionTranslateButton = (
 ) => {
   hideSelectionTranslateButton()
 
-  const overlay = document.createElement('div') as OverlayElement
-  overlay.popover = 'manual'
-  overlay.className = 'enx-selection-translate-button'
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    margin: 0;
-  `
-
-  const root = mountShadowRoot(overlay)
-  selectionButtonRoot = root
-
-  const handleClick = () => {
-    hideSelectionTranslateButton()
-    onTrigger()
-  }
-
-  root.render(
-    <button
-      type="button"
-      onClick={handleClick}
-      className="flex items-center justify-center h-7 w-7 rounded-full bg-brand hover:bg-brand/90 text-brand-foreground shadow-md"
-      title="Translate selection"
-      aria-label="Translate selection"
-    >
-      <SidePanelTranslateIcon className="h-4 w-4" />
-    </button>
-  )
-
-  document.body.appendChild(overlay)
-  overlay.showPopover()
-  selectionButtonOverlay = overlay
-
-  // Anchored next to wherever the mouse actually stopped, not the selection's
-  // overall bounding box -- a multi-line selection's bounding box is as wide
-  // as its widest line, so anchoring to it can leave the button far from the
-  // last word (and thus from the cursor) when an earlier line runs wider
-  // than the last one. A forward drag (mouse moves toward the end of the
-  // document) ends at the range's end, bottom-right of its last line; a
-  // backward drag ends at the range's start, top-left of its first line.
-  // Using getClientRects()[…] instead of a captured point keeps this live
-  // across scrolling, same as autoUpdate expects.
-  const virtualReference = {
-    getBoundingClientRect: () => {
-      const rects = reference.getClientRects()
-      if (rects.length === 0) return reference.getBoundingClientRect()
-      return isBackward ? rects[0] : rects[rects.length - 1]
+  // Shared mount with hover (ADR-068 Decision 1). Selection keeps its own
+  // overlay slot and cleanup; backward drags still anchor at the start.
+  const handle = mountSentenceTranslateButton({
+    className: 'enx-selection-translate-button',
+    title: 'Translate selection',
+    ariaLabel: 'Translate selection',
+    reference,
+    anchor: isBackward ? 'start' : 'end',
+    placement: isBackward ? 'top-start' : 'bottom-end',
+    mountShadowRoot: host => mountShadowRoot(host),
+    onTrigger: () => {
+      hideSelectionTranslateButton()
+      onTrigger()
     },
-    getClientRects: () => reference.getClientRects(),
-    contextElement: nearestElement(reference.startContainer) ?? undefined,
-  }
-  const update = () => {
-    void positionSelectionHint(
-      virtualReference,
-      overlay,
-      isBackward ? 'top-start' : 'bottom-end'
-    )
-  }
-  const stopPositioning = autoUpdate(virtualReference, overlay, update)
-
-  // Dismissal on "the user started doing something else" is handled by the
-  // global mousedown listener (enableEnx), which already ignores mousedown
-  // on this overlay -- not duplicated here as a 'click' listener. A 'click'
-  // listener is the wrong signal for this: the drag-selection gesture that
-  // shows this button ends with mousedown+mouseup on the selection's own
-  // container, and the browser follows that with a *trailing click* event
-  // targeting that container. `anchorNode` (nearest element of the
-  // selection's *start*) is often narrower than the container the click
-  // lands on -- e.g. a sentence starting inside a `<strong>`/`<a>` -- so a
-  // outside-click check here would misfire on that trailing click and tear
-  // the button down before the user ever gets to click it.
-  const handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') hideSelectionTranslateButton()
-  }
-  document.addEventListener('keydown', handleKeydown)
-
-  selectionButtonCleanup = () => {
-    document.removeEventListener('keydown', handleKeydown)
-    stopPositioning()
-  }
+    onEscape: () => hideSelectionTranslateButton(),
+  })
+  selectionButtonOverlay = handle.overlay
+  selectionButtonCleanup = handle.cleanup
 }
 
 // ADR-007 tuning constants, kept together so they're easy to adjust without
@@ -1622,7 +1549,11 @@ const handleTextSelection = (event: MouseEvent) => {
   // word), that selection is still live, so this handler would re-run the
   // lookup (bumping the query count) and replace the overlay between mouseup
   // and click -- the button's onClick never runs, so the speaker stays silent.
-  if (currentOverlay && currentOverlay.contains(target)) return
+  // Still clear hover pressed state; do not start a dwell from the control.
+  if (currentOverlay && currentOverlay.contains(target)) {
+    hoverSession.onDocumentMouseUp(event, false)
+    return
+  }
 
   hoverSession.onDocumentMouseUp(event)
   hideSelectionTranslateButton()
@@ -1760,7 +1691,6 @@ const enableEnx = async (
   document.addEventListener('selectionchange', handleSelectionChangeForButton)
   document.addEventListener('selectionchange', hoverSession.onSelectionChange)
   document.addEventListener('keydown', hoverSession.onKeyDown)
-  hoverSession.start()
 
   // On a 'spa' site (X, RSSX), re-run automatically when the user switches
   // content in-page (ADR-011 Decision 6). Static sites reload + re-inject.

@@ -121,6 +121,16 @@ describe('hover sentence translate (ADR-068)', () => {
       expect(stored['enx-hover-sentence-translate-enabled']).toBe(false)
     )
   })
+
+  it('persists the shade switch through Options', async () => {
+    const stored = storedPrefs()
+    render(<Options />)
+    const shade = await screen.findByTestId('hover-sentence-shade-toggle')
+    fireEvent.click(shade)
+    await waitFor(() =>
+      expect(stored['enx-hover-sentence-shade-enabled']).toBe(false)
+    )
+  })
 })
 
 // The API server is fixed when the extension is built (#231).

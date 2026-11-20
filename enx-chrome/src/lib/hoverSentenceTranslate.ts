@@ -54,6 +54,7 @@ export const pointInSentenceRects = (
 
 export type HoverSentenceRules = {
   visible: () => SentenceIdentity | null
+  nextDeadline: () => number | null
   pointerAt: (target: SentenceIdentity | null, now: number) => void
   enterButton: (now: number) => void
   leaveButton: (now: number) => void
@@ -124,7 +125,7 @@ export const createHoverSentenceRules = (): HoverSentenceRules => {
   }
 
   const applyGraceExpiry = (now: number) => {
-    if (graceUntil === null || now < graceUntil) return
+    if (dwell || graceUntil === null || now < graceUntil) return
     if (overButton) {
       graceUntil = null
       return
@@ -254,6 +255,9 @@ export const createHoverSentenceRules = (): HoverSentenceRules => {
 
   return {
     visible: () => visible,
+    // A switch holds the old sentence until the new dwell finishes. Keep the
+    // original grace deadline so abandoning the dwell can still expire it.
+    nextDeadline: () => dwell?.readyAt ?? graceUntil,
     pointerAt,
     enterButton,
     leaveButton,

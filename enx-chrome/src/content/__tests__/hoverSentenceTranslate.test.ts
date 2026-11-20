@@ -20,12 +20,15 @@ type Callback = (response: unknown) => void
 
 const LIVE_ID = 'abcdefghijklmnopqrstuvwxyzabcdef'
 
+// >5000 chars so extractSentenceContext takes the SEGMENT_WINDOW path.
+const LONG_PARAGRAPH = `${'Word '.repeat(1200).trim()}.`
+
 const PAGE = `
   <article>
     <h1 id="heading">Sense and Sensibility</h1>
     <p id="one">The family of Dashwood had long been settled in Sussex. Their estate
       was large, and their residence was at Norland Park, in the centre of their property.</p>
-    <p id="long">${'Word '.repeat(90).trim()}.</p>
+    <p id="long">${LONG_PARAGRAPH}</p>
     <p id="two">Another sentence lives here for dismissal tests.</p>
   </article>`
 
@@ -35,7 +38,7 @@ let openSentencePanel: (callback: Callback) => void
 const respond = (message: Message): unknown => {
   switch (message.type) {
     case 'getReviewWords':
-      return { success: true, reviewWords: [] }
+      return { success: true, reviewWords: [['residence', 1]] }
     case 'getOneWord':
       return {
         success: true,
@@ -173,16 +176,37 @@ const enable = async () => {
   await settle()
   expect(await done).toMatchObject({ success: true })
   await settle()
+  return send
 }
 
-const moveToWord = async (selector: string, word: string) => {
+const changePreference = (name: 'translate' | 'shade', enabled: boolean) => {
+  for (const [listener] of (chrome.storage.onChanged.addListener as jest.Mock).mock.calls) {
+    listener({ [`enx-hover-sentence-${name}-enabled`]: { newValue: enabled } }, 'local')
+  }
+}
+
+const queueMove = (selector: string, word: string, x = 5, buttons = 0) => {
   const el = pointAtWord(selector, word)
   el.dispatchEvent(
-    new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+    new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: 5, buttons })
   )
+}
+
+const moveToWord = async (selector: string, word: string, x = 5) => {
+  queueMove(selector, word, x)
   // Flush the rAF throttle and any immediate rule timers.
   await jest.advanceTimersByTimeAsync(16)
   await settle()
+}
+
+const washRange = (name = HOVER_SENTENCE_HIGHLIGHT_NAME) =>
+  [...(CSS.highlights.get(name) ?? [])][0]
+
+const distinctSentenceBoxes = () => {
+  jest.spyOn(Range.prototype, 'getClientRects').mockImplementation(function (this: Range) {
+    const left = this.startContainer.parentElement?.id === 'two' ? 200 : 0
+    return [new DOMRect(left, 0, 100, 30)] as unknown as DOMRectList
+  })
 }
 
 const advancePastDwell = async () => {
@@ -191,37 +215,248 @@ const advancePastDwell = async () => {
 }
 
 describe('hover sentence translate target resolution', () => {
-  it('shows no button when the caret has no word context', async () => {
+  it('ignores a release outside the article even with a valid word and rectangle', async () => {
+    document.body.insertAdjacentHTML('beforeend', '<aside><p id="sidebar">Sidebar sentence.</p></aside>')
     await enable()
-    ;(
-      document as unknown as {
-        caretPositionFromPoint: () => null
-      }
-    ).caretPositionFromPoint = () => null
-    document.querySelector('article')!.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
-    )
+    const target = pointAtWord('#sidebar', 'Sidebar')
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 5, clientY: 5 }))
     await advancePastDwell()
     expect(hoverButton()).toBeNull()
   })
 
-  it('anchors a heading to the whole heading text', async () => {
+  it('resolves the new sentence when scrolling moves it under the old pointer coordinates', async () => {
+    let scrolled = false
+    jest.spyOn(Range.prototype, 'getClientRects').mockImplementation(function (this: Range) {
+      const second = this.startContainer.parentElement?.id === 'two'
+      const top = (second ? 100 : 0) - (scrolled ? 100 : 0)
+      return [new DOMRect(0, top, 100, 30)] as unknown as DOMRectList
+    })
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(washRange()?.toString()).toContain('Their estate')
+    scrolled = true
+    window.dispatchEvent(new Event('scroll'))
+    await moveToWord('#two', 'Another')
+    await advancePastDwell()
+    expect(washRange()?.toString()).toBe('Another sentence lives here for dismissal tests.')
+  })
+
+  it.each(['<a href="/other">Link</a>', '<code>Link</code>'])(
+    'preserves exclusions inside a cached sentence containing %s',
+    async inline => {
+      document.querySelector('#one')!.innerHTML = `Start with ${inline} and finish here.`
+      await enable()
+      await moveToWord('#one', 'Start')
+      await advancePastDwell()
+      expect(washRange()?.toString()).toBe('Start with Link and finish here.')
+      await moveToWord('#one', 'Link')
+      await jest.advanceTimersByTimeAsync(700)
+      expect(hoverButton()).toBeNull()
+    }
+  )
+
+  it('shows no button when a caret exists but expands to no word', async () => {
+    document.querySelector('#one')!.textContent = '   …   '
+    const text = textHolding('#one', '…')
+    await enable()
+    ;(
+      document as unknown as {
+        caretPositionFromPoint: () => unknown
+      }
+    ).caretPositionFromPoint = () => ({
+      offsetNode: text,
+      offset: text.data.indexOf('…'),
+    })
+    document.querySelector('#one')!.dispatchEvent(
+      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+    )
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
+
+  it('rejects a collapsed sentence range even when caret and word resolve', async () => {
+    await enable()
+    jest.spyOn(Range.prototype, 'collapsed', 'get').mockReturnValue(true)
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+  })
+
+  it('anchors a heading to the whole heading text and Range', async () => {
     await enable()
     await moveToWord('#heading', 'Sense')
     await advancePastDwell()
     expect(hoverButton()).not.toBeNull()
-    expect(CSS.highlights.has(HOVER_SENTENCE_HIGHLIGHT_NAME)).toBe(true)
+    const wash = washRange()
+    expect(wash?.toString()).toBe('Sense and Sensibility')
+    expect(wash?.startContainer).toBe(textHolding('#heading', 'Sense'))
+    expect(wash?.endContainer).toBe(textHolding('#heading', 'Sense'))
   })
 
-  it('resolves a long paragraph beyond 80 words via the window fallback', async () => {
+  it('resolves a >5000-character paragraph through the window fallback', async () => {
+    expect(LONG_PARAGRAPH.length).toBeGreaterThan(5000)
     await enable()
     await moveToWord('#long', 'Word')
     await advancePastDwell()
     expect(hoverButton()).not.toBeNull()
+    const wash = washRange()?.toString() ?? ''
+    expect(wash.length).toBeGreaterThan(0)
+    expect(wash.length).toBeLessThanOrEqual(LONG_PARAGRAPH.length)
+    expect(wash).toContain('Word')
+  })
+
+  it('replaces a cached target when article roots are swapped at the same point', async () => {
+    const send = await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(washRange()?.toString()).toContain('Their estate')
+    await send({ action: 'enxStop' })
+    await settle()
+    document.body.innerHTML = `
+      <article>
+        <p id="one">Replacement sentence occupies the prior coordinates.</p>
+      </article>`
+    await send({ action: 'enxRun' })
+    await settle()
+    await moveToWord('#one', 'Replacement')
+    await advancePastDwell()
+    expect(washRange()?.toString()).toBe(
+      'Replacement sentence occupies the prior coordinates.'
+    )
   })
 })
 
 describe('hover sentence translate gestures', () => {
+  const leaveArticle = () =>
+    document.querySelector('article')!.dispatchEvent(new MouseEvent('mouseleave'))
+
+  it('resumes hover after releasing a word popover control', async () => {
+    await enable()
+    const word = pointAtWord('#one', 'residence')
+    word.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 5, clientY: 5 }))
+    await settle()
+    const control = document.querySelector('.enx-anchored-overlay')!
+      .shadowRoot!.querySelector('button')!
+    control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true, buttons: 1 }))
+    control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }))
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+  })
+
+  it.each(['selection', 'held button'])('reads a live %s when hover is enabled', async gesture => {
+    await enable()
+    changePreference('translate', false)
+    const selection = window.getSelection()!
+    if (gesture === 'selection') {
+      const range = document.createRange()
+      range.selectNodeContents(document.querySelector('#one')!)
+      selection.addRange(range)
+    }
+    changePreference('translate', true)
+    queueMove('#one', 'residence', 5, gesture === 'held button' ? 1 : 0)
+    await advancePastDwell()
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    selection.removeAllRanges()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+  })
+
+  it('Escape dismisses the latest pointer target before its frame runs', async () => {
+    distinctSentenceBoxes()
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+    queueMove('#two', 'Another', 205)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await advancePastDwell()
+    await moveToWord('#two', 'Another', 205)
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
+
+  it('shows at the original dwell deadline after moving within the sentence at 390 ms', async () => {
+    await enable()
+    queueMove('#one', 'residence')
+    jest.advanceTimersToNextFrame()
+    await jest.advanceTimersByTimeAsync(374)
+    queueMove('#one', 'estate')
+    await jest.advanceTimersByTimeAsync(16)
+    expect(hoverButton()).toBeNull()
+    await jest.advanceTimersByTimeAsync(10)
+    expect(hoverButton()).not.toBeNull()
+  })
+
+  it('restarts grace on leaving the button after the previous timers have run', async () => {
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    const button = hoverButton()!.shadowRoot!.querySelector('button')!
+    leaveArticle()
+    button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, composed: true }))
+    await jest.advanceTimersByTimeAsync(1300)
+    expect(hoverButton()).not.toBeNull()
+    button.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, composed: true }))
+    await jest.advanceTimersByTimeAsync(699)
+    expect(hoverButton()).not.toBeNull()
+    await jest.advanceTimersByTimeAsync(1)
+    expect(hoverButton()).toBeNull()
+  })
+
+  it.each(['completes', 'abandons before', 'abandons after'])(
+    'handles a late switch that %s the original grace deadline',
+    async outcome => {
+      distinctSentenceBoxes()
+      await enable()
+      await moveToWord('#one', 'residence')
+      await advancePastDwell()
+      const original = hoverButton()
+      leaveArticle()
+      await jest.advanceTimersByTimeAsync(550)
+      await moveToWord('#two', 'Another', 205)
+      expect(hoverButton()).toBe(original)
+      if (outcome === 'abandons before') leaveArticle()
+      await jest.advanceTimersByTimeAsync(150)
+      if (outcome === 'abandons before') {
+        expect(hoverButton()).toBeNull()
+        await advancePastDwell()
+        expect(hoverButton()).toBeNull()
+        return
+      }
+      expect(hoverButton()).toBe(original)
+      if (outcome === 'abandons after') {
+        leaveArticle()
+        expect(hoverButton()).toBeNull()
+      }
+      await advancePastDwell()
+      expect(washRange()?.toString()).toBe(
+        outcome === 'completes' ? 'Another sentence lives here for dismissal tests.' : undefined
+      )
+    }
+  )
+
+  it('keeps the original button and wash until the next sentence dwells', async () => {
+    distinctSentenceBoxes()
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    const original = hoverButton()
+    expect(original).not.toBeNull()
+    expect(washRange()?.toString()).toContain('Their estate')
+
+    await moveToWord('#two', 'Another', 205)
+    expect(hoverButton()).toBe(original)
+    expect(washRange()?.toString()).toContain('Their estate')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBe(original)
+    expect(washRange()?.toString()).toBe('Another sentence lives here for dismissal tests.')
+  })
   it('hides on mousedown, still looks up a word click, then can reappear after 400 ms without mousemove', async () => {
     await enable()
     await moveToWord('#one', 'residence')
@@ -252,6 +487,10 @@ describe('hover sentence translate gestures', () => {
     await enable()
     await moveToWord('#one', 'residence')
     await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+
+    // Start grace so a hide deadline is armed before the drag begins.
+    leaveArticle()
     expect(hoverButton()).not.toBeNull()
 
     const start = textHolding('#one', 'Their estate')
@@ -317,13 +556,31 @@ describe('hover sentence translate gestures', () => {
 })
 
 describe('hover sentence translate send and highlight', () => {
+  const SECOND_SENTENCE =
+    'Their estate was large, and their residence was at Norland Park, in the centre of their property.'
+
   const clickHoverButton = async () => {
     const overlay = hoverButton()!
     const button = overlay.shadowRoot!.querySelector('button')!
-    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    button.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, composed: true })
+    )
+    button.dispatchEvent(
+      new MouseEvent('mouseup', { bubbles: true, composed: true })
+    )
     button.click()
     await settle()
+  }
+
+  const hintText = () => {
+    const overlay = document.querySelector('.enx-anchored-overlay')
+    return (
+      overlay?.shadowRoot?.querySelector(
+        '[data-testid="word-popover-sentence-panel-hint"]'
+      )?.textContent ??
+      overlay?.shadowRoot?.textContent ??
+      null
+    )
   }
 
   it('sends openSentencePanel with empty word, records position, clears hover wash and paints the active sentence', async () => {
@@ -343,30 +600,24 @@ describe('hover sentence translate send and highlight', () => {
     expect(panels).toHaveLength(1)
     expect(panels[0]).toMatchObject({
       word: '',
-      sentence: expect.stringContaining('residence'),
+      sentence: SECOND_SENTENCE,
+      wordStates: {
+        residence: expect.objectContaining({ English: 'residence' }),
+      },
     })
     expect(sent.filter(m => m.type === 'getOneWord')).toHaveLength(0)
     expect(sent.some(m => m.type === 'recordReadingPosition')).toBe(true)
+    const active = [...(CSS.highlights.get('enx-active-sentence') ?? [])][0]
+    expect(active?.toString().replace(/\s+/g, ' ').trim()).toBe(SECOND_SENTENCE)
     expect(CSS.highlights.has(HOVER_SENTENCE_HIGHLIGHT_NAME)).toBe(false)
-    expect(CSS.highlights.has('enx-active-sentence')).toBe(true)
     expect(CSS.highlights.has('enx-clicked-word')).toBe(false)
     expect(hoverButton()).toBeNull()
+    expect(hintText()).toBeNull()
 
     await moveToWord('#one', 'residence')
     await advancePastDwell()
     expect(hoverButton()).toBeNull()
   })
-
-  const hintText = () => {
-    const overlay = document.querySelector('.enx-anchored-overlay')
-    return (
-      overlay?.shadowRoot?.querySelector(
-        '[data-testid="word-popover-sentence-panel-hint"]'
-      )?.textContent ??
-      overlay?.shadowRoot?.textContent ??
-      null
-    )
-  }
 
   it('shows the toolbar hint when the panel did not open', async () => {
     openSentencePanel = callback =>
@@ -386,6 +637,52 @@ describe('hover sentence translate send and highlight', () => {
     await clickHoverButton()
     expect(hintText()).toContain(LOOKUP_FAILED_MESSAGE)
   })
+
+  it.each(['word click', 'account change', 'article teardown'])(
+    'ignores a delayed panel reply after a newer %s',
+    async cause => {
+      let finish: (response: unknown) => void = () => {}
+      openSentencePanel = callback => {
+        finish = callback
+      }
+      const send = await enable()
+      await moveToWord('#one', 'residence')
+      await advancePastDwell()
+      await clickHoverButton()
+
+      if (cause === 'word click') {
+        const word = pointAtWord('#two', 'Another')
+        word.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, clientX: 5, clientY: 5 })
+        )
+        await settle()
+        expect(
+          document
+            .querySelector('.enx-anchored-overlay')
+            ?.shadowRoot?.textContent
+        ).toMatch(/Another/i)
+      } else if (cause === 'account change') {
+        await send({ action: 'sessionExpired', cause: 'signed-out' })
+        await settle()
+      } else {
+        await send({ action: 'enxStop' })
+        await settle()
+      }
+
+      finish({ success: false })
+      await settle()
+      if (cause === 'word click') {
+        expect(hintText()).not.toContain(LOOKUP_FAILED_MESSAGE)
+        expect(
+          document
+            .querySelector('.enx-anchored-overlay')
+            ?.shadowRoot?.textContent
+        ).toMatch(/Another/i)
+      } else {
+        expect(hintText()).toBeNull()
+      }
+    }
+  )
 })
 
 describe('hover sentence translate preferences and cleanup', () => {
@@ -394,44 +691,68 @@ describe('hover sentence translate preferences and cleanup', () => {
     await moveToWord('#one', 'residence')
     await advancePastDwell()
     expect(hoverButton()).not.toBeNull()
-
-    const listener = (chrome.storage.onChanged.addListener as jest.Mock).mock
-      .calls.map(c => c[0])
-      .find((fn: (changes: unknown, area: string) => void) => {
-        try {
-          fn(
-            {
-              'enx-hover-sentence-translate-enabled': {
-                newValue: false,
-              },
-            },
-            'local'
-          )
-          return true
-        } catch {
-          return false
-        }
-      })
-    expect(listener).toBeTruthy()
-    // Fire for every registered listener (word highlight + hover keys).
-    for (const call of (chrome.storage.onChanged.addListener as jest.Mock).mock
-      .calls) {
-      call[0](
-        {
-          'enx-hover-sentence-translate-enabled': { newValue: false },
-        },
-        'local'
-      )
-    }
+    changePreference('translate', false)
     expect(hoverButton()).toBeNull()
   })
 
-  it('stand-down leaves no stale button or wash after timers and rAF', async () => {
+  it('cancels a pending dwell when translate is switched off then on', async () => {
     await enable()
+    queueMove('#one', 'residence')
+    await jest.advanceTimersByTimeAsync(16)
+    changePreference('translate', false)
+    expect(hoverButton()).toBeNull()
+    changePreference('translate', true)
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
     await moveToWord('#one', 'residence')
     await advancePastDwell()
     expect(hoverButton()).not.toBeNull()
+  })
 
+  it('toggles the live wash while the same button stays mounted', async () => {
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    const button = hoverButton()
+    expect(button).not.toBeNull()
+    expect(washRange()?.toString()).toContain('residence')
+    changePreference('shade', false)
+    expect(hoverButton()).toBe(button)
+    expect(washRange()).toBeUndefined()
+    changePreference('shade', true)
+    expect(hoverButton()).toBe(button)
+    expect(washRange()?.toString()).toContain('residence')
+  })
+
+  it.each(['disable', 'stand-down', 'root replacement'])(
+    'clears a pending frame or dwell on %s',
+    async mode => {
+      const send = await enable()
+      queueMove('#one', 'residence')
+      // Frame queued, dwell not finished.
+      if (mode === 'disable') {
+        changePreference('translate', false)
+      } else if (mode === 'stand-down') {
+        ;(chrome.runtime as { id?: string }).id = undefined
+        document.dispatchEvent(new Event(STAND_DOWN_EVENT))
+        ;(chrome.runtime as { id?: string }).id = LIVE_ID
+      } else {
+        await send({ action: 'enxStop' })
+        document.body.innerHTML = '<article><p id="one">Fresh root.</p></article>'
+        await send({ action: 'enxRun' })
+        await settle()
+      }
+      await advancePastDwell()
+      await jest.runOnlyPendingTimersAsync()
+      expect(hoverButton()).toBeNull()
+      expect(CSS.highlights.has(HOVER_SENTENCE_HIGHLIGHT_NAME)).toBe(false)
+    }
+  )
+
+  it('stand-down leaves no stale button or wash after timers and rAF', async () => {
+    await enable()
+    queueMove('#one', 'residence')
+    // Teardown while the frame/dwell is still pending — do not flush first.
     ;(chrome.runtime as { id?: string }).id = undefined
     document.dispatchEvent(new Event(STAND_DOWN_EVENT))
     ;(chrome.runtime as { id?: string }).id = LIVE_ID

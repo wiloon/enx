@@ -2,18 +2,12 @@
 // pointer sample to a sentence, drive the lib rules, paint the button/wash,
 // and send the sentence on click. Events are bound by content.tsx.
 
-import type { Root } from 'react-dom/client'
-import { autoUpdate } from '@floating-ui/dom'
-import { positionSelectionHint } from '@/lib/overlayPositioning'
-import { WordProcessor } from '@/lib/wordProcessor'
 import {
   HOVER_SENTENCE_HIGHLIGHT_NAME,
   sentenceWordStates,
 } from '@/lib/wordHighlight'
-import { nearestElement } from '@/lib/rangeUtils'
+import { WordProcessor } from '@/lib/wordProcessor'
 import {
-  DWELL_MS,
-  GRACE_MS,
   createHoverSentenceRules,
   pointInSentenceRects,
   sameSentence,
@@ -27,14 +21,12 @@ import {
   onHoverSentenceShadeEnabledChange,
 } from '@/config/preferences'
 import { LOOKUP_FAILED_MESSAGE } from '@/lib/extensionContext'
-import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
+import {
+  mountSentenceTranslateButton,
+  type OverlayElement,
+} from './sentenceTranslateButton'
+import type { Root } from 'react-dom/client'
 import type { BackgroundResponse, WordData } from '@/types'
-
-type OverlayElement = HTMLElement & {
-  popover: 'manual' | 'auto' | ''
-  showPopover: () => void
-  hidePopover: () => void
-}
 
 export type HoverSentenceDeps = {
   caretFromPoint: (
@@ -43,6 +35,7 @@ export type HoverSentenceDeps = {
   ) => { node: Node; offset: number } | null
   pointInRange: (range: Range, x: number, y: number) => boolean
   getLookupExclusions: () => readonly string[]
+  getArticleRoots: () => readonly Element[]
   getWordCache: () => Record<string, WordData>
   recordReadingPosition: (range: Range) => void
   setActiveSentenceHighlight: (range: Range) => void
@@ -52,6 +45,9 @@ export type HoverSentenceDeps = {
     wordStates: ReturnType<typeof sentenceWordStates>
   }) => Promise<BackgroundResponse>
   isCurrentArticle: () => boolean
+  // Captures the account generation at click time; the returned checker is
+  // consulted when the panel reply arrives.
+  captureAccount: () => () => boolean
   mountShadowRoot: (host: HTMLElement) => Root
   now: () => number
 }
@@ -60,7 +56,6 @@ type ResolvedTarget = {
   identity: SentenceIdentity
   range: Range
   sentence: string
-  rects: DOMRect[]
 }
 
 const identityFromRange = (range: Range): SentenceIdentity => ({
@@ -77,19 +72,30 @@ const rectList = (range: Range): DOMRect[] => {
   return out
 }
 
+const selectionIsNonEmpty = () => {
+  const selection = window.getSelection()
+  return !!(
+    selection &&
+    !selection.isCollapsed &&
+    selection.toString().trim()
+  )
+}
+
 export type HoverSentenceSession = {
   containsOverlay: (node: Node | null) => boolean
   onArticleMouseMove: (event: MouseEvent) => void
   onArticleMouseLeave: () => void
   onDocumentMouseDown: (event: MouseEvent) => boolean
-  onDocumentMouseUp: (event: MouseEvent) => void
+  // Clears pressed/selection suppression. When mayStartDwell, a selection-free
+  // release inside an article root may start a fresh dwell.
+  onDocumentMouseUp: (event: MouseEvent, mayStartDwell?: boolean) => void
   onSelectionChange: () => void
   onKeyDown: (event: KeyboardEvent) => void
+  // Drop a pending openSentencePanel reply so a newer UI is not replaced.
+  invalidatePendingFeedback: () => void
   dispose: () => void
-  // For tests / enable path: apply prefs without waiting for storage events.
   setTranslateEnabled: (enabled: boolean) => void
   setShadeEnabled: (enabled: boolean) => void
-  // Bind preference listeners and load initial values. Idempotent.
   start: () => void
 }
 
@@ -99,19 +105,24 @@ export const createHoverSentenceSession = (
   const rules: HoverSentenceRules = createHoverSentenceRules()
   let translateEnabled = true
   let shadeEnabled = true
-  let disposed = false
+  let disposed = true
+  // Dwell candidate / last resolve. Independent of the currently shown button.
   let cached: ResolvedTarget | null = null
   let shown: ResolvedTarget | null = null
   let overlay: OverlayElement | null = null
-  let overlayRoot: Root | null = null
-  let stopPositioning: (() => void) | null = null
+  let stopButton: (() => void) | null = null
   let rafId: number | null = null
-  let pendingPoint: { x: number; y: number } | null = null
+  let pendingPoint: {
+    x: number
+    y: number
+    node: Node
+    buttons: number
+  } | null = null
   let clickGeneration = 0
   let unsubTranslate: (() => void) | null = null
   let unsubShade: (() => void) | null = null
   let started = false
-  let tickTimers: ReturnType<typeof setTimeout>[] = []
+  let tickTimer: ReturnType<typeof setTimeout> | undefined
 
   const clearWash = () => {
     CSS.highlights.delete(HOVER_SENTENCE_HIGHLIGHT_NAME)
@@ -126,95 +137,41 @@ export const createHoverSentenceSession = (
   }
 
   const hideOverlay = () => {
-    if (overlayRoot) {
-      overlayRoot.unmount()
-      overlayRoot = null
+    if (stopButton) {
+      stopButton()
+      stopButton = null
     }
-    if (overlay) {
-      overlay.remove()
-      overlay = null
-    }
-    if (stopPositioning) {
-      stopPositioning()
-      stopPositioning = null
-    }
+    overlay = null
     clearWash()
     shown = null
   }
 
   const showOverlay = (target: ResolvedTarget) => {
-    if (
-      shown &&
-      sameSentence(identityFromRange(shown.range), target.identity)
-    ) {
-      // Same sentence: keep button; refresh wash if shading toggled on.
-      if (shadeEnabled) paintWash(target.range)
-      else clearWash()
-      shown = target
-      cached = target
-      return
-    }
-
     hideOverlay()
     shown = target
-    cached = target
 
-    const host = document.createElement('div') as OverlayElement
-    host.popover = 'manual'
-    host.className = 'enx-hover-sentence-translate-button'
-    host.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      padding: 0;
-      border: none;
-      background: transparent;
-      margin: 0;
-    `
-
-    const root = deps.mountShadowRoot(host)
-    overlayRoot = root
-
-    const handleClick = () => {
-      void onButtonClick(target)
-    }
-
-    root.render(
-      <button
-        type="button"
-        onClick={handleClick}
-        onMouseEnter={() => rules.enterButton(deps.now())}
-        onMouseLeave={() => {
-          rules.leaveButton(deps.now())
-          syncVisible()
-        }}
-        className="flex items-center justify-center h-7 w-7 rounded-full bg-brand hover:bg-brand/90 text-brand-foreground shadow-md"
-        title="Translate sentence"
-        aria-label="Translate sentence"
-      >
-        <SidePanelTranslateIcon className="h-4 w-4" />
-      </button>
-    )
-
-    document.body.appendChild(host)
-    host.showPopover()
-    overlay = host
-
-    const reference = target.range
-    const virtualReference = {
-      getBoundingClientRect: () => {
-        const rects = reference.getClientRects()
-        if (rects.length === 0) return reference.getBoundingClientRect()
-        return rects[rects.length - 1]
+    const handle = mountSentenceTranslateButton({
+      className: 'enx-hover-sentence-translate-button',
+      title: 'Translate sentence',
+      ariaLabel: 'Translate sentence',
+      reference: target.range,
+      anchor: 'end',
+      placement: 'bottom-end',
+      mountShadowRoot: deps.mountShadowRoot,
+      onTrigger: () => {
+        void onButtonClick(target)
       },
-      getClientRects: () => reference.getClientRects(),
-      contextElement: nearestElement(reference.startContainer) ?? undefined,
-    }
-    const update = () => {
-      void positionSelectionHint(virtualReference, host, 'bottom-end')
-    }
-    stopPositioning = autoUpdate(virtualReference, host, update)
-    update()
+      onMouseEnter: () => {
+        rules.enterButton(deps.now())
+        afterRules()
+      },
+      onMouseLeave: () => {
+        rules.leaveButton(deps.now())
+        afterRules()
+      },
+    })
+    overlay = handle.overlay
+    stopButton = handle.cleanup
 
     if (shadeEnabled) paintWash(target.range)
   }
@@ -229,6 +186,7 @@ export const createHoverSentenceSession = (
       hideOverlay()
       return
     }
+    if (shown && sameSentence(shown.identity, v)) return
     if (cached && sameSentence(cached.identity, v)) {
       showOverlay(cached)
       return
@@ -237,41 +195,66 @@ export const createHoverSentenceSession = (
     hideOverlay()
   }
 
-  const clearTickTimers = () => {
-    tickTimers.forEach(clearTimeout)
-    tickTimers = []
-  }
-
-  // Re-arm the known dwell/grace deadlines after each pointer sample. tick()
-  // is idempotent; extra fires are cheap.
-  const armDeadlineTimers = () => {
-    clearTickTimers()
-    for (const delay of [DWELL_MS, GRACE_MS, DWELL_MS + GRACE_MS]) {
-      tickTimers.push(
-        setTimeout(() => {
-          if (disposed) return
-          rules.tick(deps.now())
-          syncVisible()
-        }, delay)
-      )
-    }
-  }
-
   const afterRules = () => {
     syncVisible()
+    clearTimeout(tickTimer)
+    const deadline = rules.nextDeadline()
+    if (deadline === null) return
+    tickTimer = setTimeout(() => {
+      rules.tick(deps.now())
+      afterRules()
+    }, Math.max(0, deadline - deps.now()))
   }
 
-  const resolveAt = (x: number, y: number): ResolvedTarget | null => {
-    if (cached && pointInSentenceRects(cached.rects, x, y)) {
-      return cached
+  const cancelQueuedPointer = () => {
+    pendingPoint = null
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId)
+      rafId = null
     }
+  }
 
+  const articleRootFor = (node: Node) =>
+    deps.getArticleRoots().find(root => root.isConnected && root.contains(node))
+
+  const resolveAt = (
+    x: number,
+    y: number,
+    node: Node,
+    requireWord: boolean
+  ): ResolvedTarget | null => {
+    const root = articleRootFor(node)
+    if (!root) return null
     const caret = deps.caretFromPoint(x, y)
+    const exclusions = deps.getLookupExclusions()
+    if (
+      caret &&
+      (!root.contains(caret.node) ||
+        WordProcessor.isInExcludedSubtree(caret.node, undefined, exclusions))
+    ) {
+      return null
+    }
+    // Cache shortcut uses live range geometry and still honors exclusions
+    // via the caret check above. Skip it when the release must land on a word.
+    if (!requireWord) {
+      for (const target of [cached, shown]) {
+        if (
+          target &&
+          root.contains(target.range.startContainer) &&
+          root.contains(target.range.endContainer) &&
+          !target.range.collapsed &&
+          sameSentence(target.identity, identityFromRange(target.range)) &&
+          pointInSentenceRects(rectList(target.range), x, y)
+        ) {
+          return target
+        }
+      }
+    }
     if (!caret) return null
     const wordRange = WordProcessor.expandToWordRange(
       caret.node,
       caret.offset,
-      deps.getLookupExclusions()
+      exclusions
     )
     if (!wordRange) return null
     if (!deps.pointInRange(wordRange, x, y)) return null
@@ -280,7 +263,14 @@ export const createHoverSentenceSession = (
       wordRange,
       wordRange.toString()
     )
-    if (!ctx?.range) return null
+    if (
+      !ctx?.range ||
+      ctx.range.collapsed ||
+      !root.contains(ctx.range.startContainer) ||
+      !root.contains(ctx.range.endContainer)
+    ) {
+      return null
+    }
     const text = ctx.sentence?.trim()
     if (!text) return null
     const rects = rectList(ctx.range)
@@ -292,35 +282,56 @@ export const createHoverSentenceSession = (
       identity: identityFromRange(ctx.range),
       range: ctx.range,
       sentence: text,
-      rects,
     }
   }
 
-  const applyPointer = (x: number, y: number) => {
-    if (disposed || !translateEnabled) return
+  const syncLiveGestures = (buttons?: number) => {
     const now = deps.now()
-    const target = resolveAt(x, y)
+    if (buttons !== undefined) {
+      rules.setPressed(buttons !== 0, now)
+    }
+    rules.setSelectionNonEmpty(selectionIsNonEmpty(), now)
+  }
+
+  const applyPointer = (
+    x: number,
+    y: number,
+    node: Node,
+    requireWord = false,
+    buttons?: number
+  ) => {
+    if (disposed || !translateEnabled) return
+    syncLiveGestures(buttons)
+    const now = deps.now()
+    const target = resolveAt(x, y, node, requireWord)
     if (target) {
       cached = target
       rules.pointerAt(target.identity, now)
     } else {
       rules.pointerAt(null, now)
     }
-    armDeadlineTimers()
     afterRules()
   }
 
   const flushRaf = () => {
     rafId = null
     if (!pendingPoint || disposed) return
-    const { x, y } = pendingPoint
+    const { x, y, node, buttons } = pendingPoint
     pendingPoint = null
-    applyPointer(x, y)
+    applyPointer(x, y, node, false, buttons)
   }
 
   const onArticleMouseMove = (event: MouseEvent) => {
     if (disposed || !translateEnabled) return
-    pendingPoint = { x: event.clientX, y: event.clientY }
+    // Keep suppression aligned with the live button/selection even after a
+    // session reset that cleared rules state.
+    syncLiveGestures(event.buttons)
+    pendingPoint = {
+      x: event.clientX,
+      y: event.clientY,
+      node: event.target as Node,
+      buttons: event.buttons,
+    }
     if (rafId !== null) return
     rafId = requestAnimationFrame(flushRaf)
   }
@@ -329,21 +340,16 @@ export const createHoverSentenceSession = (
   // pointer so grace can start (ADR-068).
   const onArticleMouseLeave = () => {
     if (disposed || !translateEnabled) return
-    pendingPoint = null
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId)
-      rafId = null
-    }
+    cancelQueuedPointer()
     rules.pointerAt(null, deps.now())
-    armDeadlineTimers()
     afterRules()
   }
 
   const onButtonClick = async (target: ResolvedTarget) => {
     const generation = ++clickGeneration
+    const accountStillCurrent = deps.captureAccount()
     rules.dismiss('click', deps.now())
-    hideOverlay()
-    clearWash()
+    afterRules()
 
     deps.recordReadingPosition(target.range)
     deps.setActiveSentenceHighlight(target.range)
@@ -354,7 +360,7 @@ export const createHoverSentenceSession = (
     })
 
     if (disposed || generation !== clickGeneration) return
-    if (!deps.isCurrentArticle()) return
+    if (!deps.isCurrentArticle() || !accountStillCurrent()) return
 
     if (response.success && response.panelOpened) return
     if (response.success && !response.panelOpened) {
@@ -375,58 +381,68 @@ export const createHoverSentenceSession = (
   const onDocumentMouseDown = (event: MouseEvent): boolean => {
     if (containsOverlay(event.target as Node)) return true
     rules.setPressed(true, deps.now())
-    hideOverlay()
+    afterRules()
     return false
   }
 
-  const onDocumentMouseUp = (event: MouseEvent) => {
+  const onDocumentMouseUp = (event: MouseEvent, mayStartDwell = true) => {
     if (containsOverlay(event.target as Node)) return
     rules.setPressed(false, deps.now())
-    const selection = window.getSelection()
-    const nonEmpty = !!(
-      selection &&
-      !selection.isCollapsed &&
-      selection.toString().trim()
-    )
+    const nonEmpty = selectionIsNonEmpty()
     rules.setSelectionNonEmpty(nonEmpty, deps.now())
-    if (!nonEmpty && translateEnabled && !disposed) {
+    if (
+      mayStartDwell &&
+      !nonEmpty &&
+      translateEnabled &&
+      !disposed &&
+      articleRootFor(event.target as Node)
+    ) {
       // Fresh dwell from release coordinates even if the mouse stays still.
-      applyPointer(event.clientX, event.clientY)
+      applyPointer(event.clientX, event.clientY, event.target as Node, true)
     } else {
       afterRules()
     }
   }
 
   const onSelectionChange = () => {
-    const selection = window.getSelection()
-    const nonEmpty = !!(
-      selection &&
-      !selection.isCollapsed &&
-      selection.toString().trim()
-    )
-    rules.setSelectionNonEmpty(nonEmpty, deps.now())
-    if (nonEmpty) hideOverlay()
-    else afterRules()
+    rules.setSelectionNonEmpty(selectionIsNonEmpty(), deps.now())
+    afterRules()
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return
+    // Resolve a queued sample before dismiss so Escape targets the latest
+    // pointer sentence (ADR-068 Decision 12), then drop the frame.
+    if (pendingPoint) {
+      const { x, y, node } = pendingPoint
+      cancelQueuedPointer()
+      const target = resolveAt(x, y, node, false)
+      if (target) cached = target
+      rules.pointerAt(target?.identity ?? null, deps.now())
+    } else {
+      cancelQueuedPointer()
+    }
     rules.dismiss('escape', deps.now())
-    hideOverlay()
+    afterRules()
+  }
+
+  const invalidatePendingFeedback = () => {
+    clickGeneration++
   }
 
   const setTranslateEnabled = (enabled: boolean) => {
     translateEnabled = enabled
     if (!enabled) {
       rules.reset()
+      cached = null
       hideOverlay()
-      clearTickTimers()
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId)
-        rafId = null
-      }
-      pendingPoint = null
+      clearTimeout(tickTimer)
+      cancelQueuedPointer()
+      return
     }
+    // Re-enable with live selection/button state, not the cleared rules.
+    syncLiveGestures()
+    afterRules()
   }
 
   const setShadeEnabled = (enabled: boolean) => {
@@ -459,12 +475,9 @@ export const createHoverSentenceSession = (
     unsubShade?.()
     unsubTranslate = null
     unsubShade = null
-    clearTickTimers()
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId)
-      rafId = null
-    }
-    pendingPoint = null
+    clearTimeout(tickTimer)
+    cancelQueuedPointer()
+    cached = null
     rules.reset()
     hideOverlay()
     clickGeneration++
@@ -478,6 +491,7 @@ export const createHoverSentenceSession = (
     onDocumentMouseUp,
     onSelectionChange,
     onKeyDown,
+    invalidatePendingFeedback,
     dispose,
     setTranslateEnabled,
     setShadeEnabled,

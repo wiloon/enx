@@ -131,12 +131,35 @@ describe('createHoverSentenceRules', () => {
     // Enter B late in A's grace; abandon before B's dwell completes.
     const enterB = leftAt + GRACE_MS - 100
     rules.pointerAt(B, enterB)
+    expect(rules.nextDeadline()).toBe(enterB + DWELL_MS)
     rules.pointerAt(null, enterB + 50)
 
     rules.tick(leftAt + GRACE_MS - 1)
     expect(sameSentence(rules.visible()!, A)).toBe(true)
     rules.tick(leftAt + GRACE_MS)
     expect(rules.visible()).toBeNull()
+  })
+
+  it('keeps the original dwell deadline when the pointer moves inside the same sentence', () => {
+    const rules = createHoverSentenceRules()
+    rules.pointerAt(A, 0)
+    expect(rules.nextDeadline()).toBe(DWELL_MS)
+    rules.pointerAt(A, DWELL_MS - 10)
+    expect(rules.nextDeadline()).toBe(DWELL_MS)
+    rules.tick(DWELL_MS)
+    expect(sameSentence(rules.visible()!, A)).toBe(true)
+  })
+
+  it('exposes a fresh grace deadline after leaving the button once prior timers have fired', () => {
+    const rules = createHoverSentenceRules()
+    rules.pointerAt(A, 0)
+    rules.tick(DWELL_MS)
+    rules.pointerAt(null, DWELL_MS)
+    rules.enterButton(DWELL_MS + 50)
+    expect(rules.nextDeadline()).toBeNull()
+    const leftButtonAt = DWELL_MS + 200
+    rules.leaveButton(leftButtonAt)
+    expect(rules.nextDeadline()).toBe(leftButtonAt + GRACE_MS)
   })
 
   it('suppresses hover while a mouse button is pressed or a selection exists', () => {
