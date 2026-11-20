@@ -265,9 +265,9 @@ type Account struct {
 // read AuthSubjects only.
 type Admin struct {
 	AuthSubjects []string `mapstructure:"auth-subjects"`
-	// LegacyClerkUserIDs only receives the deprecated admin.clerk-user-ids
+	// LegacyAuthSubjects only receives the deprecated admin.clerk-user-ids
 	// binding as decoded; authorization reads AuthSubjects only.
-	LegacyClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	LegacyAuthSubjects []string `mapstructure:"clerk-user-ids"`
 	// DeprecatedSource names the deprecated input that supplied AuthSubjects
 	// ("" when a current one did, or nothing is set).
 	DeprecatedSource string `mapstructure:"-"`
@@ -309,7 +309,7 @@ func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
 	}
 	c.Admin.AuthSubjects = nonBlank(admin.AuthSubjects)
 	if len(c.Admin.AuthSubjects) == 0 {
-		c.Admin.AuthSubjects = nonBlank(admin.LegacyClerkUserIDs)
+		c.Admin.AuthSubjects = nonBlank(admin.LegacyAuthSubjects)
 		if len(c.Admin.AuthSubjects) > 0 {
 			c.Admin.DeprecatedSource = adminLegacyTOML
 		}

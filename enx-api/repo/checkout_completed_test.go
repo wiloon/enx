@@ -167,7 +167,7 @@ func TestCheckoutCompletedStoreReadsThePayersCustomerSubscriptionAndOwner(t *tes
 
 func TestApplyCheckoutCompletedGrantsATopUpOnceAndHandsTheFirstPaymentOver(t *testing.T) {
 	newCheckoutDB(t, "topup-only.sql")
-	execAll(t, "INSERT INTO users (id, clerk_user_id, name, email, status) VALUES ('u_ref', 'c_ref', 'Ref', 'r@example.com', 'active')")
+	execAll(t, "INSERT INTO users (id, auth_subject, name, email, status) VALUES ('u_ref', 'c_ref', 'Ref', 'r@example.com', 'active')")
 	if _, err := (Referrals{}).Insert(context.Background(), referral.Referral{
 		InviteeID: "u_topup", ReferrerID: "u_ref", Code: "AAAAAAAA", ClaimedAt: receiptT0, Status: referral.StatusClaimed,
 	}); err != nil {

@@ -50,9 +50,9 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 	sub := "user_e2egetme001"
 	email := "e2e-clerk@example.com"
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 	})
-	sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+	sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 
 	token := env.SignSessionToken(t, jwt.MapClaims{
 		"sub":   sub,
@@ -104,7 +104,7 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 
 	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
 	sqlitex.Init(dbPath)
-	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
+	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
 
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
 
@@ -321,7 +321,7 @@ func TestE2E_SignedInRequestsAreRateLimitedPerUser(t *testing.T) {
 
 	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-ratelimit.db"))
 	sub := "user_e2eratelimit"
-	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub) })
+	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "rate@example.com", "name": "rate"})
 
 	ts, done := e2eServer(t, cfg)

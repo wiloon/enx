@@ -64,7 +64,7 @@ func aiWordEnvAt(t *testing.T, modelURL string) (base, creditedToken, freeToken,
 	if code, _ := doJSON(t, http.MethodGet, base+"/api/me", plainToken); code != http.StatusOK {
 		t.Fatalf("GET /api/me: code=%d", code)
 	}
-	if err := sqlitex.DB.Raw("SELECT id FROM users WHERE clerk_user_id = ?", nonAdminSub).Scan(&creditedUserID).Error; err != nil || creditedUserID == "" {
+	if err := sqlitex.DB.Raw("SELECT id FROM users WHERE auth_subject = ?", nonAdminSub).Scan(&creditedUserID).Error; err != nil || creditedUserID == "" {
 		t.Fatalf("user id = %q, %v", creditedUserID, err)
 	}
 	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: creditedUserID, TopupBalance: 25, UpdatedAt: 1}).Error; err != nil {

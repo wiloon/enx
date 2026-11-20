@@ -88,7 +88,7 @@ func TestClerkAuth_NewUserWithoutEmailIsRefused(t *testing.T) {
 func TestClerkAuth_ExistingUserWithoutEmailClaimGetsThrough(t *testing.T) {
 	newUsersDB(t)
 	env, cfg := testClerkEnv(t)
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", ClerkUserID: "user_known", Name: "Known", Email: "known@example.com", Status: "active"}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", AuthSubject: "user_known", Name: "Known", Email: "known@example.com", Status: "active"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_known"})
@@ -109,7 +109,7 @@ func TestClerkAuth_ExistingUserWithoutEmailClaimGetsThrough(t *testing.T) {
 func TestClerkAuth_DisabledUserIsRefusedWithAccountDisabled(t *testing.T) {
 	newUsersDB(t)
 	env, cfg := testClerkEnv(t)
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", ClerkUserID: "user_off", Email: "off@example.com", Status: AccountDisabled}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", AuthSubject: "user_off", Email: "off@example.com", Status: AccountDisabled}).Error; err != nil {
 		t.Fatal(err)
 	}
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_off", "email": "off@example.com"})
@@ -150,7 +150,7 @@ func TestClerkAuth_StoresTheImageURLClaim(t *testing.T) {
 		t.Fatalf("status %d body %s, want 200", w.Code, w.Body.String())
 	}
 	var u sqlitex.User
-	if err := sqlitex.DB.First(&u, "clerk_user_id = ?", "user_avatar").Error; err != nil || u.AvatarUrl != "https://img.clerk.com/ava.png" {
+	if err := sqlitex.DB.First(&u, "auth_subject = ?", "user_avatar").Error; err != nil || u.AvatarUrl != "https://img.clerk.com/ava.png" {
 		t.Fatalf("stored user %+v (%v), want the avatar URL", u, err)
 	}
 }

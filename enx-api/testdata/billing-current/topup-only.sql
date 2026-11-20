@@ -1,4 +1,4 @@
-INSERT INTO users (id, clerk_user_id, name, email, status, created_at, updated_at, last_login_time)
+INSERT INTO users (id, auth_subject, name, email, status, created_at, updated_at, last_login_time)
 VALUES ('u_topup', 'user_topup', 'Topup', 'topup@example.com', 'active',
         '2026-09-01 00:00:00+00:00', '2026-09-01 00:00:00+00:00', '2026-10-01 00:00:00+00:00');
 INSERT INTO stripe_customers (stripe_customer_id,user_id,created_at) VALUES ('cus_topup','u_topup',1788000000000);

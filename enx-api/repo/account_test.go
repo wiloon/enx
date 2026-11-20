@@ -27,7 +27,7 @@ func newAccountDB(t *testing.T) {
 func seedAccount(t *testing.T, id, email string) {
 	t.Helper()
 	if err := sqlitex.DB.Create(&sqlitex.User{
-		Id: id, ClerkUserID: "user_" + id, Name: id, Email: email, Status: "active", CreatedAt: time.Now(),
+		Id: id, AuthSubject: "user_" + id, Name: id, Email: email, Status: "active", CreatedAt: time.Now(),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestAccountsGetAndSetStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, ok, err := Accounts{}.Get(ctx, "alice")
-	if err != nil || !ok || u.Status != account.StatusDisabled || u.ClerkUserID != "user_alice" || u.Email != "alice@example.com" {
+	if err != nil || !ok || u.Status != account.StatusDisabled || u.AuthSubject != "user_alice" || u.Email != "alice@example.com" {
 		t.Fatalf("Get = %+v, %v, %v", u, ok, err)
 	}
 	if _, ok, err := (Accounts{}).Get(ctx, "nobody"); ok || err != nil {

@@ -25,7 +25,7 @@ func adminRequest(t *testing.T, path, body string) *httptest.ResponseRecorder {
 	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
 	router := gin.New()
 	setCaller := func(c *gin.Context) {
-		c.Set("clerk_user_id", "user_admin")
+		c.Set("auth_subject", "user_admin")
 		c.Next()
 	}
 	router.POST("/api/admin/credits/grant", setCaller, h.GrantCredits)
@@ -45,7 +45,7 @@ const (
 
 func seedGrantee(t *testing.T, id, email string) *enx.User {
 	t.Helper()
-	u := &enx.User{Id: id, ClerkUserID: "user_" + id, Name: id, Email: email, Status: "active"}
+	u := &enx.User{Id: id, AuthSubject: "user_" + id, Name: id, Email: email, Status: "active"}
 	if err := sqlitex.DB.Create(u).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestAdminCredits_AnswerTheDeletionGateTheLedgerReports(t *testing.T) {
 func TestAdminCredits_UnknownUserIDIsNotFound(t *testing.T) {
 	u := seedGrantee(t, "admin-byid-known", "known@example.com")
 	for _, path := range []string{grantPath, deductPath} {
-		for _, id := range []string{"no-such-user", u.ClerkUserID, u.Email} {
+		for _, id := range []string{"no-such-user", u.AuthSubject, u.Email} {
 			w := adminRequest(t, path, `{"userId":"`+id+`","amount":100,"reason":"r"}`)
 			if w.Code != http.StatusNotFound {
 				t.Fatalf("%s userId %q: status %d, want 404", path, id, w.Code)

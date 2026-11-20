@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	accountAlice = account.User{ID: "u-alice", ClerkUserID: "user_alice", Email: "alice@example.com", Status: account.StatusActive}
-	accountAdmin = account.User{ID: "u-admin", ClerkUserID: "user_admin", Email: "admin@example.com", Status: account.StatusActive}
+	accountAlice = account.User{ID: "u-alice", AuthSubject: "user_alice", Email: "alice@example.com", Status: account.StatusActive}
+	accountAdmin = account.User{ID: "u-admin", AuthSubject: "user_admin", Email: "admin@example.com", Status: account.StatusActive}
 )
 
 type accountUsers map[string]account.User
@@ -41,8 +41,8 @@ func (accountGrants) Delete(context.Context, string) error                    { 
 type accountClerk struct{ err error }
 
 func (c accountClerk) DeleteUser(context.Context, string) error     { return c.err }
-func (c accountClerk) BanUser(context.Context, string) error        { return c.err }
-func (c accountClerk) UnbanUser(context.Context, string) error      { return c.err }
+func (c accountClerk) DisableUser(context.Context, string) error        { return c.err }
+func (c accountClerk) EnableUser(context.Context, string) error      { return c.err }
 func (c accountClerk) RevokeSessions(context.Context, string) error { return c.err }
 
 type accountRenewing bool
@@ -94,12 +94,12 @@ type accountSetup struct {
 }
 
 func newAccountHandler(s accountSetup) *AccountHandler {
-	var clerk account.Clerk = accountClerk{err: s.clerkErr}
+	var clerk account.ExternalIdentity = accountClerk{err: s.clerkErr}
 	if s.noClerk {
 		clerk = nil
 	}
 	svc := account.NewService(accountUsers{accountAlice.ID: accountAlice, accountAdmin.ID: accountAdmin},
-		accountGrants{}, clerk, accountRenewing(s.renewing), accountAdmins{accountAdmin.ClerkUserID},
+		accountGrants{}, clerk, accountRenewing(s.renewing), accountAdmins{accountAdmin.AuthSubject},
 		account.NewEmailHMAC("test-key"), time.Now)
 	if s.checker != nil {
 		svc.WithDeletionChecker(s.checker)

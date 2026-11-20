@@ -39,14 +39,14 @@ func getMe(userID, clerkUserID string) *httptest.ResponseRecorder {
 	if userID != "" {
 		c.Set("user_id", userID)
 	}
-	c.Set("clerk_user_id", clerkUserID)
+	c.Set("auth_subject", clerkUserID)
 	GetMe(middleware.NewAdminAllowlist([]string{"user_admin"}))(c)
 	return w
 }
 
 func TestGetMe(t *testing.T) {
 	setupUsersDB(t)
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", ClerkUserID: "user_admin", Name: "Ann", Email: "ann@example.com", Status: "active"}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "u1", AuthSubject: "user_admin", Name: "Ann", Email: "ann@example.com", Status: "active"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestGetMe_ReturnsJoinDateAndAvatarButNoClerkID(t *testing.T) {
 	setupUsersDB(t)
 	joined := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	if err := sqlitex.DB.Create(&sqlitex.User{
-		Id: "u1", ClerkUserID: "user_secret", Name: "Ann", Email: "ann@example.com", Status: "active",
+		Id: "u1", AuthSubject: "user_secret", Name: "Ann", Email: "ann@example.com", Status: "active",
 		AvatarUrl: "https://img.clerk.com/ann.png", CreatedAt: joined,
 	}).Error; err != nil {
 		t.Fatal(err)

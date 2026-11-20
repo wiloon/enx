@@ -21,29 +21,29 @@ type AdminAllowlist struct {
 	ids []string
 }
 
-func NewAdminAllowlist(clerkUserIDs []string) AdminAllowlist {
-	return AdminAllowlist{ids: clerkUserIDs}
+func NewAdminAllowlist(authSubjects []string) AdminAllowlist {
+	return AdminAllowlist{ids: authSubjects}
 }
 
-// Contains reports whether clerkUserID is an admin.
-func (a AdminAllowlist) Contains(clerkUserID string) bool {
-	if clerkUserID == "" {
+// Contains reports whether authSubject is an admin.
+func (a AdminAllowlist) Contains(authSubject string) bool {
+	if authSubject == "" {
 		return false
 	}
 	for _, id := range a.ids {
-		if strings.TrimSpace(id) == clerkUserID {
+		if strings.TrimSpace(id) == authSubject {
 			return true
 		}
 	}
 	return false
 }
 
-// Require aborts with 403 unless the request's Clerk user id (set by
-// ClerkAuth as "clerk_user_id") is in the allowlist. Mount it after
+// Require aborts with 403 unless the request's auth subject (set by
+// ClerkAuth as "auth_subject") is in the allowlist. Mount it after
 // ClerkAuth.
 func (a AdminAllowlist) Require() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !a.Contains(c.GetString("clerk_user_id")) {
+		if !a.Contains(c.GetString("auth_subject")) {
 			httpjson.Fail(c, http.StatusForbidden, "admin access required")
 			c.Abort()
 			return

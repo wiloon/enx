@@ -28,7 +28,7 @@ func TestAdminRouteUsesCutoverReader(t *testing.T) {
 	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, clerk_user_id, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
+	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"sub_a", "sub_b"} {
@@ -60,7 +60,7 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, clerk_user_id, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
+	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "conflict", "target", "active", "cus_1").Error; err != nil {

@@ -179,7 +179,7 @@ func copyFirstUser(t *testing.T, db *gorm.DB, id int, clerkUserID string) error 
 		switch strings.ToLower(c.Name) {
 		case "id":
 			picks, args = append(picks, "?"), append(args, id)
-		case "clerk_user_id":
+		case "clerk_user_id", "auth_subject":
 			picks, args = append(picks, "?"), append(args, clerkUserID)
 		default:
 			picks = append(picks, quoteIdent(c.Name))
@@ -637,6 +637,11 @@ func usersValues(t *testing.T, db *gorm.DB, cols []columnInfo) string {
 	return fmt.Sprint(rows)
 }
 
+// normalizeSubjectColumn makes pre- and post-#1027 dumps comparable.
+func normalizeSubjectColumn(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "auth_subject:", "subject:"), "clerk_user_id:", "subject:")
+}
+
 func closeDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	sqlDB, err := db.DB()
@@ -679,9 +684,24 @@ func TestInit_RebuildsUsersThenAutoMigrates(t *testing.T) {
 				t.Fatal(err)
 			}
 			referencing := []string{"credit_accounts", "credit_transactions", "lookup_events", "trial_grants"}
+			// dumpUsers selects only the pre-Init columns so AutoMigrate's
+			// added columns (avatar_url, …) do not change the comparison.
+			// After #1027 the subject column is auth_subject; map the name
+			// when reading so values still line up with the pre-rename dump.
+			dumpUsers := func(db *gorm.DB) string {
+				readCols := make([]columnInfo, len(cols))
+				copy(readCols, cols)
+				for i := range readCols {
+					if strings.EqualFold(readCols[i].Name, "clerk_user_id") &&
+						db.Migrator().HasColumn("users", "auth_subject") {
+						readCols[i].Name = "auth_subject"
+					}
+				}
+				return normalizeSubjectColumn(usersValues(t, db, readCols))
+			}
 			dump := func(db *gorm.DB) string {
 				var b strings.Builder
-				b.WriteString(usersValues(t, db, cols))
+				b.WriteString(dumpUsers(db))
 				for _, table := range referencing {
 					b.WriteString("\n" + table + ": " + dumpRows(t, db, table))
 				}
@@ -702,6 +722,12 @@ func TestInit_RebuildsUsersThenAutoMigrates(t *testing.T) {
 				if !DB.Migrator().HasColumn("users", "avatar_url") {
 					t.Fatalf("run %d: users has no avatar_url", run)
 				}
+				if !DB.Migrator().HasColumn("users", "auth_subject") {
+					t.Fatalf("run %d: users has no auth_subject", run)
+				}
+				if DB.Migrator().HasColumn("users", "clerk_user_id") {
+					t.Fatalf("run %d: users still has clerk_user_id", run)
+				}
 				if got := profileUniqueness(t, DB); len(got) != 0 {
 					t.Fatalf("run %d: still unique on %v: %s", run, got, usersDDLOf(t, DB))
 				}
@@ -709,7 +735,7 @@ func TestInit_RebuildsUsersThenAutoMigrates(t *testing.T) {
 					t.Fatalf("run %d: data changed:\n%s\nwant\n%s", run, got, before)
 				}
 				if err := copyFirstUser(t, DB, 90+run, "user_clerk1"); err == nil {
-					t.Fatalf("run %d: a duplicate clerk_user_id went in", run)
+					t.Fatalf("run %d: a duplicate auth_subject went in", run)
 				}
 				if b := backupsOf(t, path); len(b) != 1 {
 					t.Fatalf("run %d: backups = %v, want exactly one", run, b)
@@ -791,10 +817,10 @@ func TestInit_NewDatabaseNeedsNoRebuild(t *testing.T) {
 	if b := backupsOf(t, path); len(b) != 0 {
 		t.Fatalf("backups = %v, want none", b)
 	}
-	if err := DB.Exec("INSERT INTO users (id, clerk_user_id, name, email) VALUES ('a', 'user_a', 'Same', 'same@example.com'), ('b', 'user_b', 'Same', 'same@example.com')").Error; err != nil {
+	if err := DB.Exec("INSERT INTO users (id, auth_subject, name, email) VALUES ('a', 'user_a', 'Same', 'same@example.com'), ('b', 'user_b', 'Same', 'same@example.com')").Error; err != nil {
 		t.Fatalf("duplicate email and name: %v", err)
 	}
-	if err := DB.Exec("INSERT INTO users (id, clerk_user_id) VALUES ('c', 'user_a')").Error; err == nil {
-		t.Fatal("a duplicate clerk_user_id went in")
+	if err := DB.Exec("INSERT INTO users (id, auth_subject) VALUES ('c', 'user_a')").Error; err == nil {
+		t.Fatal("a duplicate auth_subject went in")
 	}
 }

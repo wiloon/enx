@@ -76,7 +76,7 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 	}
 
 	logger.Infof("admin %s: %s %s %d credits for user=%s (email=%s reason=%q), new balance=%d",
-		name, c.GetString("clerk_user_id"), verb, req.Amount, user.Id, user.Email, req.Reason, balance)
+		name, c.GetString("auth_subject"), verb, req.Amount, user.Id, user.Email, req.Reason, balance)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -26,9 +26,9 @@ var DB *gorm.DB
 // These are minimal struct definitions for table creation
 type User struct {
 	Id          string `gorm:"column:id;primaryKey"`
-	ClerkUserID string `gorm:"column:clerk_user_id;uniqueIndex"`
+	AuthSubject string `gorm:"column:auth_subject;uniqueIndex:idx_users_auth_subject"`
 	// Profile attributes, not identity keys: neither is unique (ADR-015,
-	// 2026-10-20 note §4). A user is its Clerk user id.
+	// 2026-10-20 note §4). A user is its external auth subject (`sub`).
 	Name                string    `gorm:"column:name"`
 	Email               string    `gorm:"column:email"`
 	Password            string    `gorm:"column:password"`
@@ -196,6 +196,12 @@ func initDatabase(dbPath, level string) error {
 	// ADR-015 (2026-10-20 note §4): users.email and users.name are not
 	// unique. A failure here stops startup before AutoMigrate touches users.
 	if _, err := rebuildUsersWithoutProfileUniqueness(DB); err != nil {
+		return err
+	}
+
+	// ADR-036 / #1027: rename users.clerk_user_id to auth_subject before
+	// AutoMigrate, which would otherwise add an empty clerk_user_id again.
+	if err := renameUsersClerkUserIDToAuthSubject(DB); err != nil {
 		return err
 	}
 

@@ -11,7 +11,7 @@ import (
 
 type User struct {
 	Id                  string    `json:"id" gorm:"column:id;primaryKey"`
-	ClerkUserID         string    `json:"-" gorm:"column:clerk_user_id;uniqueIndex"`
+	AuthSubject         string    `json:"-" gorm:"column:auth_subject;uniqueIndex:idx_users_auth_subject"`
 	Name                string    `json:"name" gorm:"column:name"`
 	Email               string    `json:"email" gorm:"column:email"`
 	Password            string    `json:"-" gorm:"column:password"`

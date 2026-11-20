@@ -24,7 +24,7 @@ const sqlDateTime = "2006-01-02 15:04:05"
 
 // clerkUsers are the users that count: legacy accounts without a Clerk id
 // do not (ADR-058 Decision 1).
-const clerkUsers = "clerk_user_id IS NOT NULL AND clerk_user_id != ''"
+const clerkUsers = "auth_subject IS NOT NULL AND auth_subject != ''"
 
 func sqlTime(t time.Time) string { return t.UTC().Format(sqlDateTime) }
 
