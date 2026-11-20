@@ -37,16 +37,53 @@ type ClerkConfig struct {
 	// LastLoginUpdateInterval throttles the last_login_time write for a
 	// returning user (user.last-login-update-interval).
 	LastLoginUpdateInterval time.Duration
+
+	// The fields below generalise the verifier beyond Clerk (ADR-036); a zero
+	// value is the Clerk behaviour.
+
+	// Audience, when set, must be present in the token's aud claim.
+	Audience string
+	// AuthorizedPartyClaim names the claim AuthorizedParties applies to
+	// (default azp).
+	AuthorizedPartyClaim string
+	// AllowedSigningAlgorithms are the accepted JWT algorithms (default RS256).
+	AllowedSigningAlgorithms []string
+	// SubjectClaim, EmailClaim, NameClaim and ImageURLClaim name the profile
+	// claims (defaults sub, email, name, image_url).
+	SubjectClaim, EmailClaim, NameClaim, ImageURLClaim string
 }
 
-// ClerkConfigFrom maps the clerk.* and user.* config onto ClerkConfig.
-func ClerkConfigFrom(c config.Clerk, u config.User) ClerkConfig {
+// ClerkConfigFrom maps the resolved oidc.* config (Config.EffectiveOIDC) and
+// user.* config onto ClerkConfig.
+func ClerkConfigFrom(o config.OIDC, u config.User) ClerkConfig {
 	return ClerkConfig{
-		Issuer:                  c.Issuer,
-		AuthorizedParties:       c.AuthorizedParties,
-		JWKSURL:                 c.JWKSURL,
-		LastLoginUpdateInterval: u.LastLoginUpdateInterval,
+		Issuer:                   o.Issuer,
+		AuthorizedParties:        o.AuthorizedParties,
+		JWKSURL:                  o.JWKSURL,
+		LastLoginUpdateInterval:  u.LastLoginUpdateInterval,
+		Audience:                 o.Audience,
+		AuthorizedPartyClaim:     o.AuthorizedPartyClaim,
+		AllowedSigningAlgorithms: o.AllowedSigningAlgorithms,
+		SubjectClaim:             o.SubjectClaim,
+		EmailClaim:               o.EmailClaim,
+		NameClaim:                o.NameClaim,
+		ImageURLClaim:            o.ImageURLClaim,
 	}
+}
+
+// orDefault is s, or def when s is empty.
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+func (cfg ClerkConfig) signingAlgorithms() []string {
+	if len(cfg.AllowedSigningAlgorithms) == 0 {
+		return []string{"RS256"}
+	}
+	return cfg.AllowedSigningAlgorithms
 }
 
 func (cfg ClerkConfig) jwksURL() string {
@@ -151,11 +188,15 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		tokenStr := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 
 		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenStr, claims, v.jwks.Keyfunc,
-			jwt.WithValidMethods([]string{"RS256"}),
+		opts := []jwt.ParserOption{
+			jwt.WithValidMethods(cfg.signingAlgorithms()),
 			jwt.WithIssuer(v.cfg.Issuer),
 			jwt.WithLeeway(clerkClockLeeway),
-		)
+		}
+		if cfg.Audience != "" {
+			opts = append(opts, jwt.WithAudience(cfg.Audience))
+		}
+		token, err := jwt.ParseWithClaims(tokenStr, claims, v.jwks.Keyfunc, opts...)
 		if err != nil || !token.Valid {
 			if err != nil {
 				logger.Debugf("ClerkAuth: parse failed: %v", err)
@@ -169,20 +210,20 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		}
 
 		if !v.authorizedPartyAllowed(claims) {
-			c.Set(RejectedAZPKey, claims["azp"])
+			c.Set(RejectedAZPKey, claims[orDefault(cfg.AuthorizedPartyClaim, "azp")])
 			reject(authUnauthorizedParty, "invalid token")
 			return
 		}
 
-		sub, _ := claims["sub"].(string)
+		sub, _ := claims[orDefault(cfg.SubjectClaim, "sub")].(string)
 		if sub == "" {
 			reject(authInvalid, "invalid token")
 			return
 		}
 
-		email, _ := claims["email"].(string)
-		name, _ := claims["name"].(string)
-		imageURL, _ := claims["image_url"].(string)
+		email, _ := claims[orDefault(cfg.EmailClaim, "email")].(string)
+		name, _ := claims[orDefault(cfg.NameClaim, "name")].(string)
+		imageURL, _ := claims[orDefault(cfg.ImageURLClaim, "image_url")].(string)
 
 		user, err := enx.GetOrCreateClerkUser(sub, enx.ClerkProfile{Email: email, Name: name, ImageURL: imageURL}, cfg.LastLoginUpdateInterval)
 		if errors.Is(err, enx.ErrNoEmail) {
@@ -232,7 +273,7 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 // origin the token was minted for; it can be absent for flows with no Origin
 // header. An absent azp is allowed; a present-but-unknown azp is rejected.
 func (v *clerkValidator) authorizedPartyAllowed(claims jwt.MapClaims) bool {
-	azp, _ := claims["azp"].(string)
+	azp, _ := claims[orDefault(v.cfg.AuthorizedPartyClaim, "azp")].(string)
 	if azp == "" {
 		return true
 	}

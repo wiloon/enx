@@ -194,6 +194,28 @@ func TestOpsUserStatsRouteUsesTheOpsTokenNotClerk(t *testing.T) {
 	}
 }
 
+// ADR-036: overriding the token party list (oidc.authorized-parties) must not
+// change which origins CORS allows; that stays on the Clerk origin list.
+func TestCORSIgnoresTheOIDCPartyOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := config.Default()
+	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://clerk-origin"}
+	cfg.OIDC.AuthorizedParties = []string{"logto-app", "chrome-extension://oidc-only"}
+	router := setupRouter(cfg, metrics.New())
+	for origin, want := range map[string]string{
+		"chrome-extension://clerk-origin": "chrome-extension://clerk-origin",
+		"chrome-extension://oidc-only":    "",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+		req.Header.Set("Origin", origin)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != want {
+			t.Errorf("origin %q: Allow-Origin = %q, want %q", origin, got, want)
+		}
+	}
+}
+
 // The router passes the configured authorized parties to the CORS middleware;
 // which origins it allows is middleware.TestCORSOrigins.
 func TestCORSUsesTheConfiguredAuthorizedParties(t *testing.T) {

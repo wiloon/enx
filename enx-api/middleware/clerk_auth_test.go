@@ -193,7 +193,7 @@ func TestClerkAuth_OPTIONSAllowed(t *testing.T) {
 
 func TestClerkConfigFrom(t *testing.T) {
 	got := ClerkConfigFrom(
-		config.Clerk{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks"},
+		config.OIDC{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks"},
 		config.User{LastLoginUpdateInterval: 5 * time.Minute},
 	)
 	want := ClerkConfig{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks", LastLoginUpdateInterval: 5 * time.Minute}
