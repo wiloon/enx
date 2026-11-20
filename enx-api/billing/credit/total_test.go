@@ -2,9 +2,13 @@ package credit
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"enx-api/utils/sqlitex"
 )
@@ -267,6 +271,49 @@ func TestExpireTrialsContinuesPastAFailedAccountAndRetriesIt(t *testing.T) {
 
 	if n := expireRows(t, failing); n != 1 {
 		t.Errorf("EXPIRE rows of the failed account after the next run = %d, want 1", n)
+	}
+}
+
+// Shutdown can interrupt a SQLite statement with an error that does not wrap
+// context.Canceled. The sweep must stop there without recording it as an
+// account failure, keeping the account it already forfeited.
+func TestExpireTrialsStopsAtShutdownWithoutRecordingTheInterruptedAccount(t *testing.T) {
+	ids := []string{"u-" + t.Name() + "-1", "u-" + t.Name() + "-2", "u-" + t.Name() + "-3"}
+	for _, id := range ids {
+		seedCreditUser(t, id)
+		mustGrantTrial(t, id, 30, time.Hour)
+	}
+	setClock(t, time.Now().Add(2*time.Hour))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const name = "test:interrupt_second_account"
+	err := sqlitex.DB.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
+		if strings.HasPrefix(tx.Statement.SQL.String(), "UPDATE users") &&
+			len(tx.Statement.Vars) == 1 && tx.Statement.Vars[0] == ids[1] {
+			cancel()
+			_ = tx.AddError(errors.New("interrupted (9)"))
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlitex.DB.Callback().Raw().Remove(name) })
+
+	run, err := ExpireTrials(ctx)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if run.Expired != 1 || len(run.Errors) != 0 {
+		t.Fatalf("run = %+v, want one expired and no errors", run)
+	}
+	if acc := loadAccount(t, ids[0]); acc.TrialBalance != 0 || expireRows(t, ids[0]) != 1 {
+		t.Errorf("first account: trial %d, want 0 and one EXPIRE row", acc.TrialBalance)
+	}
+	for _, id := range ids[1:] {
+		if acc := loadAccount(t, id); acc.TrialBalance != 30 || expireRows(t, id) != 0 {
+			t.Errorf("%s: trial %d, want 30 and no EXPIRE row", id, acc.TrialBalance)
+		}
 	}
 }
 

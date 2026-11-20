@@ -611,6 +611,108 @@ func TestRowsStayPendingWhenStripeCannotAnswer(t *testing.T) {
 	}
 }
 
+// threeDueRewards gives alice three pending rewards (invitees bob, carol,
+// dave) that are due, each with its payment intent already set.
+func threeDueRewards(h *harness) []string {
+	h.accounts.created["alice"] = t0.Add(-30 * day)
+	ids := []string{"bob", "carol", "dave"}
+	for _, id := range ids {
+		h.referrals.rows[id] = Referral{
+			InviteeID: id, ReferrerID: "alice", Status: StatusPending,
+			RewardAmount: 100, RewardDueAt: t0,
+			FirstPayment: &FirstPayment{Kind: KindTopup, PaymentIntentID: "pi_" + id, Credits: 500, PaidAt: t0},
+		}
+	}
+	h.now = t0.Add(14 * day)
+	return ids
+}
+
+func TestShutdownAfterARewardStopsBeforeTheNextRow(t *testing.T) {
+	h := newHarness(t)
+	ids := threeDueRewards(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.payments.onCharge = func(string) (ChargeState, error) {
+		cancel()
+		return ChargeState{}, nil
+	}
+
+	run, err := h.svc.PayDueRewards(ctx)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if run.Rewarded != 1 || run.Forfeited != 0 || run.Retry != 0 || len(run.Errors) != 0 {
+		t.Fatalf("run = %+v, want one rewarded and nothing else", run)
+	}
+	if h.payments.calls != 1 || h.credits.rewardAttempts != 1 {
+		t.Fatalf("charge checks %d, grants %d; want one of each", h.payments.calls, h.credits.rewardAttempts)
+	}
+	if got := h.referrals.rows[ids[0]].Status; got != StatusRewarded {
+		t.Fatalf("first status = %s, want rewarded", got)
+	}
+	for _, id := range ids[1:] {
+		if got := h.referrals.rows[id].Status; got != StatusPending {
+			t.Fatalf("%s status = %s, want pending", id, got)
+		}
+	}
+}
+
+func TestAnInterruptedRewardIsNeitherAnErrorNorARetry(t *testing.T) {
+	h := newHarness(t)
+	ids := threeDueRewards(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.payments.onCharge = func(string) (ChargeState, error) {
+		cancel()
+		return ChargeState{}, errors.New("interrupted (9)")
+	}
+
+	run, err := h.svc.PayDueRewards(ctx)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if run.Rewarded != 0 || run.Forfeited != 0 || run.Retry != 0 || len(run.Errors) != 0 {
+		t.Fatalf("run = %+v, want an empty run", run)
+	}
+	if h.payments.calls != 1 || h.credits.rewardAttempts != 0 {
+		t.Fatalf("charge checks %d, grants %d; want one and none", h.payments.calls, h.credits.rewardAttempts)
+	}
+	for _, id := range ids {
+		if got := h.referrals.rows[id].Status; got != StatusPending {
+			t.Fatalf("%s status = %s, want pending", id, got)
+		}
+	}
+}
+
+func TestAFailedRewardDoesNotStopTheNextOneWhileLive(t *testing.T) {
+	h := newHarness(t)
+	ids := threeDueRewards(h)
+	delete(h.referrals.rows, ids[2])
+	h.payments.onCharge = func(pi string) (ChargeState, error) {
+		if pi == "pi_bob" {
+			return ChargeState{}, errors.New("stripe: unavailable")
+		}
+		return ChargeState{}, nil
+	}
+
+	run, err := h.svc.PayDueRewards(context.Background())
+
+	if err != nil {
+		t.Fatalf("PayDueRewards: %v", err)
+	}
+	if run.Retry != 1 || len(run.Errors) != 1 || run.Rewarded != 1 {
+		t.Fatalf("run = %+v, want one retry, one error, one rewarded", run)
+	}
+	if got := h.referrals.rows["bob"].Status; got != StatusPending {
+		t.Fatalf("bob status = %s, want pending", got)
+	}
+	if got := h.referrals.rows["carol"].Status; got != StatusRewarded || len(h.credits.rewards) != 1 {
+		t.Fatalf("carol status = %s, rewards %+v; want rewarded and one grant", got, h.credits.rewards)
+	}
+}
+
 func TestRerunningTheJobDoesNotPayTwice(t *testing.T) {
 	h := newHarness(t)
 	paidTopup(t, h)

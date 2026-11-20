@@ -72,6 +72,9 @@ func ExpireTrials(ctx context.Context) (TrialSweep, error) {
 	}
 	var run TrialSweep
 	for _, userID := range userIDs {
+		if err := ctx.Err(); err != nil {
+			return run, err
+		}
 		expired := false
 		err := sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := checkGrantTarget(tx, userID); err != nil {
@@ -81,6 +84,11 @@ func ExpireTrials(ctx context.Context) (TrialSweep, error) {
 			expired, err = expireTrial(tx, userID, at)
 			return err
 		})
+		if err != nil && ctx.Err() != nil {
+			// Shutdown interrupted this row; SQLite may not wrap
+			// context.Canceled. It stays due for the next run.
+			return run, ctx.Err()
+		}
 		switch {
 		case errors.Is(err, ErrNoUser), errors.Is(err, ErrDeletionInProgress):
 		case err != nil:
