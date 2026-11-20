@@ -28,6 +28,10 @@ func renameUsersClerkUserIDToAuthSubject(db *gorm.DB) error {
 	return authSubjectRename{}.run(db)
 }
 
+// migrateAuthSubject is the step initDatabase calls; tests swap it to inject
+// a failure and prove startup refuses the database.
+var migrateAuthSubject = renameUsersClerkUserIDToAuthSubject
+
 func (r authSubjectRename) run(db *gorm.DB) error {
 	if !db.Migrator().HasTable("users") {
 		return nil
@@ -35,9 +39,9 @@ func (r authSubjectRename) run(db *gorm.DB) error {
 	hasOld := db.Migrator().HasColumn("users", "clerk_user_id")
 	hasNew := db.Migrator().HasColumn("users", "auth_subject")
 	switch {
-	case !hasOld && !hasNew:
-		return nil
-	case !hasOld && hasNew:
+	case !hasOld:
+		// Nothing to rename: a fresh users table (AutoMigrate creates
+		// auth_subject) or one already migrated.
 		return nil
 	case hasOld && hasNew:
 		return fmt.Errorf("users has both clerk_user_id and auth_subject; refuse to guess which is current")

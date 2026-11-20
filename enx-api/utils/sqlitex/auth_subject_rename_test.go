@@ -207,43 +207,66 @@ func TestInitWithLogLevel_AmbiguousSubjectColumnsRefuseStartup(t *testing.T) {
 	}
 }
 
-func TestRenameUsersClerkUserIDToAuthSubject_FailedStepLeavesOldColumn(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "fail.db")
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE TABLE users (id TEXT PRIMARY KEY, clerk_user_id TEXT, name TEXT, email TEXT)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`CREATE UNIQUE INDEX idx_users_clerk_user_id ON users(clerk_user_id)`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`INSERT INTO users (id, clerk_user_id, name) VALUES ('u1', 'sub_a', 'A'), ('u2', NULL, 'B')`).Error; err != nil {
-		t.Fatal(err)
-	}
+func TestInitWithLogLevel_FailedRenameRefusesStartupAndKeepsOldColumn(t *testing.T) {
+	for _, failAt := range []string{stepAuthSubjectColumnRenamed, stepAuthSubjectIndexReplaced} {
+		t.Run(failAt, func(t *testing.T) {
+			path := initializedDatabase(t)
+			ensurePre1027UsersSubject(t, path)
+			execOnFile(t, path,
+				`INSERT INTO users (id, clerk_user_id, email, name, status) VALUES ('u1', 'sub_a', 'a@example.com', 'A', 'active')`,
+				`INSERT INTO users (id, clerk_user_id, email, name, status) VALUES ('u2', NULL, 'b@example.com', 'B', 'active')`,
+			)
 
-	err = authSubjectRename{afterStep: func(step string, _ *gorm.DB) error {
-		if step == stepAuthSubjectIndexReplaced {
-			return errors.New("disk full")
-		}
-		return nil
-	}}.run(db)
-	if err == nil || !strings.Contains(err.Error(), "disk full") {
-		t.Fatalf("err = %v, want disk full", err)
-	}
-	if !db.Migrator().HasColumn("users", "clerk_user_id") {
-		t.Fatal("failed rename dropped clerk_user_id")
-	}
-	if db.Migrator().HasColumn("users", "auth_subject") {
-		t.Fatal("failed rename left auth_subject")
-	}
-	var got []string
-	if err := db.Raw(`SELECT coalesce(clerk_user_id, '<null>') FROM users ORDER BY id`).Scan(&got).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 || got[0] != "sub_a" || got[1] != "<null>" {
-		t.Fatalf("values after failed rename = %v", got)
+			previousMigrate := migrateAuthSubject
+			t.Cleanup(func() { migrateAuthSubject = previousMigrate })
+			migrateAuthSubject = func(db *gorm.DB) error {
+				return authSubjectRename{afterStep: func(step string, _ *gorm.DB) error {
+					if step == failAt {
+						return errors.New("disk full")
+					}
+					return nil
+				}}.run(db)
+			}
+			previous := DB
+			t.Cleanup(func() { DB = previous })
+
+			err := InitWithLogLevel(path, "error")
+			if err == nil || !strings.Contains(err.Error(), "disk full") {
+				t.Fatalf("InitWithLogLevel = %v, want disk full", err)
+			}
+			if raw, rerr := DB.DB(); rerr == nil {
+				_ = raw.Close()
+			}
+
+			db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if raw, err := db.DB(); err == nil {
+					_ = raw.Close()
+				}
+			})
+			if !db.Migrator().HasColumn("users", "clerk_user_id") {
+				t.Fatal("failed rename dropped clerk_user_id")
+			}
+			if db.Migrator().HasColumn("users", "auth_subject") {
+				t.Fatal("failed rename left auth_subject (or AutoMigrate ran)")
+			}
+			if !db.Migrator().HasIndex("users", "idx_users_clerk_user_id") {
+				t.Fatal("idx_users_clerk_user_id lost after rollback")
+			}
+			if db.Migrator().HasIndex("users", "idx_users_auth_subject") {
+				t.Fatal("idx_users_auth_subject present after rollback")
+			}
+			var got []string
+			if err := db.Raw(`SELECT coalesce(clerk_user_id, '<null>') FROM users WHERE id IN ('u1','u2') ORDER BY id`).Scan(&got).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 2 || got[0] != "sub_a" || got[1] != "<null>" {
+				t.Fatalf("values after failed rename = %v", got)
+			}
+		})
 	}
 }
 

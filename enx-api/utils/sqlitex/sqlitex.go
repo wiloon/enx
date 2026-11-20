@@ -200,8 +200,9 @@ func initDatabase(dbPath, level string) error {
 	}
 
 	// ADR-036 / #1027: rename users.clerk_user_id to auth_subject before
-	// AutoMigrate, which would otherwise add an empty clerk_user_id again.
-	if err := renameUsersClerkUserIDToAuthSubject(DB); err != nil {
+	// AutoMigrate, which would otherwise add an empty auth_subject column next
+	// to the old one and re-provision every existing user.
+	if err := migrateAuthSubject(DB); err != nil {
 		return err
 	}
 
