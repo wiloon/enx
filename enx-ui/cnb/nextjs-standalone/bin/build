@@ -111,6 +111,10 @@ OUT=$(mktemp -d)
 mv .next/standalone/* .next/standalone/.next "$OUT"/
 cp -r .next/static "$OUT/.next/static"
 cp -r public "$OUT/public"
+# The launcher and the resolver it shares with the server adapter (ADR-036).
+mkdir -p "$OUT/scripts" "$OUT/src/lib"
+cp scripts/launch.mjs "$OUT/scripts/launch.mjs"
+cp src/lib/authProvider.ts "$OUT/src/lib/authProvider.ts"
 # The runtime user (1002 in ubuntu-noble-run-tiny) differs from the build user:
 # let it write Next's runtime cache (image optimisation, ISR).
 mkdir -p "$OUT/.next/cache" && chmod 0777 "$OUT/.next/cache"
@@ -122,7 +126,7 @@ rmdir "$OUT"
 cat > "$LAYERS/launch.toml" <<'EOF'
 [[processes]]
 type = "web"
-command = ["node", "server.js"]
+command = ["node", "scripts/launch.mjs"]
 default = true
 EOF
 

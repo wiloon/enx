@@ -2,25 +2,15 @@
  * @jest-environment node
  */
 import { NextRequest, type NextFetchEvent } from 'next/server'
+import proxy from '../proxy'
 
-const clerkHandler = jest.fn()
-const clerkMiddleware = jest.fn<typeof clerkHandler, unknown[]>(
-  () => clerkHandler
-)
+const handle = jest.fn()
 
-jest.mock('@clerk/nextjs/server', () => ({
-  clerkMiddleware: (...args: unknown[]) => clerkMiddleware(...args),
+// proxy.ts delegates non-API requests to the selected auth adapter; the
+// adapter itself is tested in src/auth/.
+jest.mock('@/auth', () => ({
+  getAuthAdapter: () => ({ handle: (...args: unknown[]) => handle(...args) }),
 }))
-
-// proxy.ts builds the Clerk handler at import time from the runtime
-// CLERK_PUBLISHABLE_KEY, so the env must be set before it is loaded.
-async function loadProxy() {
-  let mod: typeof import('../proxy') | undefined
-  await jest.isolateModulesAsync(async () => {
-    mod = await import('../proxy')
-  })
-  return mod!
-}
 
 const event = {} as NextFetchEvent
 
@@ -28,8 +18,7 @@ describe('proxy', () => {
   const savedEnv = { ...process.env }
 
   beforeEach(() => {
-    clerkHandler.mockReset()
-    clerkMiddleware.mockClear()
+    handle.mockReset()
     process.env = { ...savedEnv }
   })
 
@@ -37,17 +26,8 @@ describe('proxy', () => {
     process.env = savedEnv
   })
 
-  it('passes the runtime publishable key to clerkMiddleware', async () => {
-    process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_runtime'
-    await loadProxy()
-    expect(clerkMiddleware).toHaveBeenCalledWith({
-      publishableKey: 'pk_test_runtime',
-    })
-  })
-
-  it('rewrites /api/* to API_BASE_URL, keeping path and query', async () => {
+  it('rewrites /api/* to API_BASE_URL, keeping path and query', () => {
     process.env.API_BASE_URL = 'http://enx-api.enx.svc:8091/'
-    const { default: proxy } = await loadProxy()
 
     const res = proxy(
       new NextRequest('https://enx.example/api/stats/overview?date=2026-09-20'),
@@ -57,13 +37,12 @@ describe('proxy', () => {
     expect(res.headers.get('x-middleware-rewrite')).toBe(
       'http://enx-api.enx.svc:8091/api/stats/overview?date=2026-09-20'
     )
-    expect(clerkHandler).not.toHaveBeenCalled()
+    expect(handle).not.toHaveBeenCalled()
   })
 
   it('returns a 500 JSON error for /api/* when API_BASE_URL is unset', async () => {
     delete process.env.API_BASE_URL
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
-    const { default: proxy } = await loadProxy()
 
     const res = proxy(
       new NextRequest('https://enx.example/api/me'),
@@ -78,22 +57,20 @@ describe('proxy', () => {
     errorSpy.mockRestore()
   })
 
-  it('hands non-API paths to Clerk', async () => {
+  it('hands non-API paths to the auth adapter', () => {
     process.env.API_BASE_URL = 'http://enx-api.enx.svc:8091'
-    const sentinel = new Response('clerk')
-    clerkHandler.mockReturnValue(sentinel)
-    const { default: proxy } = await loadProxy()
+    const sentinel = new Response('adapter')
+    handle.mockReturnValue(sentinel)
 
     const req = new NextRequest('https://enx.example/app')
     expect(proxy(req, event)).toBe(sentinel)
-    expect(clerkHandler).toHaveBeenCalledWith(req, event)
+    expect(handle).toHaveBeenCalledWith(req, event)
   })
 
-  it('does not treat /apiary as an API path', async () => {
+  it('does not treat /apiary as an API path', () => {
     process.env.API_BASE_URL = 'http://enx-api.enx.svc:8091'
-    const { default: proxy } = await loadProxy()
 
     proxy(new NextRequest('https://enx.example/apiary'), event)
-    expect(clerkHandler).toHaveBeenCalledTimes(1)
+    expect(handle).toHaveBeenCalledTimes(1)
   })
 })

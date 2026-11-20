@@ -1,6 +1,6 @@
 'use client'
 
-import { RedirectToSignIn } from '@clerk/nextjs'
+import RedirectToSignIn from '@/auth/RedirectToSignIn'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccountDisabled } from '@/hooks/useAccountDisabled'
 import AppShell from '@/components/app/AppShell'
@@ -26,8 +26,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    // Redirect to the dedicated /sign-in route — mounting Clerk's <SignIn>
-    // inline here breaks its /sso-callback derivation (ADR-015,
+    // Redirect to the dedicated /sign-in route — mounting the provider's
+    // sign-in form inline here breaks its /sso-callback derivation (ADR-015,
     // src/__tests__/clerk-routing.test.ts).
     return <RedirectToSignIn />
   }

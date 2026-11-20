@@ -56,11 +56,16 @@ describe('Clerk sign-in/up routing contract', () => {
     const stripComments = (code: string) =>
       code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
+    // The widgets themselves now live in the Clerk adapter (ADR-036), which
+    // exposes them as SignInBody / SignUpBody; those bodies may only be
+    // mounted by the catch-all routes. Anything else is an offender.
+    const adapterDir = path.join(SRC, 'auth') + path.sep
     const offenders = walk(SRC).filter((f) => {
       if (allowedRoots.some((root) => f.startsWith(root))) return false
-      return /<(SignIn|SignUp)[\s/>]/.test(
-        stripComments(readFileSync(f, 'utf8'))
-      )
+      const code = stripComments(readFileSync(f, 'utf8'))
+      if (/<(SignIn|SignUp)Body[\s/>]/.test(code)) return true
+      if (f.startsWith(adapterDir)) return false
+      return /<(SignIn|SignUp)[\s/>]/.test(code)
     })
 
     expect(offenders).toEqual([])
