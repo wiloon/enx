@@ -33,6 +33,23 @@ test('rejects an unquoted env object key in a nested bundle', t => {
   assert.match(result.stderr, /assets[/\\]env.js.*VITE_PROBE/)
 })
 
+test('lists every offending file and key in one failure', t => {
+  const root = fixture(t)
+  mkdirSync(join(root, 'assets'))
+  writeFileSync(
+    join(root, 'assets/one.js'),
+    'const env = {VITE_ONE : "leak"}'
+  )
+  writeFileSync(
+    join(root, 'assets/two.js'),
+    'const env = {VITE_TWO : "leak"}'
+  )
+  const result = run(root)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /assets[/\\]one.js.*VITE_ONE/)
+  assert.match(result.stderr, /assets[/\\]two.js.*VITE_TWO/)
+})
+
 for (const key of ['"VITE_PROBE"  :', "'VITE_PROBE'\n :"]) {
   test(`rejects quoted object key ${key}`, t => {
     const root = fixture(t)

@@ -30,6 +30,8 @@ var (
 	ErrNotDue = errors.New("billing/alert: alert is not due")
 	// ErrNoToken: a claim needs a nonempty fencing token.
 	ErrNoToken = errors.New("billing/alert: claim token is empty")
+	// ErrNoLease: a claim needs a positive lease; lease <= 0 would expire at once.
+	ErrNoLease = errors.New("billing/alert: claim lease must be positive")
 	// ErrStaleClaim: the caller no longer holds the claim; another notifier
 	// took it over, so this one must not record its outcome.
 	ErrStaleClaim = errors.New("billing/alert: claim is no longer held")
@@ -83,6 +85,9 @@ func (a Alert) Due(now time.Time, pass Pass) bool {
 func Claim(a Alert, token string, now time.Time, lease time.Duration, pass Pass) (Alert, error) {
 	if token == "" {
 		return a, ErrNoToken
+	}
+	if lease <= 0 {
+		return a, ErrNoLease
 	}
 	if !a.Due(now, pass) {
 		return a, ErrNotDue

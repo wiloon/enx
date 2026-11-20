@@ -97,12 +97,12 @@ func TestPortalSessionOwnersReturnsADatabaseErrorNotAnEmptyOwner(t *testing.T) {
 }
 
 type portalCustomerStripe struct {
-	liveStatus string
+	liveStatus map[string]string
 	sessions   []portalsession.Session
 }
 
-func (f *portalCustomerStripe) Subscription(context.Context, string) (portalsession.Subscription, error) {
-	return portalsession.Subscription{Live: eligibility.Live{Status: f.liveStatus}}, nil
+func (f *portalCustomerStripe) Subscription(_ context.Context, id string) (portalsession.Subscription, error) {
+	return portalsession.Subscription{Live: eligibility.Live{Status: f.liveStatus[id]}}, nil
 }
 
 func (f *portalCustomerStripe) TierPrices(context.Context) (map[string]string, error) {
@@ -160,7 +160,7 @@ func TestPortalSessionOwnersSuppliesTheInputsOfTheCustomerCheckoutReuses(t *test
 			if err != nil {
 				t.Fatalf("Owner: %v", err)
 			}
-			stripe := &portalCustomerStripe{liveStatus: tc.liveStatus}
+			stripe := &portalCustomerStripe{liveStatus: map[string]string{"sub_a": tc.liveStatus}}
 			_, err = portalsession.New(PortalSessionOwners{}, stripe, "https://enx.example/billing").Home(context.Background(), "user_1")
 			if tc.want == "" {
 				if !errors.Is(err, portalsession.ErrNoCustomer) || len(stripe.sessions) != 0 {
