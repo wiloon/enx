@@ -17,6 +17,8 @@ export type BuildEnvKey =
   | 'VITE_BUILD_TIME'
 
 export const readBuildEnv = (key: BuildEnvKey): string | undefined => {
+  // case 'VITE_…': labels must not reach the bundle: scripts/check-bundle-env.mjs
+  // treats VITE_X: as a forbidden object key, and only minification removes them today.
   switch (key) {
     case 'VITE_ENV':
       return import.meta.env.VITE_ENV
