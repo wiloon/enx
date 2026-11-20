@@ -140,7 +140,6 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}},
 		})
 	case strings.HasPrefix(r.URL.Path, "/v1/billing_portal/sessions"):
-		f.sessionsMade.Add(1)
 		if err := r.ParseForm(); err != nil {
 			fail()
 			return
@@ -149,6 +148,7 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail()
 			return
 		}
+		f.sessionsMade.Add(1)
 		_, _ = w.Write([]byte(`{"id":"bps_1","object":"billing_portal.session","url":"https://billing.example.test/session"}`))
 	case r.URL.Path == "/v1/subscriptions/sub_recovery":
 		_, _ = w.Write([]byte(`{"id":"sub_recovery","object":"subscription","status":"active","customer":"cus_topup","items":{"object":"list","has_more":false,"data":[{"id":"si_checkout","current_period_end":1800000000,"price":{"id":"price_pp_m"}}]}}`))
@@ -302,6 +302,8 @@ func eventually(t *testing.T, what string, ok func() bool) {
 
 const ignorableObject = `{"object":"customer","id":"cus_1"}`
 
+const recoveryInvoicePaid = `{"object":"invoice","id":"in_recovery","customer":"cus_topup","billing_reason":"subscription_create","amount_paid":0,"parent":{"subscription_details":{"subscription":"sub_recovery","metadata":{"enx_user_id":"u_topup"}}},"lines":{"has_more":false,"data":[{"id":"il_recovery","amount":0,"parent":{"subscription_item_details":{"subscription":"sub_recovery","subscription_item":"si_recovery","proration":false}},"pricing":{"price_details":{"price":"price_pp_m"}},"period":{"start":1790000000,"end":1800000000}}]}}`
+
 func TestReceiptAnswers503UntilDiscoverySucceedsOnARetryTick(t *testing.T) {
 	r := newRig(t)
 	r.stripe.accountFails.Store(true)
@@ -331,7 +333,7 @@ func TestATierPriceFailureLeavesTheWorkerStoppedUntilRecovery(t *testing.T) {
 	r.start(t)
 	eventually(t, "the failed price resolution report", func() bool { return r.reports.count("tier price resolution") >= 1 })
 
-	if code := r.deliver(t, "evt_queued", "invoice.paid", `{"object":"invoice","id":"in_recovery","customer":"cus_topup","billing_reason":"subscription_create","amount_paid":0,"parent":{"subscription_details":{"subscription":"sub_recovery","metadata":{"enx_user_id":"u_topup"}}},"lines":{"has_more":false,"data":[{"id":"il_recovery","amount":0,"parent":{"subscription_item_details":{"subscription":"sub_recovery","subscription_item":"si_recovery","proration":false}},"pricing":{"price_details":{"price":"price_pp_m"}},"period":{"start":1790000000,"end":1800000000}}]}}`); code != http.StatusOK {
+	if code := r.deliver(t, "evt_queued", "invoice.paid", recoveryInvoicePaid); code != http.StatusOK {
 		t.Fatalf("receipt with prices unresolved = %d, want 200", code)
 	}
 	if status, attempts := eventStatus(t, "evt_queued"); status != "pending" || attempts != 0 {
