@@ -767,7 +767,14 @@ function SentenceBlock({
       </div>
 
       {entry.words.length > 0 && (
-        <div data-testid="sidepanel-sentence-words" className="space-y-2 pb-3">
+        // pb-1.5 is optical compensation: the sentence's line-height adds
+        // ~6px of visual space under the group's top padding, while the
+        // nested cards end in a hard accent border. 12 + 6 = 18px balances
+        // the bottom against the top.
+        <div
+          data-testid="sidepanel-sentence-words"
+          className="space-y-2 pb-1.5"
+        >
           {entry.words.map(card => (
             <WordCard
               key={card.key}

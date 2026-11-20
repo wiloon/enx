@@ -123,7 +123,7 @@ test.describe('Side Panel shared history (ADR-090)', () => {
         list.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom
       )
     })
-    expect(bottomInset).toBeCloseTo(12)
+    expect(bottomInset).toBeCloseTo(6)
     await expect(lookupCard).toHaveCount(1)
     await expect
       .poll(async () =>
