@@ -260,8 +260,57 @@ type Account struct {
 	EmailHMACKey Secret `mapstructure:"email-hmac-key"`
 }
 
+// Admin is the admin allowlist of external auth subjects (ADR-036). Load
+// resolves it from ADMIN_AUTH_SUBJECTS and the deprecated ADMIN_CLERK_USER_IDS;
+// read AuthSubjects only.
 type Admin struct {
-	ClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	AuthSubjects []string `mapstructure:"auth-subjects"`
+	// LegacyClerkUserIDs only receives the deprecated admin.clerk-user-ids
+	// binding as decoded; authorization reads AuthSubjects only.
+	LegacyClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	// DeprecatedSource names the deprecated input that supplied AuthSubjects
+	// ("" when a current one did, or nothing is set).
+	DeprecatedSource string `mapstructure:"-"`
+}
+
+const (
+	adminLegacyEnv  = "ADMIN_CLERK_USER_IDS"
+	adminLegacyTOML = "admin.clerk-user-ids"
+)
+
+// nonBlank trims every entry and drops the empty ones.
+func nonBlank(in []string) []string {
+	var out []string
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// resolveAdmin picks the first non-empty list from ADMIN_AUTH_SUBJECTS,
+// ADMIN_CLERK_USER_IDS, admin.auth-subjects and admin.clerk-user-ids, in that
+// order. file is the koanf state before the environment was merged.
+func (c *Config) resolveAdmin(file *koanf.Koanf) {
+	type source struct {
+		list       []string
+		deprecated string
+	}
+	sources := []source{
+		{strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")), ""},
+		{strings.Fields(os.Getenv(adminLegacyEnv)), adminLegacyEnv},
+		{nonBlank(file.Strings("admin.auth-subjects")), ""},
+		{nonBlank(file.Strings(adminLegacyTOML)), adminLegacyTOML},
+	}
+	c.Admin.AuthSubjects, c.Admin.DeprecatedSource = nil, ""
+	for _, s := range sources {
+		if len(s.list) > 0 {
+			c.Admin.AuthSubjects = s.list
+			c.Admin.DeprecatedSource = s.deprecated
+			return
+		}
+	}
 }
 
 // Ops is the operator-facing endpoints outside Clerk (ADR-058 Decision 4).
@@ -565,6 +614,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	fileState := k.Copy()
 	if err := k.Load(confmap.Provider(envValues(), "."), nil); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
@@ -574,6 +624,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg.File = file
+	cfg.resolveAdmin(fileState)
 
 	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
 		return strings.TrimSpace(party) != ""
@@ -1010,8 +1061,10 @@ var envBindings = map[string]string{
 	"oidc.image-url-claim":            "OIDC_IMAGE_URL_CLAIM",
 	// ADR-062 Decision 3: the trial grant record's email HMAC key.
 	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
-	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
-	// Empty => admin endpoints are effectively off.
+	// Space-separated external auth subjects allowed to call POST /api/admin/*.
+	// Empty => admin endpoints are effectively off. ADMIN_CLERK_USER_IDS is
+	// the deprecated name, still read while deployments transition.
+	"admin.auth-subjects":  "ADMIN_AUTH_SUBJECTS",
 	"admin.clerk-user-ids": "ADMIN_CLERK_USER_IDS",
 
 	// Sentence translation (TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md

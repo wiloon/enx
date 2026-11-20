@@ -37,7 +37,7 @@ var (
 	// ErrNotConfigured: CLERK_SECRET_KEY is not set, so Clerk cannot be
 	// told to delete, ban or sign out anyone.
 	ErrNotConfigured = errors.New("account: Clerk Backend API is not configured")
-	// ErrProtectedAdmin: the account is in ADMIN_CLERK_USER_IDS, which can
+	// ErrProtectedAdmin: the account is in ADMIN_AUTH_SUBJECTS, which can
 	// be neither disabled nor deleted (ADR-062 Decision 7).
 	ErrProtectedAdmin = errors.New("account: an admin account cannot be disabled or deleted")
 	// ErrRenewingSubscription: the user has a subscription that will renew;
@@ -89,7 +89,7 @@ type DeletionChecker interface {
 	Check(context.Context, string) (eligibility.DeletionVerdict, error)
 }
 
-// Admins is the ADMIN_CLERK_USER_IDS allowlist.
+// Admins is the ADMIN_AUTH_SUBJECTS allowlist.
 type Admins interface {
 	Contains(clerkUserID string) bool
 }

@@ -22,7 +22,7 @@ func TestAdminRouteUsesCutoverReader(t *testing.T) {
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 
 	sqlitex.Init(filepath.Join(t.TempDir(), "route.db"))
 	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
