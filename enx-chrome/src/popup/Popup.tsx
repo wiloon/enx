@@ -10,6 +10,7 @@ import { useSavedPage } from '@/hooks/useSavedPage'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
 import '@/index.css'
 import PopupHeader from '@/components/PopupHeader'
+import PopupStatsSection from '@/components/PopupStatsSection'
 import PopupVersion from '@/components/PopupVersion'
 import PageReportPrompt, {
   PageReportStatus,
@@ -270,6 +271,8 @@ function SignedInBody({
 
   return (
     <SendFeedback footerEnd={footerEnd}>
+      <PopupStatsSection />
+
       <div className="flex items-center gap-3 rounded-xl bg-background px-3 py-2 shadow-xs ring-1 ring-border">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">
           {initial}

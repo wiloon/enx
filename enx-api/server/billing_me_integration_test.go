@@ -56,6 +56,7 @@ func assertBillingMe(t *testing.T, server *httptest.Server, token, status, plan 
 	wantCredits := map[string]any{
 		"subscriptionBalance": float64(120), "topupBalance": float64(340),
 		"trialBalance": float64(56), "trialExpiresAt": float64(4102444800),
+		"lowBalanceThreshold": float64(20),
 	}
 	if !reflect.DeepEqual(body["credits"], wantCredits) {
 		t.Errorf("credits = %v, want %v", body["credits"], wantCredits)

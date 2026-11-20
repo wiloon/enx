@@ -48,9 +48,12 @@ import {
 import {
   enqueueReport,
   flushQueue,
+  localDate,
   utcOffsetMinutes,
   type StatsDelta,
 } from './statsReporter'
+import type { BillingInputs } from '@/lib/creditNotice'
+import type { PopupSummary } from '@/lib/popupSummary'
 import {
   enableOnNewlyGrantedSite,
   enableOnSignInReturn,
@@ -1249,6 +1252,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getReviewWords':
           return await handleGetReviewWords()
 
+        case 'GET_POPUP_SUMMARY':
+          return await handleGetPopupSummary()
+
         case 'markKnown':
           return await handleMarkKnown(request.word, request.userId)
 
@@ -1702,6 +1708,52 @@ const handleGetOneWord = async (word: string, refresh = false) => {
       code: response.code,
     }
   }
+}
+
+// Popup stats card (ADR-052 Decision 3): stats and billing in parallel; each
+// half succeeds or fails on its own. No chrome.storage cache (Decision 5).
+export const handleGetPopupSummary = async (
+  now: Date = new Date()
+): Promise<PopupSummary> => {
+  const date = localDate(now)
+  const noRetry = { gatewayRetry: false as const }
+  const [statsResult, billingResult] = await Promise.all([
+    makeApiRequest(`/api/stats/overview?date=${date}`, { method: 'GET' }, noRetry),
+    makeApiRequest('/api/billing/me', { method: 'GET' }, noRetry),
+  ])
+
+  let stats: PopupSummary['stats'] = null
+  if (statsResult.success && statsResult.data) {
+    const week = statsResult.data.week
+    const vocab = statsResult.data.vocab
+    if (week && vocab) {
+      stats = {
+        wordsReadThisWeek: Number(week.wordsRead) || 0,
+        vocabTotal: Number(vocab.total) || 0,
+        vocabMastered: Number(vocab.mastered) || 0,
+      }
+    }
+  }
+
+  let billing: BillingInputs | null = null
+  if (billingResult.success && billingResult.data?.credits) {
+    const credits = billingResult.data.credits
+    const subscription = billingResult.data.subscription
+    billing = {
+      subscriptionBalance: Number(credits.subscriptionBalance) || 0,
+      topupBalance: Number(credits.topupBalance) || 0,
+      trialBalance: Number(credits.trialBalance) || 0,
+      trialExpiresAt:
+        credits.trialExpiresAt == null ? null : Number(credits.trialExpiresAt),
+      subscriptionStatus:
+        typeof subscription?.status === 'string' ? subscription.status : 'none',
+    }
+    if (credits.lowBalanceThreshold !== undefined) {
+      billing.lowBalanceThreshold = Number(credits.lowBalanceThreshold)
+    }
+  }
+
+  return { stats, billing }
 }
 
 // The user's review list (ADR-069 Decision 1): a plain GET with no page text.

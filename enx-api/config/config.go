@@ -525,6 +525,10 @@ type Feedback struct {
 type Credits struct {
 	Trial    Trial    `mapstructure:"trial"`
 	Referral Referral `mapstructure:"referral"`
+	// LowBalanceThreshold is when /billing/me tells the client the balance
+	// is low (ADR-052 Decision 2a). 0 turns that notice off; must not be
+	// negative. Default 20.
+	LowBalanceThreshold int64 `mapstructure:"low-balance-threshold"`
 }
 
 // Referral is the invite-link credits (ADR-051 Decision 7). 0 switches the
@@ -862,6 +866,7 @@ func (c *Config) Validate() error {
 	notNegative("credits.trial.ttl-days", t.TTLDays >= 0)
 	notNegative("credits.trial.calls-per-minute", t.CallsPerMinute >= 0)
 	notNegative("credits.trial.calls-per-day", t.CallsPerDay >= 0)
+	notNegative("credits.low-balance-threshold", c.Credits.LowBalanceThreshold >= 0)
 
 	r := c.Credits.Referral
 	notNegative("credits.referral.invitee-bonus", r.InviteeBonus >= 0)
@@ -976,6 +981,9 @@ func defaults() map[string]any {
 	set("credits.trial.ttl-days", 7)
 	set("credits.trial.calls-per-minute", 5)
 	set("credits.trial.calls-per-day", 30)
+	// Popup / billing low-balance notice (ADR-052 Decision 2a). 0 turns
+	// that notice off; starting value, to be recalibrated with paid tiers.
+	set("credits.low-balance-threshold", 20)
 
 	// Referral credits (ADR-051 Decision 7): estimated values, to be
 	// calibrated after internal testing. 0 switches each grant off.
@@ -1155,6 +1163,7 @@ var envBindings = map[string]string{
 	"credits.trial.ttl-days":         "CREDITS_TRIAL_TTL_DAYS",
 	"credits.trial.calls-per-minute": "CREDITS_TRIAL_CALLS_PER_MINUTE",
 	"credits.trial.calls-per-day":    "CREDITS_TRIAL_CALLS_PER_DAY",
+	"credits.low-balance-threshold":  "CREDITS_LOW_BALANCE_THRESHOLD",
 
 	"credits.referral.invitee-bonus":                 "CREDITS_REFERRAL_INVITEE_BONUS",
 	"credits.referral.invitee-ttl-days":              "CREDITS_REFERRAL_INVITEE_TTL_DAYS",

@@ -193,7 +193,9 @@ export default function SendFeedback({
           {FEEDBACK_SENT_MESSAGE}
         </div>
       )}
-      <div className="space-y-2.5">{children}</div>
+      {/* space-y-2 (not 2.5): the stats card (ADR-052) needs the room so the
+          tallest popup layout still fits Chrome's 600px cap. */}
+      <div className="space-y-2">{children}</div>
       {/* A quiet ghost entry rather than a card of its own, so the main page
           fits Chrome's 600px popup without a scrollbar. */}
       <div className="mt-1 flex items-center justify-center">

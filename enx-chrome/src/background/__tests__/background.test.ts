@@ -100,6 +100,7 @@ import {
   makeApiRequest,
   NETWORK_ERROR_MESSAGE,
   SERVICE_UNAVAILABLE_MESSAGE,
+  handleGetPopupSummary,
   handleGetReviewWords,
   SESSION_SYNC_RETRY_DELAYS_MS,
   clearTabSidePanelSession,
@@ -3713,3 +3714,136 @@ describe('background onMessage / openOptionsPage', () => {
     expect(response).toEqual({ success: true })
   })
 })
+
+// ADR-052: popup stats card — GET_POPUP_SUMMARY.
+describe('handleGetPopupSummary', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest.fn()
+  })
+
+  const overview = {
+    week: { wordsRead: 1237 },
+    vocab: { total: 42, mastered: 7 },
+  }
+  const billingMe = {
+    success: true,
+    subscription: { status: 'active', plan: 'pro', currentPeriodEnd: 0 },
+    credits: {
+      subscriptionBalance: 5,
+      topupBalance: 0,
+      trialBalance: 0,
+      trialExpiresAt: null,
+      lowBalanceThreshold: 20,
+    },
+  }
+
+  it('queries overview with the local date and returns both halves', async () => {
+    const now = new Date(2026, 5, 15, 12, 0, 0) // local 2026-06-15
+    ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/stats/overview')) {
+        return jsonResponse(200, overview)
+      }
+      return jsonResponse(200, billingMe)
+    })
+
+    expect(await handleGetPopupSummary(now)).toEqual({
+      stats: {
+        wordsReadThisWeek: 1237,
+        vocabTotal: 42,
+        vocabMastered: 7,
+      },
+      billing: {
+        subscriptionBalance: 5,
+        topupBalance: 0,
+        trialBalance: 0,
+        trialExpiresAt: null,
+        subscriptionStatus: 'active',
+        lowBalanceThreshold: 20,
+      },
+    })
+
+    const urls = (global.fetch as jest.Mock).mock.calls.map(([url]) =>
+      String(url)
+    )
+    expect(urls).toContain(
+      'http://localhost:8090/api/stats/overview?date=2026-06-15'
+    )
+    expect(urls).toContain('http://localhost:8090/api/billing/me')
+  })
+
+  it('keeps the other half when stats fails', async () => {
+    ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/stats/overview')) {
+        return jsonResponse(500, { success: false, message: 'down' })
+      }
+      return jsonResponse(200, billingMe)
+    })
+
+    expect(await handleGetPopupSummary(new Date(2026, 0, 1))).toEqual({
+      stats: null,
+      billing: {
+        subscriptionBalance: 5,
+        topupBalance: 0,
+        trialBalance: 0,
+        trialExpiresAt: null,
+        subscriptionStatus: 'active',
+        lowBalanceThreshold: 20,
+      },
+    })
+  })
+
+  it('keeps the other half when billing fails', async () => {
+    ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/billing/me')) {
+        return jsonResponse(503, {
+          success: false,
+          message: 'Billing information is unavailable right now. Please try again later.',
+        })
+      }
+      return jsonResponse(200, overview)
+    })
+
+    expect(await handleGetPopupSummary(new Date(2026, 0, 1))).toEqual({
+      stats: {
+        wordsReadThisWeek: 1237,
+        vocabTotal: 42,
+        vocabMastered: 7,
+      },
+      billing: null,
+    })
+  })
+
+  it('answers GET_POPUP_SUMMARY from the onMessage listener', async () => {
+    ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/stats/overview')) {
+        return jsonResponse(200, overview)
+      }
+      return jsonResponse(200, billingMe)
+    })
+
+    const response = await new Promise(resolve =>
+      onMessageListener({ type: 'GET_POPUP_SUMMARY' }, {}, resolve)
+    )
+
+    expect(response).toMatchObject({
+      stats: { wordsReadThisWeek: 1237, vocabTotal: 42, vocabMastered: 7 },
+      billing: { subscriptionStatus: 'active', lowBalanceThreshold: 20 },
+    })
+  })
+
+  it('does not gateway-retry either request', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      jsonResponse(503, 'no peers', false)
+    )
+
+    await handleGetPopupSummary(new Date(2026, 0, 1))
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+  })
+})
+
