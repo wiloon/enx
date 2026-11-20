@@ -7,14 +7,10 @@ import type { WorkerAuthAdapter } from '@/lib/auth/types'
  * it never constructs a Clerk adapter directly.
  */
 export function selectWorkerAuth(auth: AuthConfig): WorkerAuthAdapter {
-  switch (auth.provider) {
-    case 'clerk':
-      return createClerkWorkerAuth(auth)
-    default: {
-      const exhaustive: never = auth
-      throw new Error(
-        `Unsupported auth provider: ${(exhaustive as AuthConfig).provider}`
-      )
-    }
+  if (auth.provider === 'clerk') {
+    return createClerkWorkerAuth(auth)
   }
+  throw new Error(
+    `Unsupported auth provider: ${(auth as { provider: string }).provider}`
+  )
 }

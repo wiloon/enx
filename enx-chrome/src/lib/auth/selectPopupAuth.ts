@@ -7,14 +7,10 @@ import type { PopupAuthAdapter } from '@/lib/auth/types'
  * it never constructs a Clerk adapter directly.
  */
 export function selectPopupAuth(auth: AuthConfig): PopupAuthAdapter {
-  switch (auth.provider) {
-    case 'clerk':
-      return createClerkPopupAuth(auth)
-    default: {
-      const exhaustive: never = auth
-      throw new Error(
-        `Unsupported auth provider: ${(exhaustive as AuthConfig).provider}`
-      )
-    }
+  if (auth.provider === 'clerk') {
+    return createClerkPopupAuth(auth)
   }
+  throw new Error(
+    `Unsupported auth provider: ${(auth as { provider: string }).provider}`
+  )
 }
