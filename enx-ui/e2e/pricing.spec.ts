@@ -18,7 +18,7 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Small top-up')).toContainText('$2.99')
     // Other plan cards mention "Free" too; the Free plan is listed first.
     await expect(card(page, 'Free').first()).toContainText('$0')
-    await expect(card(page, 'Free').first()).toContainText('with a daily limit')
+    await expect(card(page, 'Free').first()).toContainText('lookups a day')
     // Not redirected to sign-in.
     await expect(page).toHaveURL(/\/pricing$/)
   })
