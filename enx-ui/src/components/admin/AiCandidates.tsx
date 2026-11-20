@@ -76,7 +76,7 @@ export default function AiCandidates() {
             role="tab"
             aria-selected={status === tab.value}
             variant="outline"
-            className="aria-selected:border-brand aria-selected:bg-brand/10 aria-selected:text-brand"
+            className="aria-selected:border-brand aria-selected:bg-brand/10 aria-selected:text-brand dark:aria-selected:bg-brand/20"
             size="sm"
             onClick={() => switchTab(tab.value)}
           >
