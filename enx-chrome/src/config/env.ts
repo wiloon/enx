@@ -49,7 +49,9 @@ if (!environment) {
 
 const authProvider = stamped('VITE_AUTH_PROVIDER') as AuthProviderId
 if (authProvider !== 'clerk') {
-  throw new Error(`[ENX Config] Unsupported VITE_AUTH_PROVIDER: ${authProvider}`)
+  throw new Error(
+    `[ENX Config] Unsupported auth provider stamped as ${authProvider}`
+  )
 }
 
 const auth: AuthConfig = {
