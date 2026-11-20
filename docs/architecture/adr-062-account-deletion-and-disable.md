@@ -21,7 +21,7 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
    邀请人已注销时，尚未发放的邀请人奖励按 adr-051 第 5 条作废（`referrer_deleted`）；发奖与本地删除并发时也不得重建已删除的余额行。
 
 2. **两个入口共用同一条删除流程**（`account` 领域服务里的 `Delete`，Clerk、Stripe 和仓储都通过接口注入）：
-   - **用户自助注销**：enx-ui 的 `/settings` 页面，要求用户输入自己的邮箱来确认。剩余的试用、订阅、充值积分全部作废，注销流程本身不退款；要退款的用户必须在注销**之前**走 adr-049 的退款流程，两条流程相互独立。确认文案写明这两点。接口为 `DELETE /api/me`。
+   - **用户自助注销**：enx-ui 的 `/settings` 页面，要求用户输入大写的 `DELETE` 来确认（两个版本相同；2026-11-19 由 adr-036 Decision 8 修订，原为输入自己的邮箱）。enx-api 在服务端校验：去掉首尾空格后大小写敏感地等于 `DELETE`，否则返回 400（`confirmation_mismatch`），不删任何数据。剩余的试用、订阅、充值积分全部作废，注销流程本身不退款；要退款的用户必须在注销**之前**走 adr-049 的退款流程，两条流程相互独立。确认文案写明这两点。接口为 `DELETE /api/me`，请求体 `{"confirmation": "DELETE"}`。
    - **管理员删除**：在 `/admin/users/:id` 页面操作，接口为 `DELETE /api/admin/users/:id`，可以带 `resetTrial=true`（见第 4 条）。
    - **有续费中的订阅或未解决冲突时拒绝删除**：2026-10-23 所有者确认按 ADR-067 查询用户所属的全部订阅，不只查当前 accepted 指针；存在 open 订阅冲突就拒绝删除，并显示 `Contact an administrator to resolve your subscription issue before deleting your account.`。即使标 resolved，任何仍会续费的所属订阅也须先取消；普通 accepted 可从 `/billing` 的 Portal 取消；Portal 自建的降档排期不妨碍取消（Portal 会 release 排期再设期末取消），不需要先撤销降档。不在注销流程自动取消订阅；确认不再续费才允许注销，期末取消资格照旧。异常订阅由管理员在 Stripe 处理。未由 Stripe 权威确认 canceled/incomplete_expired 的全部所属订阅均须实时查询，包括本地 unpaid/incomplete/未知或滞后状态；终态证据受版本重验，不明确时重查。确认不再续费才放行，任何查询错误（含不明确的 resource_missing）不能放行，不能只凭缓存/人工备注判定取消。正常订阅已设置 `cancel_at_period_end`，或 flexible billing mode 下 `cancel_at` 不晚于本期末（Portal 取消只设后者，#337）时，沿用原有允许注销规则。管理员删除同样受限；不在注销中自动取消或退款。并发接受/分类与注销须受同一持久删除屏障协调。注销前打开的充值/订阅 Checkout 注销后才付款时，保存财务上下文并进入 needs_attention、可靠告警，不重建用户/余额/奖励/接受指针，不自动退款取消或关联同邮箱新账号；删除进行中的付款等待持久结果，中止后才重新验证处理。具体见 ADR-067 和 #297。
    - **执行顺序**：先写试用发放记录（幂等），再删 Clerk 用户，最后在一个事务里删本地数据。在 `BILLING_CUTOVER` 下，调用 Clerk 前持久记录已进入不可逆阶段；只有能确定 Clerk 未删除用户的失败才可经受 fencing 保护安全中止，超时等结果不明时保留屏障并恢复完成删除。本地事务失败时 Clerk 用户已经删了，残留数据由管理员重试删除清理（「Clerk 用户已不存在」视为成功）；恢复保留首次请求的 `resetTrial` 意图。屏障协调与恢复要求见 #532。开关关闭时沿用现有流程。
@@ -89,3 +89,4 @@ related: adr-015（Clerk 认证）、adr-048（试用积分，幂等键 `trial:<
 - 2026-10-23（所有者，Stripe 原生改档）：sandbox 实测 Portal 可取消带 Portal 降档排期的订阅，删除「先撤销降档再取消」指引；期末取消同时认 flexible billing mode 的 `cancel_at`（#337）。
 
 - 2026-10-29（#532）：明确 Clerk 删除结果不明时不得按确定失败中止，须持久保留屏障并恢复；保留首次删除的试用重置意图，防止并发重试重新开放已删除身份。
+- 2026-11-20（#1031）：按 adr-036 Decision 8 改写 Decision 2 的自助注销确认：输入 `DELETE` 代替邮箱，请求体字段 `confirmation`，不匹配返回 `confirmation_mismatch`，使本 ADR 单独阅读也与 Decision 8 一致。
