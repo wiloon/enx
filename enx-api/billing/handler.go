@@ -13,7 +13,6 @@ import (
 	"enx-api/enx"
 	"enx-api/middleware"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
 
 	billingstripe "enx-api/billing/stripe"
 
@@ -25,16 +24,18 @@ import (
 // is not set, same "unconfigured but not fatal" pattern as
 // aitranslate.Handler) so billing can be registered as gin route handlers.
 type Handler struct {
-	sc              *stripeSDK.Client
-	frontendBaseURL string
-	prices          config.StripePrice
-	subscriptions   subscription.Reader
-	checkout        *checkout.Service
+	sc                  *stripeSDK.Client
+	frontendBaseURL     string
+	prices              config.StripePrice
+	subscriptions       subscription.Reader
+	checkout            *checkout.Service
+	lowBalanceThreshold int64
 }
 
 // NewHandler injects accepted-subscription reads and live Checkout assessment.
-func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, prices config.StripePrice, subscriptions subscription.Reader, checkout *checkout.Service) *Handler {
-	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, prices: prices, subscriptions: subscriptions, checkout: checkout}
+// lowBalanceThreshold is credits.low-balance-threshold (ADR-052 Decision 2a).
+func NewHandler(sc *stripeSDK.Client, frontendBaseURL string, prices config.StripePrice, subscriptions subscription.Reader, checkout *checkout.Service, lowBalanceThreshold int64) *Handler {
+	return &Handler{sc: sc, frontendBaseURL: frontendBaseURL, prices: prices, subscriptions: subscriptions, checkout: checkout, lowBalanceThreshold: lowBalanceThreshold}
 }
 
 func (h *Handler) checkoutCustomer(c *gin.Context, userID, tier string) (string, bool) {
@@ -205,14 +206,14 @@ func (h *Handler) Me(c *gin.Context) {
 		status = "none"
 	}
 
-	var account sqlitex.CreditAccount
-	sqlitex.DB.Where("user_id = ?", userID).First(&account)
-
-	// The trial pool reports its spendable value: 0 once expired (ADR-048
-	// Decision 8). trialExpiresAt is null for an account never granted one.
-	trialBalance, trialExpires, err := credit.Trial(c.Request.Context(), userID)
+	// Three pools from one credit_accounts read (ADR-052 Decision 2b). A
+	// missing row is zeros; any other read error is the same 503 as a
+	// subscription read failure — never HTTP 200 with fabricated zeros.
+	subscriptionBalance, topupBalance, trialBalance, trialExpires, err := credit.Pools(c.Request.Context(), userID)
 	if err != nil {
-		logger.Errorf("billing: read trial for %s: %v", userID, err)
+		logger.Errorf("billing: read credit pools for %s: %v", userID, err)
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Billing information is unavailable right now. Please try again later.")
+		return
 	}
 	var trialExpiresAt *int64
 	if !trialExpires.IsZero() {
@@ -228,10 +229,11 @@ func (h *Handler) Me(c *gin.Context) {
 			"currentPeriodEnd": sub.CurrentPeriodEnd,
 		},
 		"credits": gin.H{
-			"subscriptionBalance": account.SubscriptionBalance,
-			"topupBalance":        account.TopupBalance,
+			"subscriptionBalance": subscriptionBalance,
+			"topupBalance":        topupBalance,
 			"trialBalance":        trialBalance,
 			"trialExpiresAt":      trialExpiresAt,
+			"lowBalanceThreshold": h.lowBalanceThreshold,
 		},
 	})
 }

@@ -6,6 +6,69 @@ import { mockBackendFetch } from './helpers'
 // Chrome caps an action popup at 600px tall and scrolls anything beyond it.
 const POPUP_MAX_HEIGHT = 600
 
+const POPUP_SUMMARY_WITH_NOTICE = {
+  stats: {
+    wordsReadThisWeek: 1237,
+    vocabTotal: 42,
+    vocabMastered: 7,
+  },
+  billing: {
+    subscriptionBalance: 0,
+    topupBalance: 8,
+    trialBalance: 0,
+    trialExpiresAt: null,
+    subscriptionStatus: 'active',
+    lowBalanceThreshold: 20,
+  },
+}
+
+// Holds GET_POPUP_SUMMARY until releasePopupSummary runs (ADR-052 Decision 5).
+async function holdPopupSummary(popup: Page) {
+  await popup.addInitScript(() => {
+    type Hold = {
+      promise: Promise<unknown>
+      resolve: (value: unknown) => void
+    }
+    const hold: Hold = {
+      promise: null as unknown as Promise<unknown>,
+      resolve: () => {},
+    }
+    hold.promise = new Promise(resolve => {
+      hold.resolve = resolve
+    })
+    ;(
+      globalThis as unknown as { __enxPopupSummaryHold: Hold }
+    ).__enxPopupSummaryHold = hold
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    chrome.runtime.sendMessage = ((message: unknown, ...rest: unknown[]) => {
+      if (
+        message &&
+        typeof message === 'object' &&
+        (message as { type?: string }).type === 'GET_POPUP_SUMMARY'
+      ) {
+        return hold.promise
+      }
+      return (
+        original as (...args: unknown[]) => unknown
+      )(message, ...rest)
+    }) as typeof chrome.runtime.sendMessage
+  })
+}
+
+async function releasePopupSummary(
+  popup: Page,
+  summary: typeof POPUP_SUMMARY_WITH_NOTICE
+) {
+  await popup.evaluate(value => {
+    const hold = (
+      globalThis as unknown as {
+        __enxPopupSummaryHold: { resolve: (v: unknown) => void }
+      }
+    ).__enxPopupSummaryHold
+    hold.resolve(value)
+  }, summary)
+}
+
 // Sends a page action to the article tab's content script, as the popup does,
 // retrying while the just-loaded page's content script is not listening yet.
 async function pageAction(context: BrowserContext, page: Page, action: string) {
@@ -87,6 +150,7 @@ test.describe('Popup - layout', () => {
               : tab
           )) as typeof chrome.tabs.query
       }, FIXTURE_ORIGIN)
+      await holdPopupSummary(popup)
       await popup.setViewportSize({ width: 340, height: POPUP_MAX_HEIGHT })
       await page.bringToFront()
       await popup.goto(`chrome-extension://${extensionId}/popup.html`)
@@ -95,6 +159,12 @@ test.describe('Popup - layout', () => {
       await expect(
         popup.getByRole('button', { name: 'Choose article' })
       ).toBeVisible({ timeout: 15_000 })
+      await expect(popup.getByTestId('popup-stats-card')).toBeVisible()
+      await releasePopupSummary(popup, POPUP_SUMMARY_WITH_NOTICE)
+      await expect(popup.getByText('1,200')).toBeVisible()
+      await expect(
+        popup.getByTestId('popup-stats-credit-notice')
+      ).toBeVisible()
       if (scenario === 'page-only choice') {
         await expect(
           popup.getByRole('button', { name: 'Use automatic' })
@@ -192,9 +262,81 @@ test.describe('Popup - layout', () => {
       ).toHaveCount(0)
     })
   }
+
+  test('stats card shows placeholders until GET_POPUP_SUMMARY arrives, without shifting learning mode', async ({
+    context,
+    page,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context)
+    await page.goto('/article-pick.html')
+    const popup = await context.newPage()
+    await popup.addInitScript(fixtureOrigin => {
+      const query = chrome.tabs.query.bind(chrome.tabs)
+      chrome.tabs.query = (async (info: chrome.tabs.QueryInfo) =>
+        (await query(info)).map(tab =>
+          tab.url?.startsWith(fixtureOrigin)
+            ? {
+                ...tab,
+                url: tab.url.replace(fixtureOrigin, 'https://example.org'),
+              }
+            : tab
+        )) as typeof chrome.tabs.query
+    }, FIXTURE_ORIGIN)
+    await holdPopupSummary(popup)
+    await popup.setViewportSize({ width: 340, height: POPUP_MAX_HEIGHT })
+    await page.bringToFront()
+    await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+
+    await expect(popup.getByTestId('popup-stats-card')).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(popup.getByTestId('popup-stats-card').getByText('—')).toHaveCount(
+      2
+    )
+    await expect(
+      popup.getByTestId('popup-stats-credit-notice')
+    ).toHaveCount(0)
+
+    const before = await popup.evaluate(() => {
+      const card = document
+        .querySelector('[data-testid="popup-stats-card"]')!
+        .getBoundingClientRect()
+      const learning =
+        document.querySelector('[data-testid="learning-mode-enable"]') ||
+        document.querySelector('[data-testid="learning-mode-card"]')
+      return {
+        cardHeight: card.height,
+        learningTop: learning!.getBoundingClientRect().top,
+      }
+    })
+
+    await releasePopupSummary(popup, POPUP_SUMMARY_WITH_NOTICE)
+    await expect(popup.getByText('1,200')).toBeVisible()
+    await expect(popup.getByText('42')).toBeVisible()
+    await expect(popup.getByTestId('popup-stats-credit-notice')).toHaveText(
+      'Only 8 AI credits left · Get more'
+    )
+
+    const after = await popup.evaluate(() => {
+      const card = document
+        .querySelector('[data-testid="popup-stats-card"]')!
+        .getBoundingClientRect()
+      const learning =
+        document.querySelector('[data-testid="learning-mode-enable"]') ||
+        document.querySelector('[data-testid="learning-mode-card"]')
+      return {
+        cardHeight: card.height,
+        learningTop: learning!.getBoundingClientRect().top,
+      }
+    })
+    expect(after.cardHeight).toBe(before.cardHeight)
+    expect(after.learningTop).toBe(before.learningTop)
+  })
 })
 
-test('signed-out popup keeps the standalone version footer', async ({
+test('signed-out popup keeps the standalone version footer and hides the stats card', async ({
   context,
   extensionId,
 }, testInfo) => {
@@ -204,6 +346,7 @@ test('signed-out popup keeps the standalone version footer', async ({
   await expect(
     popup.getByRole('button', { name: 'Sign in on the website' })
   ).toBeVisible()
+  await expect(popup.getByTestId('popup-stats-card')).toHaveCount(0)
   await expect(popup.getByRole('button', { name: /^v\d/ })).toHaveCount(1)
   await expect(
     popup.getByRole('button', { name: 'Send feedback' })

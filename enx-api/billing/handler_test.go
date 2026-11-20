@@ -19,6 +19,7 @@ import (
 	"enx-api/billing/eligibility"
 	"enx-api/billing/portalsession"
 	"enx-api/billing/subscription"
+	"enx-api/config"
 	"enx-api/repo"
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
@@ -313,7 +314,7 @@ func (f fakeSubscriptions) Subscription(context.Context, string) (portalsession.
 func checkoutHandler(t *testing.T, owners fakeOwners, subs fakeSubscriptions) *Handler {
 	t.Helper()
 	sc := fakeStripeClient(t, func(url.Values) { t.Error("checkout session created") })
-	return NewHandler(sc, "https://example.com", testStripe().Price, repo.BillingSubscriptions{}, checkout.New(owners, subs))
+	return NewHandler(sc, "https://example.com", testStripe().Price, repo.BillingSubscriptions{}, checkout.New(owners, subs), 20)
 }
 
 func observeLogs(t *testing.T) *observer.ObservedLogs {
@@ -472,6 +473,80 @@ func TestMeDefaultsForUnknownUser(t *testing.T) {
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"status":"none"`)) {
 		t.Fatalf("expected status none, got %s", body)
 	}
+	got := decodeBody(t, w)
+	credits, _ := got["credits"].(map[string]any)
+	for _, key := range []string{"subscriptionBalance", "topupBalance", "trialBalance"} {
+		if credits[key] != float64(0) {
+			t.Errorf("credits.%s = %v, want 0 with no credit_accounts row", key, credits[key])
+		}
+	}
+	if credits["trialExpiresAt"] != nil {
+		t.Errorf("trialExpiresAt = %v, want null", credits["trialExpiresAt"])
+	}
+	if credits["lowBalanceThreshold"] != float64(20) {
+		t.Errorf("lowBalanceThreshold = %v, want default 20", credits["lowBalanceThreshold"])
+	}
+}
+
+func TestMeReturnsConfiguredLowBalanceThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  string
+		want int64
+	}{
+		{name: "non-default", env: "7", want: 7},
+		{name: "explicit zero", env: "0", want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("CREDITS_LOW_BALANCE_THRESHOLD", tc.env)
+			cfg, err := config.Load("")
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Credits.LowBalanceThreshold != tc.want {
+				t.Fatalf("config LowBalanceThreshold = %d, want %d", cfg.Credits.LowBalanceThreshold, tc.want)
+			}
+			h := NewHandler(nil, "https://example.com", testStripe().Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, nil), cfg.Credits.LowBalanceThreshold)
+			w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-threshold-"+tc.name, ``)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
+			}
+			credits := decodeBody(t, w)["credits"].(map[string]any)
+			if credits["lowBalanceThreshold"] != float64(tc.want) {
+				t.Fatalf("lowBalanceThreshold = %v, want %d", credits["lowBalanceThreshold"], tc.want)
+			}
+		})
+	}
+}
+
+func TestMeAnswers503WhenCreditPoolsCannotBeRead(t *testing.T) {
+	previous := sqlitex.DB
+	t.Cleanup(func() { sqlitex.DB = previous })
+	sqlitex.Init(filepath.Join(t.TempDir(), "me-pools-fail.db"))
+	raw, err := sqlitex.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(nil, "https://example.com", testStripe().Price, activeSubscriptionReader{}, nil, 20)
+	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-pools-down", ``)
+	if w.Code != http.StatusServiceUnavailable || !bytes.Contains(w.Body.Bytes(), []byte(`"success":false`)) {
+		t.Fatalf("got %d %s, want 503 with success false rather than zeros", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("Billing information is unavailable")) {
+		t.Fatalf("body = %s, want the billing-unavailable message", w.Body.String())
+	}
+}
+
+type activeSubscriptionReader struct{}
+
+func (activeSubscriptionReader) Subscription(context.Context, string) (subscription.Snapshot, error) {
+	return subscription.Snapshot{Status: "active"}, nil
 }
 
 type failingSubscriptionReader struct{}
@@ -481,7 +556,7 @@ func (failingSubscriptionReader) Subscription(context.Context, string) (subscrip
 }
 
 func TestMeAnswers503WhenTheSubscriptionCannotBeRead(t *testing.T) {
-	h := NewHandler(nil, "https://example.com", testStripe().Price, failingSubscriptionReader{}, nil)
+	h := NewHandler(nil, "https://example.com", testStripe().Price, failingSubscriptionReader{}, nil, 20)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-reader-down", ``)
 
 	if w.Code != http.StatusServiceUnavailable || !bytes.Contains(w.Body.Bytes(), []byte(`"success":false`)) {

@@ -90,6 +90,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"credits.trial.amount", cfg.Credits.Trial.Amount, int64(100)},
 		{"credits.trial.ttl-days", cfg.Credits.Trial.TTLDays, 7},
 		{"credits.trial.calls-per-day", cfg.Credits.Trial.CallsPerDay, 30},
+		{"credits.low-balance-threshold", cfg.Credits.LowBalanceThreshold, int64(20)},
 		// Referral credits (ADR-051 Decision 7): estimates, calibrated later.
 		{"credits.referral.invitee-bonus", cfg.Credits.Referral.InviteeBonus, int64(100)},
 		{"credits.referral.invitee-ttl-days", cfg.Credits.Referral.InviteeTTLDays, 14},
@@ -269,6 +270,7 @@ var envVars = map[string]string{
 	"CREDITS_TRIAL_TTL_DAYS":                          "credits.trial.ttl-days",
 	"CREDITS_TRIAL_CALLS_PER_MINUTE":                  "credits.trial.calls-per-minute",
 	"CREDITS_TRIAL_CALLS_PER_DAY":                     "credits.trial.calls-per-day",
+	"CREDITS_LOW_BALANCE_THRESHOLD":                   "credits.low-balance-threshold",
 	"CREDITS_REFERRAL_INVITEE_BONUS":                  "credits.referral.invitee-bonus",
 	"CREDITS_REFERRAL_INVITEE_TTL_DAYS":               "credits.referral.invitee-ttl-days",
 	"CREDITS_REFERRAL_REFERRER_REWARD_SUBSCRIPTION":   "credits.referral.referrer-reward-subscription",
@@ -621,6 +623,11 @@ func TestLoadRejects(t *testing.T) {
 			wantErr: "dictionary-lookup-daily",
 		},
 		{
+			name:    "negative low-balance threshold",
+			env:     map[string]string{"CREDITS_LOW_BALANCE_THRESHOLD": "-1"},
+			wantErr: "credits.low-balance-threshold must not be negative",
+		},
+		{
 			name:    "negative referral bonus",
 			env:     map[string]string{"CREDITS_REFERRAL_INVITEE_BONUS": "-1"},
 			wantErr: "credits.referral.invitee-bonus must not be negative",
@@ -703,6 +710,7 @@ func TestLoadAcceptsIntentionalZeros(t *testing.T) {
 	for env, key := range envVars {
 		if strings.HasPrefix(key, "stripe.credits.") || strings.HasPrefix(key, "stripe.costs.") ||
 			strings.HasPrefix(key, "credits.trial.") || strings.HasPrefix(key, "credits.referral.") ||
+			key == "credits.low-balance-threshold" ||
 			strings.HasPrefix(key, "ai-word.") ||
 			key == "rate-limit.requests-per-second" {
 			t.Setenv(env, "0")

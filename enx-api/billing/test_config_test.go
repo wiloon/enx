@@ -34,5 +34,5 @@ func seedSubscription(t *testing.T, userID, customerID, subscriptionID, status s
 }
 
 func newTestBillingHandler(sc *stripeSDK.Client, frontend string, stripe config.Stripe, _ WebhookObserver) *Handler {
-	return NewHandler(sc, frontend, stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)))
+	return NewHandler(sc, frontend, stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(sc, "", "", nil)), config.Default().Credits.LowBalanceThreshold)
 }
