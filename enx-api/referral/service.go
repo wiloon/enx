@@ -278,7 +278,15 @@ func (s *Service) PayDueRewards(ctx context.Context) (RewardRun, error) {
 	}
 	var run RewardRun
 	for _, r := range due {
+		if err := ctx.Err(); err != nil {
+			return run, err
+		}
 		outcome, err := s.settle(ctx, r)
+		if err != nil && ctx.Err() != nil {
+			// Shutdown interrupted this row; the error may not wrap
+			// context.Canceled. It stays pending for the next pass.
+			return run, ctx.Err()
+		}
 		switch {
 		case err != nil:
 			run.Retry++

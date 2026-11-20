@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"enx-api/billing/credit"
+	"enx-api/referral"
 	"enx-api/utils/logger"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -208,6 +211,56 @@ func TestLogJobFailureClassifiesShutdownByContext(t *testing.T) {
 			entries := logs.All()
 			if len(entries) != 1 || entries[0].Level != tc.wantLevel {
 				t.Fatalf("entries = %v, want one at %s", entries, tc.wantLevel)
+			}
+		})
+	}
+}
+
+// A sweep cut short by shutdown still reports what it finished and the row
+// failures it recorded while live, then one Info line for the cancellation.
+func TestJobReportsPartialRunBeforeShutdownInfo(t *testing.T) {
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	rowErr := errors.New("row failed")
+
+	tests := []struct {
+		name     string
+		report   func()
+		wantInfo []string
+		wantWarn string
+	}{
+		{"trial expiry", func() {
+			reportTrialSweep(cancelled, credit.TrialSweep{Expired: 2, Errors: []error{rowErr}}, context.Canceled)
+		}, []string{"credit: 2 expired trial(s) forfeited", "credit: expire trials: cancelled by shutdown"},
+			"credit: trial left for the next run: row failed"},
+		{"referral rewards", func() {
+			reportRewardRun(cancelled, referral.RewardRun{Rewarded: 1, Forfeited: 1, Errors: []error{rowErr}}, errors.New("interrupted (9)"))
+		}, []string{"referral: 1 reward(s) paid, 1 forfeited", "referral: pay due rewards: cancelled by shutdown"},
+			"referral: reward left pending for the next run: row failed"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			core, logs := observer.New(zapcore.DebugLevel)
+			t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+
+			tc.report()
+
+			var infos, warns []string
+			for _, e := range logs.All() {
+				switch e.Level {
+				case zapcore.InfoLevel:
+					infos = append(infos, e.Message)
+				case zapcore.WarnLevel:
+					warns = append(warns, e.Message)
+				default:
+					t.Errorf("unexpected %s entry: %s", e.Level, e.Message)
+				}
+			}
+			if !slices.Equal(infos, tc.wantInfo) {
+				t.Errorf("info = %q, want %q", infos, tc.wantInfo)
+			}
+			if !slices.Equal(warns, []string{tc.wantWarn}) {
+				t.Errorf("warn = %q, want only %q", warns, tc.wantWarn)
 			}
 		})
 	}
