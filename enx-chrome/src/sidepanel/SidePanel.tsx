@@ -355,7 +355,7 @@ function WordCard({
     <div
       className={
         nested
-          ? 'group relative border-l-2 border-brand/40 py-0.5 pl-3 hover:border-brand'
+          ? 'group relative border-l-2 border-brand/60 py-0.5 pl-3 hover:border-brand'
           : 'group relative rounded-lg border border-border bg-background px-3 py-2.5 hover:bg-muted'
       }
       data-testid={`sidepanel-card-${card.word}`}
