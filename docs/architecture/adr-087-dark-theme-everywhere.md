@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-14
 related: Amends adr-013（营销区固定浅色、不做主题切换器）、adr-019 / adr-020（网页→扩展通道的固定词表加两个词）；adr-086（宿主页面的深色配色，侧边栏按本 ADR 的主题选那一套）、adr-054；issue #296
 ---
