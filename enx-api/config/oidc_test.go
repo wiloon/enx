@@ -71,11 +71,20 @@ func TestOIDCPartiesOverrideLeavesClerkListAlone(t *testing.T) {
 	}
 }
 
-func TestOIDCEmptyPartiesOverrideInTOMLIsRejected(t *testing.T) {
+func TestOIDCPartiesOverrideInTOMLRequiresAUsableEntry(t *testing.T) {
 	isolate(t)
-	path := writeTOML(t, "[oidc]\nauthorized-parties = []\n")
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "oidc.authorized-parties") {
-		t.Fatalf("Load error = %v, want one naming oidc.authorized-parties", err)
+	t.Setenv("CLERK_AUTHORIZED_PARTIES", "https://enx.wiloon.lab")
+	for name, parties := range map[string]string{
+		"empty list":      `[]`,
+		"empty entry":     `[""]`,
+		"whitespace only": `["", "   "]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := writeTOML(t, "[oidc]\nauthorized-parties = "+parties+"\n")
+			if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "oidc.authorized-parties") {
+				t.Fatalf("Load error = %v, want one naming oidc.authorized-parties", err)
+			}
+		})
 	}
 }
 
@@ -129,5 +138,23 @@ func TestValidateRejectsUnsafeSigningAlgorithms(t *testing.T) {
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("Validate() with %s = %v", alg, err)
 		}
+	}
+}
+
+func TestValidateRejectsEmptyOIDCClaimNames(t *testing.T) {
+	for key, claim := range map[string]func(*OIDC) *string{
+		"oidc.authorized-party-claim": func(o *OIDC) *string { return &o.AuthorizedPartyClaim },
+		"oidc.subject-claim":          func(o *OIDC) *string { return &o.SubjectClaim },
+		"oidc.email-claim":            func(o *OIDC) *string { return &o.EmailClaim },
+		"oidc.name-claim":             func(o *OIDC) *string { return &o.NameClaim },
+		"oidc.image-url-claim":        func(o *OIDC) *string { return &o.ImageURLClaim },
+	} {
+		t.Run(key, func(t *testing.T) {
+			cfg := Default()
+			*claim(&cfg.OIDC) = ""
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), key+" must not be empty") {
+				t.Errorf("Validate() = %v, want an error naming %s", err, key)
+			}
+		})
 	}
 }

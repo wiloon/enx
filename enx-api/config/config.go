@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -574,8 +575,10 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.File = file
 
-	if k.Exists("oidc.authorized-parties") && len(cfg.OIDC.AuthorizedParties) == 0 {
-		return nil, errors.New("config: oidc.authorized-parties must list at least one value when set")
+	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
+		return strings.TrimSpace(party) != ""
+	}) {
+		return nil, errors.New("config: oidc.authorized-parties must list at least one non-blank value when set")
 	}
 	cfg.OIDC = cfg.EffectiveOIDC()
 	if err := cfg.Validate(); err != nil {

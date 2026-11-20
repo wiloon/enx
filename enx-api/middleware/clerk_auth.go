@@ -32,7 +32,8 @@ type ClerkConfig struct {
 	// AuthorizedParties is the allow-list checked against the token's `azp` claim
 	// (the origin the token was minted for): the enx-ui domain and the extension id.
 	AuthorizedParties []string
-	// JWKSURL overrides the default `<issuer>/.well-known/jwks.json` endpoint (tests only).
+	// JWKSURL is the deployment's configured key endpoint. The Clerk default
+	// is derived from the issuer as `<issuer>/.well-known/jwks.json`.
 	JWKSURL string
 	// LastLoginUpdateInterval throttles the last_login_time write for a
 	// returning user (user.last-login-update-interval).

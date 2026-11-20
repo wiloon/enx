@@ -101,7 +101,7 @@ func TestOIDCAuth_ES384TokenNeedsES384Configured(t *testing.T) {
 	}
 
 	rsOnly := iss.config()
-	rsOnly.AllowedSigningAlgorithms = nil // the default: RS256
+	rsOnly.AllowedSigningAlgorithms = []string{"RS256"}
 	if code, _ := protectedStatus(t, rsOnly, token); code != http.StatusUnauthorized {
 		t.Fatalf("RS256 only: status %d, want 401", code)
 	}
@@ -201,8 +201,13 @@ func TestOIDCAuth_PartyClaimRejectsUnlistedValueAndAllowsAbsent(t *testing.T) {
 			if tc.claim != nil {
 				claims["client_id"] = tc.claim
 			}
-			if code, _ := protectedStatus(t, cfg, iss.sign(t, claims)); code != tc.want {
-				t.Errorf("status %d, want %d", code, tc.want)
+			line := authLogLine(t, cfg, "Bearer "+iss.sign(t, claims))
+			if line["status"] != tc.want {
+				t.Errorf("status %v, want %d", line["status"], tc.want)
+			}
+			if tc.want == http.StatusUnauthorized &&
+				(line["auth_rejected"] != "unauthorized_party" || line["azp"] != tc.claim) {
+				t.Errorf("line = %+v, want auth_rejected=unauthorized_party and azp=%q", line, tc.claim)
 			}
 		})
 	}
