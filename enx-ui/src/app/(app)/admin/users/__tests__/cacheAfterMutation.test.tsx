@@ -305,7 +305,9 @@ it('keeps a ledger request for a hidden direction from freshening the pre-grant 
   })
   fireEvent.click(filter.getByRole('button', { name: 'Added' }))
 
-  expect(await screen.findByText('Note from support: Outage credit')).toBeInTheDocument()
+  expect(
+    await screen.findByText('Note from support: Outage credit')
+  ).toBeInTheDocument()
 })
 
 it("clears every cached ledger direction of the deleted user and keeps other users'", async () => {
