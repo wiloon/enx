@@ -193,6 +193,16 @@ var envVars = map[string]string{
 	"CLERK_AUTHORIZED_PARTIES":                        "clerk.authorized-parties",
 	"CLERK_JWKS_URL":                                  "clerk.jwks-url",
 	"CLERK_SECRET_KEY":                                "clerk.secret-key",
+	"OIDC_ISSUER":                                     "oidc.issuer",
+	"OIDC_JWKS_URL":                                   "oidc.jwks-url",
+	"OIDC_AUDIENCE":                                   "oidc.audience",
+	"OIDC_AUTHORIZED_PARTIES":                         "oidc.authorized-parties",
+	"OIDC_AUTHORIZED_PARTY_CLAIM":                     "oidc.authorized-party-claim",
+	"OIDC_ALLOWED_SIGNING_ALGORITHMS":                 "oidc.allowed-signing-algorithms",
+	"OIDC_SUBJECT_CLAIM":                              "oidc.subject-claim",
+	"OIDC_EMAIL_CLAIM":                                "oidc.email-claim",
+	"OIDC_NAME_CLAIM":                                 "oidc.name-claim",
+	"OIDC_IMAGE_URL_CLAIM":                            "oidc.image-url-claim",
 	"ACCOUNT_EMAIL_HMAC_KEY":                          "account.email-hmac-key",
 	"ADMIN_CLERK_USER_IDS":                            "admin.clerk-user-ids",
 	"SENTENCE_TRANSLATE_PROVIDER":                     "sentence-translate.provider",
@@ -293,6 +303,13 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 			case "clerk.issuer":
 				value = "https://from-clerk-issuer.clerk.accounts.dev"
 				want = value
+			case "oidc.issuer":
+				// A foreign issuer needs its own JWKS URL.
+				value = "https://from-oidc-issuer.example"
+				want = value
+				t.Setenv("OIDC_JWKS_URL", value+"/jwks")
+			case "oidc.allowed-signing-algorithms":
+				value, want = "ES384 RS256", []string{"ES384", "RS256"}
 			case "clerk.secret-key":
 				value = "sk_test_from-" + env
 				want = Secret(value)

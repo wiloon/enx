@@ -193,10 +193,33 @@ func TestClerkAuth_OPTIONSAllowed(t *testing.T) {
 
 func TestClerkConfigFrom(t *testing.T) {
 	got := ClerkConfigFrom(
-		config.Clerk{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks"},
+		config.OIDC{
+			Issuer:                   "https://iss",
+			AuthorizedParties:        []string{"a", "b"},
+			JWKSURL:                  "https://jwks",
+			Audience:                 "https://api.example",
+			AuthorizedPartyClaim:     "client_id",
+			AllowedSigningAlgorithms: []string{"ES384", "PS256"},
+			SubjectClaim:             "user_id",
+			EmailClaim:               "primary_email",
+			NameClaim:                "display_name",
+			ImageURLClaim:            "avatar_url",
+		},
 		config.User{LastLoginUpdateInterval: 5 * time.Minute},
 	)
-	want := ClerkConfig{Issuer: "https://iss", AuthorizedParties: []string{"a", "b"}, JWKSURL: "https://jwks", LastLoginUpdateInterval: 5 * time.Minute}
+	want := ClerkConfig{
+		Issuer:                   "https://iss",
+		AuthorizedParties:        []string{"a", "b"},
+		JWKSURL:                  "https://jwks",
+		LastLoginUpdateInterval:  5 * time.Minute,
+		Audience:                 "https://api.example",
+		AuthorizedPartyClaim:     "client_id",
+		AllowedSigningAlgorithms: []string{"ES384", "PS256"},
+		SubjectClaim:             "user_id",
+		EmailClaim:               "primary_email",
+		NameClaim:                "display_name",
+		ImageURLClaim:            "avatar_url",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClerkConfigFrom() = %+v, want %+v", got, want)
 	}
