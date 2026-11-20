@@ -252,6 +252,62 @@ it('keeps a list request started before an adjustment from freshening the old ro
   await expectAdjusted()
 })
 
+it('keeps a ledger request for a hidden direction from freshening the pre-grant rows', async () => {
+  const grantRow = {
+    id: 'g1',
+    createdAt: '2026-11-19T08:00:00Z',
+    type: 'GRANT_ADMIN',
+    feature: '',
+    amount: 50,
+    totalBalanceAfter: 550,
+    balanceAfter: 150,
+    note: 'Outage credit',
+    source: 'admin',
+  }
+  const ledgerPage = (transactions: unknown[]) => ({
+    success: true,
+    data: { success: true, transactions, next: '' },
+  })
+  let granted = false
+  const heldAdded = deferred<ReturnType<typeof ledgerPage>>()
+  let addedCalls = 0
+  mockLedger.mockImplementation(
+    (_id: string, _before: string, direction: string) => {
+      if (direction === 'in' && ++addedCalls === 1) return heldAdded.promise
+      return Promise.resolve(
+        ledgerPage(granted && direction !== 'out' ? [grantRow] : [])
+      )
+    }
+  )
+
+  const client = newClient()
+  renderIn(client, <AdminUserPage />)
+  await screen.findByRole('heading', { name: 'u1@example.com' })
+  const filter = within(screen.getByRole('group', { name: 'Filter' }))
+
+  fireEvent.click(filter.getByRole('button', { name: 'Added' }))
+  await waitFor(() => expect(addedCalls).toBe(1))
+  fireEvent.click(filter.getByRole('button', { name: 'Used' }))
+  await screen.findByText('No credits used yet.')
+
+  fireEvent.change(screen.getByLabelText('Credits'), {
+    target: { value: '50' },
+  })
+  fireEvent.change(screen.getByLabelText('Reason'), {
+    target: { value: 'Outage credit' },
+  })
+  granted = true
+  fireEvent.click(screen.getByRole('button', { name: 'Grant credits' }))
+  await screen.findByRole('status')
+
+  await act(async () => {
+    heldAdded.resolve(ledgerPage([]))
+  })
+  fireEvent.click(filter.getByRole('button', { name: 'Added' }))
+
+  expect(await screen.findByText('Note from support: Outage credit')).toBeInTheDocument()
+})
+
 it("clears every cached ledger direction of the deleted user and keeps other users'", async () => {
   const client = newClient()
   for (const d of ['', 'in', 'out']) {

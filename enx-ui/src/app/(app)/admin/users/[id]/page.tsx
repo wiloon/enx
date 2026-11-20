@@ -167,7 +167,13 @@ function UserDetail({ detail }: { detail: AdminUserDetail }) {
             onAdjusted={async () => {
               // Cancel before invalidating so a list request already in
               // flight cannot store the pre-adjustment rows as fresh.
-              await queryClient.cancelQueries({ queryKey: ['admin-users'] })
+              // This includes a ledger direction that is not on screen.
+              await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['admin-users'] }),
+                queryClient.cancelQueries({
+                  queryKey: ['admin-user-ledger', user.id],
+                }),
+              ])
               queryClient.invalidateQueries({ queryKey: ['admin-users'] })
               queryClient.invalidateQueries({
                 queryKey: ['admin-user', user.id],
