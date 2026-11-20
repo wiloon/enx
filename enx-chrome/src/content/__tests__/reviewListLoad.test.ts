@@ -100,9 +100,13 @@ const statusReports = () =>
 // Flips the "highlight vocabulary while reading" preference through the
 // content script's storage listener.
 const setHighlightPreference = (enabled: boolean) => {
+  // chrome.storage.onChanged notifies every listener; hover prefs (ADR-068)
+  // also subscribe, so the last registration is not necessarily the word
+  // highlight one.
   const calls = (chrome.storage.onChanged.addListener as jest.Mock).mock.calls
-  const listener = calls[calls.length - 1][0]
-  listener({ [WORD_HIGHLIGHT_KEY]: { newValue: enabled } }, 'local')
+  for (const [listener] of calls) {
+    listener({ [WORD_HIGHLIGHT_KEY]: { newValue: enabled } }, 'local')
+  }
 }
 
 // Every underlined word, by highlight name.
