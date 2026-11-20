@@ -86,7 +86,8 @@ Logto 与国内版的 enx-api / enx-ui 部署在同一个境内环境，使用�
 
 - **enx-api 验证 JWT**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，按部署配置 issuer、JWKS URL、受众、authorized party 及其 claim，以及 subject 和资料的 claim 映射。Clerk 和 Logto 都发签名 JWT + 公开 JWKS，沿用 `keyfunc` + `golang-jwt` 验签。允许的签名算法由配置通过 `jwt.WithValidMethods` 限定：海外版 RS256，国内版 ES384（#1026 原型实测）。Logto 沿用原有密钥类型（所有者 2026-11-19 决定）。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。
 - **enx-api 管理外部认证身份**：沿用 ADR-062 的账号管理接口并去掉接口名中的 provider。注销时删除外部认证身份，禁用和解除禁用时同步外部账号状态，撤销会话时让该用户的外部会话下线（ADR-062 Decision 5）。海外版沿用 Clerk Backend API。接入 Logto 时，adapter 用 Logto Management API 提供对应的删除、暂停、恢复和退出会话能力。
-- **enx-ui**：`useAuth` / `ApiAuthBridge` / 登录页 / `middleware.ts` / root layout 的 provider 收拢到一个 auth adapter 后面，运行期按 `AUTH_PROVIDER=clerk|logto` 选择（和 ADR-031 的运行期配置一致；两个 SDK 同时打进包里可以接受）。
+- **enx-ui**：`useAuth`、`ApiAuthBridge`、登录和注册页、`proxy.ts` 的认证处理以及 root layout 的 provider 统一通过 `src/auth/` 中的 auth adapter。服务端按运行期的 `AUTH_PROVIDER=clerk|logto` 选择 adapter（ADR-031），由 root layout 渲染所选 provider，客户端通过统一的 auth context 使用它。每个部署只配置一个 IdP，两个 SDK 可以同时打进包里。
+  - `AUTH_PROVIDER` 未设置时默认选 Clerk。显式设置时必须精确匹配已实现的 provider，包括大小写。空值、纯空白、未知值以及尚未实现的 provider（#1028 阶段的 `logto`）使 standalone 进程在启动 Next.js 前以非零状态退出，错误信息指出 `AUTH_PROVIDER`。
 - **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
 - **改造顺序**：先抽接口、海外版行为不变，单独合并上线；再加 Logto 实现。每一步都由测试护住。
 
@@ -178,4 +179,5 @@ Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.c
 
 ## 修订记录
 
+- #1028：明确 enx-ui 在服务端选择 adapter 并通过 auth context 提供客户端会话，补齐 `AUTH_PROVIDER` 的默认值和启动校验规则，避免配置错误后继续运行。
 - #1027：补充第一步上线的迁移失败与回退约束，明确账号管理接口的职责，并纠正空邮箱开通的现状及其适用版本。
