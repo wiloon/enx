@@ -21,6 +21,7 @@ related: adr-028（阅读统计；本 ADR 复用它的 `GET /api/stats/overview`
 - **放更多数字（今日、查词次数、文章数……）**：弹窗宽 360px 左右，用户打开它主要是为了开关学习模式，统计只是顺带看一眼。否决；详细数据在 `/stats`。
 - **新增一个合并接口 `GET /api/popup/summary`**：省一次请求，但为一个小卡片在 API 里开新端点，两份数据又各自有现成接口。否决；background 并发调两个现有接口即可。
 - **只显示 logo 入口，不加卡片**：logo 能点这件事很难被发现。否决。
+- **缓存上一次结果，打开时先显示缓存**：能省掉打开瞬间一闪而过的 `—`，但缓存要按账号分，还要处理退出、切换账号、storage 删除失败时的串号；#122 规格评审走了 5 轮，这套机制已经比卡片本身复杂得多。否决（owner 2026-11-19）：每次打开现取，先显示 `—`。
 
 ## Decision
 
@@ -33,7 +34,7 @@ related: adr-028（阅读统计；本 ADR 复用它的 `GET /api/stats/overview`
 
    数字按 `en-US` 千分位显示。左格 `week.wordsRead` 是推断值，按 adr-028 Decision 8 显示概数，规则与 enx-ui `approximateWords`（`enx-ui/src/lib/statsWindow.ts`）一致：`≤ 0` 显示 `0`，`< 100` 显示 `<100`，`< 10,000` 取整到百，否则取整到千（`1,237` → `1,200`）；数字带可访问的说明（`aria-label` / `title`，如 `About 1,200 words read this week (estimated from reading position)`）。扩展不能引用 enx-ui，规则在 `src/lib/` 里实现一份，测试用同样的用例。右格 `vocab.total` 是精确值，原样显示（`1,237`）。
 
-2. **积分提醒：只在快用完时出现。** 设可用余额 `B = subscriptionBalance + topupBalance + trialBalance`（`B` 可以为负：一次实际花费超额的结算会把余额留在负数，见 `enx-api/billing/credit/balance.go`；AI 调用在 `B < 1` 时就拒绝）。`creditNotice` 判定任何一条之前，先按 ADR-048 Decision 8 取试用池的有效值：`now ≥ trialExpiresAt` 时 `trialBalance` 按 0 算（缓存里的 billing 可能是过期前取的，不能让过期的试用积分变成「余额低」）。满足下面任一条件时，卡片下方多一行提醒，整行链接到 `/billing`。只有一行，多条同时满足时按下面的顺序取第一条：
+2. **积分提醒：只在快用完时出现。** 设可用余额 `B = subscriptionBalance + topupBalance + trialBalance`（`B` 可以为负：一次实际花费超额的结算会把余额留在负数，见 `enx-api/billing/credit/balance.go`；AI 调用在 `B < 1` 时就拒绝）。`creditNotice` 判定任何一条之前，先按 ADR-048 Decision 8 取试用池的有效值：`now ≥ trialExpiresAt` 时 `trialBalance` 按 0 算（服务端返回的是有效值，这里再按 `now` 判一次，不能让过期的试用积分变成「余额低」）。满足下面任一条件时，卡片下方多一行提醒，整行链接到 `/billing`。只有一行，多条同时满足时按下面的顺序取第一条：
 
    - **试用快过期**：余额只来自试用池（订阅池、top-up 池都为 0，`trialBalance > 0`），且 `0 < trialExpiresAt − now ≤ 48h`，文案：剩余 `< 24h` 为 `Trial credits expire in N hours`（`N = ceil(剩余小时)`，最少 1；`N = 1` 用 `hour`），`24h ≤ 剩余 ≤ 48h` 为 `Trial credits expire tomorrow`。排第一：过期会让这些积分整体作废，比「余额低」更该先说；`lowBalanceThreshold = 0` 不影响这一条。
    - **订阅用户用完**：`B ≤ 0` 且 `subscription.status` 为 `active` 或 `past_due`，文案 `Out of AI credits · Get more`。
@@ -47,7 +48,7 @@ related: adr-028（阅读统计；本 ADR 复用它的 `GET /api/stats/overview`
 
    AI 调用按 token 计费、单次消耗不固定，20 是起点；付费档积分额度还待校准，校准后再一起调这个值。
 
-3. **取数据走 background。** 弹窗发一条新消息 `GET_POPUP_SUMMARY` 给 background（在现有的 `chrome.runtime.onMessage` 监听里加一个分支），background 用现有带鉴权的 `makeApiRequest`（`enx-chrome/src/background/background.ts`；它已经带 `X-Enx-Tz-Offset`，所以「本周」按用户本地时区算，也负责 401 重放和会话过期）**并发**发起两个请求（`/api/stats/overview?date=YYYY-MM-DD`，`date` 是处理这条消息时取一次的用户本地日期，`weekStart` 由同一个日期算出，即它所在周的周一；不让服务端在处理请求时另取日期，否则跨午夜的请求会把数字标到错的那一周），传 `{ gatewayRetry: false }`（Decision 4：不重试），两个结果各自独立处理（`{success: false}` 或抛错只影响自己那一半），返回：
+3. **取数据走 background。** 弹窗打开时发一条新消息 `GET_POPUP_SUMMARY` 给 background（在现有的 `chrome.runtime.onMessage` 监听里加一个分支），background 用现有带鉴权的 `makeApiRequest`（`enx-chrome/src/background/background.ts`；它已经带 `X-Enx-Tz-Offset`，所以「本周」按用户本地时区算，也负责 401 重放和会话过期）**并发**发起两个请求：`/api/stats/overview?date=YYYY-MM-DD`（`date` 是处理这条消息时取的用户本地日期）和 `/api/billing/me`，都传 `{ gatewayRetry: false }`（Decision 4：不重试）。两个结果各自独立处理（`{success: false}` 或抛错只影响自己那一半），返回：
 
    ```ts
    interface PopupSummary {
@@ -55,31 +56,24 @@ related: adr-028（阅读统计；本 ADR 复用它的 `GET /api/stats/overview`
        wordsReadThisWeek: number
        vocabTotal: number
        vocabMastered: number
-       weekStart: string // 取数时用户本地的本周一，YYYY-MM-DD
-     } | null // null = stats 这次没取到
+     } | null // null = stats 没取到
      billing: BillingInputs | null // creditNotice 需要的 /billing/me 字段（三个池、trialExpiresAt、subscription.status、lowBalanceThreshold）；null = 没取到
    }
    ```
 
-   积分提醒的判定（Decision 2）是一个纯函数 `creditNotice(billing, now)`，放在 `src/lib/`，单测覆盖每条分支。提醒不缓存、不由 background 算好，弹窗每次渲染时用当前时间现算（见 Decision 5）。
+   积分提醒的判定（Decision 2）是一个纯函数 `creditNotice(billing, now)`，放在 `src/lib/`，单测覆盖每条分支。
 
-4. **不能挡住学习模式开关。** 卡片加载中、接口失败时，数字位显示 `—`，不显示错误、不重试、不显示积分提醒（拿不到数据就不提醒）。卡片高度固定，数据到达时不跳动布局。刷新还没结束时显示有效的缓存（Decision 5）；刷新结束时两半各自生效：stats 成功就显示新数字，失败就把当前显示的数字换成 `—`；billing 成功就按新数据算提醒，失败就去掉当前显示的提醒。失败只影响这次显示，storage 里那一半上一次成功的缓存保留不动，下次打开仍先显示它。
+4. **不能挡住学习模式开关。** 卡片加载中、接口失败时，数字位显示 `—`，不显示错误、不重试、不显示积分提醒（拿不到数据就不提醒）。卡片高度固定，数据到达时不跳动布局。两半各自生效：stats 失败只让数字显示 `—`，billing 失败只是不显示提醒。
 
-5. **缓存上一次结果。** 弹窗每次打开都是新页面，直接请求会先闪一下 `—`。background 把每一半最近一次成功的结果写进 `chrome.storage.local`；某一半刷新失败时不覆盖它的旧缓存。弹窗先显示缓存再刷新：打开时发两条 `GET_POPUP_SUMMARY`，`{ source: 'cache' }` 只读缓存，`{ source: 'network' }` 发起 Decision 3 的两个请求；缓存的回复只在网络回复还没到时显示。退出登录或切换账号时删除。
-
-   - **按账号分。** key 是 `enx-popup-summary:<clerkUserId>`，`clerkUserId` 是 background 确认过的 Clerk 身份，不是弹窗 `userAtom.id`（那里对所有用户都是 `0`）。两种 `source` 处理消息时都先 `await getSyncedClerk()`（它会等挂起的 cookie 同步 `clerkCookieSync.pending()`、被新检查取代时加入最新的检查，再经 `accountSession.observe`；不直接调 `syncAndObserveClerk()`，那样在 cookie 防抖窗口里会用到旧的 client），用它返回的 `clerk.user.id` 作 key 和回复里的 `owner`（没有就当未登录，不读不写），紧接着 `accountSession.capture()` 取一个 `isCurrent`。
-   - **写入与删除的先后。** 账号失效时（`accountSession` 的 `invalidate`，已经会广播 `accountInvalidated`）删除**所有** `enx-popup-summary:` 前缀的 key，不依赖知道被替换掉的 owner（`observe` 调 `invalidate` 时 owner 已经换成新的）。所有缓存写入和这次删除排进 background 里同一条串行队列（一个 promise 链），按入队顺序一个做完再做下一个；写入不在写完后按 key 删除（同一用户退出又登录时那样会删掉新会话的缓存），而是在轮到它执行时检查 `isCurrent()`，不通过就跳过。代数在 `invalidate` 之前同步推进（`accountSession.ts` 的 `fence`），而 `invalidate` 在 `observe`/`clear` 的串行链里执行、新会话的请求要等 `getSyncedClerk()` 里的 `observe` 完成才能 `capture`，所以：失效前已经开始的写入先落地，再被排在它后面的删除清掉；失效后才轮到的旧写入检查不通过而跳过；A 重新登录后的写入排在删除之后，不会被旧操作删掉。A 的缓存不会在退出后重新出现，A 第二次会话的缓存也不会被第一次会话的旧操作删掉。读缓存也排进这条队列，轮到它执行时先检查 `isCurrent()` 再读 storage：`invalidate` 只是把删除入队就返回，旧写入被挂起时 `observe` 可能已经完成、A 的新会话已经 `capture` 了新代数，而删除还没执行；读排在删除之后，就读不到 A 上一次会话的数据。把结果回给弹窗之前再检查一次 `isCurrent()`，不通过就回 `null`。
-   - **删除失败时读缓存一律未命中。** 代数只说明请求属于哪次会话，说明不了 storage 里那条记录属于哪次会话；`chrome.storage.local.remove` 被拒绝时，上一次会话的记录可能还在，同一用户重新登录后的读取能通过代数和 owner 两道检查。所以队列在 background 内存里记一个「清理未完成」标记：失效删除入队时置上，删除成功才清掉；删除失败时标记保持，同时清空「本次清理后已写入的 key」集合。标记置上期间，读缓存一律回未命中（`null`），只有在这之后由当前代数的写入成功写过的 key 可以读（那条记录一定是新会话的）。网络刷新照常进行：成功的结果照常显示、照常写入，写入成功后它的 key 加进上面的集合。下一次失效会再次删除全部前缀 key，成功后标记清掉。worker 重启会丢掉内存标记，但新会话一定经过一次 `observe` 的失效（owner 持久化在 storage，重新登录时 `observe` 判为切换），删除会重试，失败就重新置上标记；剩下的只有「失效后删除失败、随后 worker 在同一会话中重启」这一种情况，此时读到的是同一个 Clerk 用户自己上一次会话的记录，仍要经过下面的时效校验，并会被这次打开的网络回复替换，不会显示给别的账号。
-   - **弹窗绑定当前账号。** 回复带上 background 确认的 `owner`；弹窗只在 `owner` 等于自己 `useUser()` 当前的 `user.id` 时显示回复，卡片状态也记下它属于哪个用户 ID，`user.id` 变了就立即回到加载状态并重新请求。这样 background 的代数已经推进、`accountInvalidated` 广播还没到时，弹窗里已经是 B 的话，A 在路上的回复也不会显示。弹窗打开期间另外监听 `accountInvalidated`：收到时把卡片恢复成加载状态（数字 `—`、不显示提醒），丢掉在这之前发出的 `GET_POPUP_SUMMARY` 的回复（按收到的失效次数计数，同 `panelAccountFence`），再重新发两条消息。这样无论回复和失效通知谁先到，已经显示过的 A 的数字都会被清掉，A 迟到的回复也不会显示给 B。
-   - **显示前校验时效。** 不管是缓存还是刚取到的结果，`stats.weekStart` 不等于当前本地的本周一时，「本周阅读」按无数据处理（显示 `—`，生词本数字照常显示）；积分提醒总是用 `creditNotice(billing, now)` 现算（试用池按 Decision 2 在过期后算 0），试用已过期就不会再显示「expires tomorrow」，也不会把过期的试用积分说成「余额低」。
+5. **不缓存，每次打开现取。** 卡片只是顺带看一眼的展示数据：弹窗打开时数字位先显示 `—`，数据到了再填上。不写 `chrome.storage`，也不为账号切换做专门处理：这是桌面浏览器扩展，快速切换账号很少见，弹窗每次打开都是新页面，请求走 background 当前的会话。
 
 6. **未登录不显示卡片。** 未登录用户只看到 logo 入口和登录卡片。
 
 ## Consequences
 
 - 每次打开弹窗多两个 API 请求（只读、已登录）。`/stats/overview` 一次会查 daily_stats 和 user_dicts；弹窗打开频率不高，现阶段不加服务端缓存，adr-040 的指标里能看到它的调用量和延迟。
-- 新增消息类型 `GET_POPUP_SUMMARY`、一个 `PopupStatsCard` 组件、`creditNotice` 纯函数、一个按用户分的 storage key。后端只加 `credits.low-balance-threshold` 配置和 `/billing/me` 的 `lowBalanceThreshold` 字段，并把 `/billing/me` 的余额读取错误改成 503（config 单测覆盖默认值与负数校验）。
-- 测试：`creditNotice` 单测（固定时钟；余额低、订阅用完含负余额、试用快过期、低余额与快过期重叠时取过期、正好 48h、24h 前后的文案、过期时刻、阈值为 0 时过期提醒照常、免费用户用完或负余额不提醒、余额充足不提醒、只有试用池时才看过期、试用过期后试用池按 0 算所以免费用户不出「余额低」）；`PopupStatsCard` 单测（数字、阅读数概数与说明、生词本精确值、链接、`—` 占位、提醒行出现与否）；background 处理函数单测（一个接口失败时另一个照常返回、刷新失败不覆盖旧缓存、缓存按 Clerk 用户 ID 写入、`date` 参数与 `weekStart` 出自同一个日期、两个响应之间退出登录或 A→B 切换时 A 的结果不回给 B 也不重建 A 的缓存、缓存写入挂起期间账号失效后 A 的 key 不存在、挂起写入期间 A 退出又重新登录后第二次会话刷新成功的缓存保留、A 的缓存已存在时在挂起的 A→B cookie 同步期间发 `source: 'cache'` 请求不返回 A 的条目）；弹窗经真实消息路径的测试（有缓存时刷新挂起显示缓存，刷新失败后失败的一半变 `—` / 提醒消失而 storage 保留；已显示 A 的数据后收到 `accountInvalidated` 卡片回到 `—`、之前请求的回复被丢弃；`useUser()` 先变成 B、广播还没到时送达 A 的回复，A 的数字不显示；跨周一与跨试用过期时刻重新打开、刷新挂起时缓存按时效处理，免费用户过期后不显示任何提醒；周日发出、周一才返回的请求，本周阅读显示 `—`、生词本数字照常）；`/billing/me` 测试（经配置加载传入非默认阈值与 0 后原样返回、无 `credit_accounts` 行时全 0、读取失败时 503）；`e2e/popup-layout.spec.ts` 覆盖弹窗打开到数据到达的全过程。
+- 新增消息类型 `GET_POPUP_SUMMARY`、一个 `PopupStatsCard` 组件、`creditNotice` 纯函数。后端只加 `credits.low-balance-threshold` 配置和 `/billing/me` 的 `lowBalanceThreshold` 字段，并把 `/billing/me` 的余额读取错误改成 503（config 单测覆盖默认值与负数校验）。enx-ui 的 `/billing`、`/account` 和首页 `PlanCard` 也调 `/billing/me`，它们已经处理订阅读取失败时的同一个 503，不用改。
+- 测试：`creditNotice` 单测（固定时钟；余额低、订阅用完含负余额、试用快过期、低余额与快过期重叠时取过期、正好 48h、24h 前后的文案、过期时刻、阈值为 0 时过期提醒照常、免费用户用完或负余额不提醒、余额充足不提醒、只有试用池时才看过期、试用过期后试用池按 0 算所以免费用户不出「余额低」）；`PopupStatsCard` 单测（数字、阅读数概数与说明、生词本精确值、链接、`—` 占位、提醒行出现与否）；background 处理函数单测（一个接口失败时另一个照常返回、`date` 参数是本地日期）；`/billing/me` 测试（经配置加载传入非默认阈值与 0 后原样返回、无 `credit_accounts` 行时全 0、读取失败时 503）；`e2e/popup-layout.spec.ts` 覆盖弹窗打开到数据到达的全过程。
 - `credits.low-balance-threshold` 与付费档积分额度绑在一起，额度改了要回来看这个值。
 
 ## 修订记录
@@ -89,3 +83,4 @@ related: adr-028（阅读统计；本 ADR 复用它的 `GET /api/stats/overview`
 - 2026-11-19（#122 规格评审第 3 轮）：Decision 5 改用 `getSyncedClerk()` 确认 owner；回复带 `owner`，弹窗按 `useUser()` 的当前用户 ID 绑定显示；缓存写入与失效删除排进同一条串行队列，写入在执行时检查代数，去掉写后按 key 删除。原因：评审指出 `syncAndObserveClerk()` 在 cookie 防抖窗口里会用旧 client、广播到达前 A 的回复可能显示给 B、同一用户重新登录后旧操作会删掉新会话的缓存。
 - 2026-11-19（#122 规格评审第 4 轮）：Decision 5 缓存读取也排进同一条串行队列，执行时检查代数。原因：评审指出删除入队后、执行前，同一用户的新会话可能先读到上一次会话的缓存。
 - 2026-11-19（#122 规格评审第 5 轮）：Decision 5 失效删除失败时，读缓存一律未命中，直到下一次删除成功；只放行当前代数在这之后成功写入的 key。原因：评审指出 storage 删除被拒绝时，上一次会话的记录会留下，同一用户重新登录后能通过代数和 owner 检查被读出。
+- 2026-11-19（owner 决定）：去掉 Decision 5 的缓存及其按账号分 key、串行队列、代数校验、失效清理和弹窗按 owner 绑定等全部机制，改为每次打开现取、先显示 `—`；不为账号切换做专门处理；`PopupSummary` 去掉 `weekStart`。原因：这是桌面扩展里顺带看一眼的展示数据，缓存只为省掉一闪而过的 `—`，评审为它补的并发防护已经比卡片本身复杂。
