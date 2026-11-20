@@ -41,8 +41,8 @@ func (accountGrants) Delete(context.Context, string) error                    { 
 type accountClerk struct{ err error }
 
 func (c accountClerk) DeleteUser(context.Context, string) error     { return c.err }
-func (c accountClerk) DisableUser(context.Context, string) error        { return c.err }
-func (c accountClerk) EnableUser(context.Context, string) error      { return c.err }
+func (c accountClerk) DisableUser(context.Context, string) error    { return c.err }
+func (c accountClerk) EnableUser(context.Context, string) error     { return c.err }
 func (c accountClerk) RevokeSessions(context.Context, string) error { return c.err }
 
 type accountRenewing bool

@@ -48,7 +48,7 @@ func subjectIndexNames(t *testing.T, db *gorm.DB) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
@@ -268,7 +268,7 @@ func dumpUsersSubjects(t *testing.T, db *gorm.DB) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
