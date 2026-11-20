@@ -79,6 +79,50 @@ describe('sharing article choices (ADR-073)', () => {
   })
 })
 
+describe('hover sentence translate (ADR-068)', () => {
+  function storedPrefs(initial: Record<string, unknown> = {}) {
+    const data: Record<string, unknown> = { ...initial }
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+      async (key: string) => (key in data ? { [key]: data[key] } : {})
+    )
+    ;(chrome.storage.local.set as jest.Mock).mockImplementation(
+      async (items: Record<string, unknown>) => {
+        Object.assign(data, items)
+      }
+    )
+    return data
+  }
+
+  afterEach(() => {
+    ;(chrome.storage.local.get as jest.Mock).mockReset()
+    ;(chrome.storage.local.set as jest.Mock).mockReset()
+  })
+
+  it('defaults both switches on and disables shade when translate is off', async () => {
+    storedPrefs()
+    render(<Options />)
+    const translate = await screen.findByTestId('hover-sentence-translate-toggle')
+    const shade = screen.getByTestId('hover-sentence-shade-toggle')
+    expect(translate).toBeChecked()
+    expect(shade).toBeChecked()
+    expect(shade).not.toBeDisabled()
+
+    fireEvent.click(translate)
+    await waitFor(() => expect(translate).not.toBeChecked())
+    expect(shade).toBeDisabled()
+  })
+
+  it('persists the translate switch', async () => {
+    const stored = storedPrefs()
+    render(<Options />)
+    const translate = await screen.findByTestId('hover-sentence-translate-toggle')
+    fireEvent.click(translate)
+    await waitFor(() =>
+      expect(stored['enx-hover-sentence-translate-enabled']).toBe(false)
+    )
+  })
+})
+
 // The API server is fixed when the extension is built (#231).
 it('offers no way to switch the API server', async () => {
   render(<Options />)

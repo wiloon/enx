@@ -66,6 +66,7 @@ import {
   getWordHighlightEnabled,
   onWordHighlightEnabledChange,
 } from '@/config/preferences'
+import { createHoverSentenceSession } from './hoverSentenceSession'
 import {
   BackgroundResponse,
   ContentMessage,
@@ -1245,6 +1246,28 @@ const handleArticleClick = (event: Event) => {
   showWordPopover(wordRange.toString(), wordRange)
 }
 
+// Hover sentence-translate button (ADR-068). Closures reach helpers declared
+// below; nothing here runs until learning mode binds article roots.
+const hoverSession = createHoverSentenceSession({
+  caretFromPoint: (x, y) => caretFromPoint(x, y),
+  pointInRange: (range, x, y) => pointInRange(range, x, y),
+  getLookupExclusions: () => articleLookupExclusions,
+  getWordCache: () => wordCache,
+  recordReadingPosition: range => readingPositions.record(range),
+  setActiveSentenceHighlight: range => setActiveSentenceHighlight(range),
+  showSelectionHint: (hint, reference) => showSelectionHint(hint, reference),
+  sendOpenSentencePanel: ({ sentence, wordStates }) =>
+    sendToBackground({
+      type: 'openSentencePanel',
+      word: '',
+      sentence,
+      wordStates,
+    }),
+  isCurrentArticle: () => isEnxEnabled && !standDown.isStoodDown(),
+  mountShadowRoot: host => mountShadowRoot(host),
+  now: () => Date.now(),
+})
+
 // articleRoots + its click listeners are managed together: point ENX at a
 // fresh set of roots, or clear it entirely.
 const setArticleRoots = (
@@ -1254,17 +1277,31 @@ const setArticleRoots = (
   clearArticleRoots()
   articleRoots = roots
   articleLookupExclusions = lookupExclusions
-  articleRoots.forEach(root =>
+  hoverSession.start()
+  articleRoots.forEach(root => {
     root.addEventListener('click', handleArticleClick)
-  )
+    root.addEventListener('mousemove', hoverMouseMove)
+    root.addEventListener('mouseleave', hoverMouseLeave)
+  })
+}
+
+const hoverMouseMove = (event: Event) => {
+  hoverSession.onArticleMouseMove(event as MouseEvent)
+}
+
+const hoverMouseLeave = () => {
+  hoverSession.onArticleMouseLeave()
 }
 
 const clearArticleRoots = () => {
-  articleRoots.forEach(root =>
+  articleRoots.forEach(root => {
     root.removeEventListener('click', handleArticleClick)
-  )
+    root.removeEventListener('mousemove', hoverMouseMove)
+    root.removeEventListener('mouseleave', hoverMouseLeave)
+  })
   articleRoots = []
   articleLookupExclusions = []
+  hoverSession.dispose()
 }
 
 // Shows a lightweight overlay carrying only the sentencePanelHint text, no
@@ -1418,6 +1455,8 @@ const hideSelectionTranslateButton = () => {
 const handleGlobalMouseDown = (e: MouseEvent) => {
   const target = e.target as Node
   if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
+  // Hover button: skip page gesture handlers so its click still fires (ADR-068).
+  if (hoverSession.onDocumentMouseDown(e)) return
   hideSelectionTranslateButton()
 }
 
@@ -1574,6 +1613,10 @@ const handleTextSelection = (event: MouseEvent) => {
   // node that was already replaced, and onTrigger never fires.
   const target = event.target as Node
   if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
+  if (hoverSession.containsOverlay(target)) {
+    hoverSession.onDocumentMouseUp(event)
+    return
+  }
   // Same for a click inside the word overlay (its speaker, Mark Known, ...):
   // when the overlay was opened from a selection (double-click, drag over one
   // word), that selection is still live, so this handler would re-run the
@@ -1581,6 +1624,7 @@ const handleTextSelection = (event: MouseEvent) => {
   // and click -- the button's onClick never runs, so the speaker stays silent.
   if (currentOverlay && currentOverlay.contains(target)) return
 
+  hoverSession.onDocumentMouseUp(event)
   hideSelectionTranslateButton()
 
   const selection = window.getSelection()
@@ -1710,10 +1754,13 @@ const enableEnx = async (
 
   // Add mouseup listener for text selection, and mousedown to dismiss a
   // still-showing selection-translate button as soon as a new selection
-  // gesture starts (ADR-007 Decision §3).
+  // gesture starts (ADR-007 Decision §3). Hover (ADR-068) shares these.
   document.addEventListener('mouseup', handleTextSelection)
   document.addEventListener('mousedown', handleGlobalMouseDown)
   document.addEventListener('selectionchange', handleSelectionChangeForButton)
+  document.addEventListener('selectionchange', hoverSession.onSelectionChange)
+  document.addEventListener('keydown', hoverSession.onKeyDown)
+  hoverSession.start()
 
   // On a 'spa' site (X, RSSX), re-run automatically when the user switches
   // content in-page (ADR-011 Decision 6). Static sites reload + re-inject.
@@ -1773,7 +1820,10 @@ const disableEnx = ({ keepPopover = false } = {}) => {
     'selectionchange',
     handleSelectionChangeForButton
   )
+  document.removeEventListener('selectionchange', hoverSession.onSelectionChange)
+  document.removeEventListener('keydown', hoverSession.onKeyDown)
   hideSelectionTranslateButton()
+  hoverSession.dispose()
   spaRebuilderInstance?.stop()
 
   if (!keepPopover) hideCurrentOverlay()
@@ -1801,6 +1851,7 @@ const standDownOrphan = () => {
   spaRebuilderInstance?.stop()
   hidePinHint()
   hideSelectionTranslateButton()
+  hoverSession.dispose()
   hideCurrentOverlay()
   activeSentenceHighlightCleanup?.()
   stopReading()
