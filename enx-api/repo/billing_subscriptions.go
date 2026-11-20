@@ -25,5 +25,6 @@ func (BillingSubscriptions) Subscription(ctx context.Context, userID string) (su
 	if len(rows) == 0 {
 		return subscription.Snapshot{Status: "none"}, nil
 	}
+	// The join is on users.id and the accepted subscription ID, so at most one row.
 	return rows[0], nil
 }
