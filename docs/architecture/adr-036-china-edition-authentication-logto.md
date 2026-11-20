@@ -130,9 +130,9 @@ ADR-062 要求用户在 `/settings` 输入自己的邮箱来确认注销，enx-a
 
 所有者 2026-11-19 决定**两个版本统一**：用户输入大写英文 **`DELETE`** 来确认，不再输入邮箱。
 
-- 确认词由 enx-api 在服务端校验，大小写敏感、去掉首尾空格后必须等于 `DELETE`；不匹配时拒绝删除，和现在邮箱不匹配时一样。只在前端校验不够，接口可能被直接调用。
-- `DELETE /api/me` 的请求体从邮箱改为确认词，enx-ui `/settings` 同步改。
-- 确认文案的其余要求不变：作废积分、注销本身不退款、重新注册不再有试用和邀请奖励。其中「同一邮箱」在国内版写成「同一微信」。
+- 确认词由 enx-api 在服务端校验，大小写敏感、去掉首尾空格后必须等于 `DELETE`；不匹配（含请求体读不出）时返回 400、不删任何数据，和现在邮箱不匹配时一样，但错误码改为 `confirmation_mismatch`，提示语不再提邮箱。只在前端校验不够，接口可能被直接调用。enx-ui 的按钮按同一规则（去掉首尾空格后严格等于 `DELETE`）启用。「首尾空格」两端统一定义为 ASCII 空白：空格、`\t`、`\r`、`\n`；不用 Go `strings.TrimSpace` 或 JavaScript `trim()` 的默认集合（两者对 U+0085、U+FEFF、U+00A0 等的处理不同，会让界面和接口的判断不一致）。
+- `DELETE /api/me` 的请求体从 `{"email": …}` 改为 `{"confirmation": "DELETE"}`，不再接受 `email` 字段；enx-ui `/settings` 同步改。
+- 确认文案的其余要求不变：作废积分、注销本身不退款、重新注册不再有试用和邀请奖励。其中「同一邮箱」在国内版写成「同一微信」：这句文案随国内版 enx-ui 的工作一起改；#1031 先上线确认方式的改动，海外版保留现在的「同一邮箱」提示。
 - 这一条对海外版也是改动，不依赖国内版的其他工作，可以先做。
 
 ### 9. 扩展登录
@@ -182,6 +182,8 @@ Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.c
 - 运维 Logto + PostgreSQL 的负担明显超出预期 → 重新评估 Casdoor（自托管）或 Authing（SaaS）。
 
 ## 修订记录
+
+- #1031：Decision 8 写明 `DELETE /api/me` 的请求体字段 `confirmation`、不匹配时的错误码 `confirmation_mismatch`，以及 enx-ui 按钮与服务端同样去掉首尾空格再比较，让接口、界面和测试对齐；并把「首尾空格」统一定义为 ASCII 空白（Go 和 JavaScript 的默认 trim 集合不同），写明「同一微信」文案随国内版 enx-ui 工作改，#1031 不改。
 
 - #1029：明确 enx-chrome adapter 的边界——API token 由 service worker 获取，popup 通过所选 adapter 保留自己的实时会话视图（原文「会话状态只在 worker」与 popup 的实时同步冲突），Clerk 的会话 cookie 监听和登出判定归 adapter，adapter 给出的 subject 与今天的 Clerk `user.id` 相同以保住按账号存储的本地数据，provider 由构建 target 统一决定 manifest 和运行期配置。
 - #1028：明确 enx-ui 在服务端选择 adapter 并通过 auth context 提供客户端会话，补齐 `AUTH_PROVIDER` 的默认值和启动校验规则，避免配置错误后继续运行。
