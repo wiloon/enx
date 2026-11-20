@@ -4,8 +4,16 @@ import { test, expect } from '@playwright/test'
 // of the page is that a visitor -- and Stripe's reviewer -- sees prices
 // without an account. Checkout itself is covered by billing.spec.ts.
 
-const card = (page: import('@playwright/test').Page, text: string) =>
-  page.locator('[data-slot="card"]').filter({ hasText: text })
+const card = (page: import('@playwright/test').Page, title: string) =>
+  page.locator('[data-slot="card"]').filter({
+    has: page
+      .locator('[data-slot="card-title"]')
+      .filter({ hasText: new RegExp(`^${escapeRegExp(title)}$`) }),
+  })
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 test.describe('/pricing (signed out)', () => {
   test('shows plans and top-ups without signing in', async ({ page }) => {
@@ -17,7 +25,17 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Catglish Pro+')).toContainText('1,500 credits/mo')
     await expect(card(page, 'Small top-up')).toContainText('$2.99')
     await expect(card(page, 'Free')).toContainText('$0')
-    await expect(card(page, 'Free')).toContainText('with a daily limit')
+    // Stub API returns 1234 (playwright webServer); formatted with en-US commas.
+    await expect(card(page, 'Free')).toContainText(
+      'up to 1,234 lookups a day'
+    )
+    for (const name of ['Catglish Pro', 'Catglish Pro+', 'Catglish Max']) {
+      await expect(card(page, name)).not.toContainText(/lookups? a day/i)
+    }
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      'content',
+      /Paid plans add monthly AI translation credits\./
+    )
     // Not redirected to sign-in.
     await expect(page).toHaveURL(/\/pricing$/)
   })
@@ -26,7 +44,6 @@ test.describe('/pricing (signed out)', () => {
     await page.goto('/pricing')
 
     await card(page, 'Catglish Pro')
-      .first()
       .getByRole('link', { name: 'Subscribe' })
       .click()
     await page.waitForURL(/\/sign-up/)

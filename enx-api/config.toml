@@ -246,13 +246,12 @@ claim-window-hours = 24
 # 6). Everyone is counted against a UTC day; the tier only decides the
 # number. Both must be positive -- the service refuses to start otherwise.
 #
-# The count is dictionary usage (ADR-079): prefetch costs 1 per highlighted
-# word, a click on an uncached word 2. `-free` is 2000 for the internal beta
-# (2026-11-11, Linear WIL-498), so a heavy reading day (about 600) never
-# reaches it; the /pricing page names the limit without a number. Keep the
-# code default and both deployments (w10n-config) in step.
-# `-subscribed` is a backstop against scripts, not a product tier: normal
-# use never reaches it. Both are tuned from dictionary_quota_usage after
-# launch (Linear WIL-176).
+# The count is dictionary usage (ADR-079 / ADR-080): a click on a new word
+# costs 2, a looked-up word costs none on QUERY. `-free` is 2000 for the
+# internal beta (2026-11-11, Linear WIL-498). /pricing reads the effective
+# free ceiling at request time via GET /api/dictionary/free-daily-lookup-limit
+# (including env overrides). `-subscribed` is a backstop against scripts,
+# not a product tier: normal use never reaches it, and pricing omits it.
+# Both are tuned from dictionary_quota_usage after launch (Linear WIL-176).
 dictionary-lookup-daily-free = 2000
 dictionary-lookup-daily-subscribed = 20000
