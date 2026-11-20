@@ -19,6 +19,20 @@ describe('resolveBuildTarget', () => {
     expect(target.apiBaseUrl).toBe(apiBaseUrl)
   })
 
+  // ADR-036: every declared target resolves to the clerk provider for now.
+  it.each([
+    'development',
+    'homelab',
+    'homelab-test',
+    'production',
+    'test',
+  ])('resolves the %s target to the clerk auth provider', mode => {
+    const target = resolveBuildTarget(mode, {})
+    expect(target.auth.provider).toBe('clerk')
+    expect(target.auth.publishableKey).toMatch(/^pk_/)
+    expect(target.auth.syncHost).toMatch(/^https?:\/\//)
+  })
+
   it('lets VITE_ENV win over the Vite mode', () => {
     expect(resolveBuildTarget('development', { VITE_ENV: 'prod' }).name).toBe(
       'production'
@@ -33,13 +47,28 @@ describe('resolveBuildTarget', () => {
     const target = resolveBuildTarget('production', {
       VITE_API_BASE_URL: 'http://192.168.50.71:8090',
       VITE_CLERK_PUBLISHABLE_KEY: 'pk_live_x',
+      VITE_CLERK_SYNC_HOST: 'https://clerk.override.example',
       VITE_ENX_UI_ORIGINS: 'https://a.example, https://b.example',
     })
     expect(target.name).toBe('production')
     expect(target.apiBaseUrl).toBe('http://192.168.50.71:8090')
     expect(target.frontendBaseUrl).toBe('https://catglish.com')
-    expect(target.clerkPublishableKey).toBe('pk_live_x')
+    expect(target.auth.publishableKey).toBe('pk_live_x')
+    expect(target.auth.syncHost).toBe('https://clerk.override.example')
+    expect(target.auth.provider).toBe('clerk')
     expect(target.uiOrigins).toEqual(['https://a.example', 'https://b.example'])
+  })
+
+  it('stamps Clerk overrides into the build env', () => {
+    const stamped = stampedEnv(
+      resolveBuildTarget('production', {
+        VITE_CLERK_PUBLISHABLE_KEY: 'pk_live_x',
+        VITE_CLERK_SYNC_HOST: 'https://clerk.override.example',
+      })
+    )
+    expect(stamped.VITE_AUTH_PROVIDER).toBe('clerk')
+    expect(stamped.VITE_CLERK_PUBLISHABLE_KEY).toBe('pk_live_x')
+    expect(stamped.VITE_CLERK_SYNC_HOST).toBe('https://clerk.override.example')
   })
 
   // The automated-test copy of HomeLab (fake AI, ADR-0007 in w10n-config) has
@@ -47,7 +76,8 @@ describe('resolveBuildTarget', () => {
   it('keeps the homelab-test build on the enx-test hosts only', () => {
     const target = resolveBuildTarget('homelab-test', {})
     expect(target.frontendBaseUrl).toBe('https://enx-test.wiloon.lab')
-    expect(target.clerkSyncHost).toBe('https://enx-test.wiloon.lab')
+    expect(target.auth.syncHost).toBe('https://enx-test.wiloon.lab')
+    expect(target.auth.provider).toBe('clerk')
     expect(target.uiOrigins).toEqual([
       'http://localhost:3000',
       'https://enx-test.wiloon.lab',

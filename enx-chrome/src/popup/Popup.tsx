@@ -36,8 +36,9 @@ import {
   sendPageReport,
 } from '@/lib/pageReport'
 import { initSentry } from '@/lib/sentry'
+import { useAuthSession } from '@/lib/auth'
+import { selectPopupAuth } from '@/lib/auth/selectPopupAuth'
 import { errorAtom, userAtom } from '@/store/atoms'
-import { ClerkProvider, useUser } from '@clerk/chrome-extension'
 import {
   ChevronRightIcon,
   GlobeAltIcon,
@@ -45,6 +46,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { Provider, useAtom, useSetAtom } from 'jotai'
 import { type ReactNode, useEffect, useState } from 'react'
+
+const popupAuth = selectPopupAuth(config.auth)
 
 initSentry()
 
@@ -101,10 +104,10 @@ function Switch({
   )
 }
 
-// Mirror the Clerk session into userAtom (ADR-015) so the rest of the popup
+// Mirror the auth session into userAtom (ADR-015) so the rest of the popup
 // (DebugPanel, etc.) can keep reading user.isLoggedIn / user.username.
-function ClerkUserSync() {
-  const { isLoaded, isSignedIn, user } = useUser()
+function AuthUserSync() {
+  const { isLoaded, isSignedIn, user } = useAuthSession()
   const setUser = useSetAtom(userAtom)
 
   useEffect(() => {
@@ -112,12 +115,8 @@ function ClerkUserSync() {
     if (isSignedIn && user) {
       setUser({
         id: 0,
-        username:
-          user.fullName ||
-          user.username ||
-          user.primaryEmailAddress?.emailAddress ||
-          'user',
-        email: user.primaryEmailAddress?.emailAddress || '',
+        username: user.fullName || user.username || user.primaryEmail || 'user',
+        email: user.primaryEmail || '',
         isLoggedIn: true,
       })
     } else {
@@ -139,7 +138,7 @@ function SignedInBody({
   wordHighlightEnabled,
   setWordHighlightEnabled,
 }: SignedInBodyProps) {
-  const { user } = useUser()
+  const { user } = useAuthSession()
   const autoEnableSite = useAutoEnableSite()
   // Trigger path① (spec §3.2): a click inside the popup is a real, unforwarded
   // user gesture, so sidePanel.open() here is reliable -- unlike forwarding a
@@ -184,11 +183,8 @@ function SignedInBody({
   }, [])
 
   const displayName =
-    user?.fullName ||
-    user?.username ||
-    user?.primaryEmailAddress?.emailAddress ||
-    'there'
-  const email = user?.primaryEmailAddress?.emailAddress || ''
+    user?.fullName || user?.username || user?.primaryEmail || 'there'
+  const email = user?.primaryEmail || ''
   const initial = (displayName || 'U').trim().charAt(0).toUpperCase()
 
   // Set only after a failure on a page we could not read; the user decides
@@ -210,7 +206,7 @@ function SignedInBody({
   }
 
   // Saving (收藏) the current tab's link: one click, with the address in view
-  // (ADR-032 Decision 4/4a).
+  // (ADR-032 Decision 4/4a). Subject comes from the selected auth adapter.
   const savedPage = useSavedPage(user?.id)
 
   const handleEnableLearning = async () => {
@@ -394,7 +390,7 @@ function SignedInBody({
 }
 
 function PopupContent() {
-  const { isSignedIn } = useUser()
+  const { isSignedIn } = useAuthSession()
   const { enabled: wordHighlightEnabled, setEnabled: setWordHighlightEnabled } =
     useWordHighlightEnabled()
 
@@ -417,7 +413,7 @@ function PopupContent() {
 
   return (
     <div className="w-[340px] bg-muted font-sans text-foreground antialiased">
-      <ClerkUserSync />
+      <AuthUserSync />
       <PopupHeader />
       <div className="min-h-[180px]">
         <Login onLoginSuccess={handleLoginSuccess}>
@@ -441,17 +437,10 @@ function PopupContent() {
 
 export default function Popup() {
   return (
-    <ClerkProvider
-      publishableKey={config.clerkPublishableKey}
-      syncHost={config.clerkSyncHost}
-      // Pick up a session change on the website (e.g. the user just signed in
-      // there) without needing to reopen the popup.
-      __experimental_syncHostListener
-      afterSignOutUrl="/popup.html"
-    >
+    <popupAuth.Provider>
       <Provider>
         <PopupContent />
       </Provider>
-    </ClerkProvider>
+    </popupAuth.Provider>
   )
 }

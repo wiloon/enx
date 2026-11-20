@@ -1,10 +1,10 @@
 import { useAtom } from 'jotai'
-import { useAuth } from '@clerk/chrome-extension'
+import { useAuthSession } from '@/lib/auth'
 import { userAtom } from '@/store/atoms'
 
 export default function DebugPanel() {
   const [user] = useAtom(userAtom)
-  const { isLoaded, isSignedIn, sessionId } = useAuth()
+  const { isLoaded, isSignedIn, sessionId } = useAuthSession()
 
   if (process.env.NODE_ENV !== 'development') {
     return null
@@ -16,7 +16,8 @@ export default function DebugPanel() {
       <div className="space-y-1">
         <div>User: {JSON.stringify(user, null, 2)}</div>
         <div>
-          Clerk: {JSON.stringify({ isLoaded, isSignedIn, sessionId }, null, 2)}
+          Auth:{' '}
+          {JSON.stringify({ isLoaded, isSignedIn, sessionId }, null, 2)}
         </div>
         <button
           onClick={async () => {

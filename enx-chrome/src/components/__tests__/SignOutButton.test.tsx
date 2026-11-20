@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Provider } from 'jotai'
 import { useSyncExternalStore } from 'react'
 
-// A fake Clerk session the components subscribe to. Like clerk-js, signOut()
-// clears the user first (useUser then reports isLoaded: false) and only
-// settles on "signed out" once the server call has returned.
+// A fake auth session the components subscribe to. Like the Clerk adapter,
+// signOut() clears the user first (useAuthSession then reports isLoaded:
+// false) and only settles on "signed out" once the server call has returned.
 type Session = { isLoaded: boolean; isSignedIn: boolean }
 let session: Session = { isLoaded: true, isSignedIn: true }
 const listeners = new Set<() => void>()
@@ -23,8 +23,8 @@ const mockSignOut = jest.fn((_callback?: unknown) => {
   })
 })
 
-jest.mock('@clerk/chrome-extension', () => ({
-  useUser: () =>
+jest.mock('@/lib/auth', () => ({
+  useAuthSession: () =>
     useSyncExternalStore(
       l => {
         listeners.add(l)
@@ -32,7 +32,7 @@ jest.mock('@clerk/chrome-extension', () => ({
       },
       () => session
     ),
-  useClerk: () => ({ signOut: mockSignOut }),
+  useAuthSignOut: () => mockSignOut,
 }))
 
 // CatglishLogo pulls in an asset import Jest can't load.
@@ -63,7 +63,7 @@ describe('SignOutButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(mockSignOut).toHaveBeenCalledTimes(1)
-    // A callback instead of a redirectUrl: clerk-js then skips its navigate().
+    // A callback instead of a redirectUrl: the adapter then skips navigate().
     expect(typeof mockSignOut.mock.calls[0][0]).toBe('function')
   })
 

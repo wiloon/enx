@@ -4,11 +4,14 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    // Deliberately not the website origin: in production the sync host is
-    // Clerk's Frontend API (clerk.catglish.com), and the sign-in tab must still
-    // go to the website.
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk',
+      publishableKey: 'pk_test_x',
+      // Deliberately not the website origin: in production the sync host is
+      // Clerk's Frontend API (clerk.catglish.com), and the sign-in tab must still
+      // go to the website.
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: [
       'http://localhost:3000',
       'https://enx.wiloon.lab',
@@ -93,7 +96,17 @@ jest.mock('@clerk/chrome-extension/client', () => ({
   createClerkClient: jest.fn(),
 }))
 
+jest.mock('@/lib/auth/selectWorkerAuth', () => {
+  const actual = jest.requireActual(
+    '@/lib/auth/selectWorkerAuth'
+  ) as typeof import('@/lib/auth/selectWorkerAuth')
+  return {
+    selectWorkerAuth: jest.fn(actual.selectWorkerAuth),
+  }
+})
+
 import { createClerkClient } from '@clerk/chrome-extension/client'
+import { selectWorkerAuth } from '@/lib/auth/selectWorkerAuth'
 import { TOGGLE_LEARNING_MODE_COMMAND } from '@/lib/learningModeCommand'
 import { sanitizePageUrl } from '@/lib/pageReport'
 import {
@@ -125,6 +138,21 @@ const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
 
 const onCookieChanged = (chrome.cookies.onChanged.addListener as jest.Mock).mock
   .calls[0]?.[0]
+
+it('selects the worker auth adapter from the stamped provider at module load', () => {
+  expect(selectWorkerAuth).toHaveBeenCalledWith(
+    expect.objectContaining({
+      provider: 'clerk',
+      syncHost: 'https://clerk.localhost.test',
+    })
+  )
+  // Cookie listener registered synchronously through that adapter (before any
+  // await), so a matching Clerk cookie change can wake an evicted MV3 worker.
+  expect(onCookieChanged).toEqual(expect.any(Function))
+  expect(
+    (chrome.cookies.onChanged.addListener as jest.Mock).mock.calls.length
+  ).toBeGreaterThanOrEqual(1)
+})
 
 // ADR-019: the one web -> extension channel. enx-ui (an externally_connectable
 // origin) is the only caller.

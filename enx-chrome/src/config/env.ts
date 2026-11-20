@@ -6,18 +6,19 @@
 // It must not import TARGETS, or every target ships in every build (#231).
 
 import { parseHanCharLimit } from '@/lib/articleLanguage'
+import type { AuthConfig, AuthProviderId } from '@/lib/auth/config'
 import { readBuildEnv, type BuildEnvKey } from './buildEnv'
 import { resolveTargetName, type TargetName } from './targets'
 
 export interface EnvConfig {
   apiBaseUrl: string
   frontendBaseUrl: string
-  // Clerk (ADR-015). Publishable key is not secret; syncHost is the website
-  // origin whose Clerk session the extension mirrors (@clerk/chrome-extension
-  // ClerkProvider `syncHost`) so "logged in on the site -> logged in in the
-  // extension" works without a second sign-in.
-  clerkPublishableKey: string
-  clerkSyncHost: string
+  /**
+   * Per-provider auth config (ADR-036). Stamped from the build target; today
+   * always `clerk`. syncHost is where the session cookie is read — not where
+   * the sign-in tab goes (frontendBaseUrl).
+   */
+  auth: AuthConfig
   // enx-ui origins: the web -> extension channel (ADR-019), the Reader
   // adapter and the data-enx-* stamps.
   uiOrigins: string[]
@@ -46,13 +47,23 @@ if (!environment) {
   throw new Error(`[ENX Config] Unknown VITE_ENV value: ${stamped('VITE_ENV')}`)
 }
 
+const authProvider = stamped('VITE_AUTH_PROVIDER') as AuthProviderId
+if (authProvider !== 'clerk') {
+  throw new Error(`[ENX Config] Unsupported VITE_AUTH_PROVIDER: ${authProvider}`)
+}
+
+const auth: AuthConfig = {
+  provider: 'clerk',
+  publishableKey: stamped('VITE_CLERK_PUBLISHABLE_KEY'),
+  syncHost: stamped('VITE_CLERK_SYNC_HOST'),
+}
+
 // The API server is fixed per build: there is no runtime override (a stale
 // `apiBaseUrl` key in chrome.storage.local is simply not read).
 export const config: EnvConfig = {
   apiBaseUrl: stamped('VITE_API_BASE_URL'),
   frontendBaseUrl: stamped('VITE_FRONTEND_BASE_URL'),
-  clerkPublishableKey: stamped('VITE_CLERK_PUBLISHABLE_KEY'),
-  clerkSyncHost: stamped('VITE_CLERK_SYNC_HOST'),
+  auth,
   uiOrigins: stamped('VITE_ENX_UI_ORIGINS').split(',').filter(Boolean),
   rssxOrigins: stamped('VITE_RSSX_ORIGINS').split(',').filter(Boolean),
   hanCharLimit: parseHanCharLimit(readBuildEnv('VITE_HAN_CHAR_LIMIT')),

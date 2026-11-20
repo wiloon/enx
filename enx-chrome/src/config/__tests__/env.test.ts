@@ -75,7 +75,10 @@ describe('build target', () => {
       environment: 'production',
       apiBaseUrl: 'https://api.catglish.com',
       frontendBaseUrl: 'https://catglish.com',
-      clerkSyncHost: 'https://clerk.catglish.com',
+      auth: {
+        provider: 'clerk',
+        syncHost: 'https://clerk.catglish.com',
+      },
       uiOrigins: ['https://catglish.com'],
     })
   })

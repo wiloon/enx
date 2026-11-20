@@ -6,8 +6,11 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk' as const,
+      publishableKey: 'pk_test_x',
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: ['http://localhost:3000'],
     environment: 'test',
   },

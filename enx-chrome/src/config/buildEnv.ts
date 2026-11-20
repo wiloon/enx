@@ -7,6 +7,7 @@ export type BuildEnvKey =
   | 'VITE_ENV'
   | 'VITE_API_BASE_URL'
   | 'VITE_FRONTEND_BASE_URL'
+  | 'VITE_AUTH_PROVIDER'
   | 'VITE_CLERK_PUBLISHABLE_KEY'
   | 'VITE_CLERK_SYNC_HOST'
   | 'VITE_ENX_UI_ORIGINS'
@@ -24,6 +25,8 @@ export const readBuildEnv = (key: BuildEnvKey): string | undefined => {
       return import.meta.env.VITE_API_BASE_URL
     case 'VITE_FRONTEND_BASE_URL':
       return import.meta.env.VITE_FRONTEND_BASE_URL
+    case 'VITE_AUTH_PROVIDER':
+      return import.meta.env.VITE_AUTH_PROVIDER
     case 'VITE_CLERK_PUBLISHABLE_KEY':
       return import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
     case 'VITE_CLERK_SYNC_HOST':

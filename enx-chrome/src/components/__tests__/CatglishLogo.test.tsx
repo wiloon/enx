@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react'
 import CatglishLogo from '../CatglishLogo'
 import Login from '../Login'
 
-jest.mock('@clerk/chrome-extension', () => ({
-  useUser: () => ({ isLoaded: true, isSignedIn: false }),
+jest.mock('@/lib/auth', () => ({
+  useAuthSession: () => ({ isLoaded: true, isSignedIn: false }),
 }))
 
 describe('CatglishLogo', () => {

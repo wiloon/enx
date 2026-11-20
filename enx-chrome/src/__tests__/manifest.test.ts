@@ -79,12 +79,14 @@ describe('manifest stamping (ADR-019)', () => {
   // at catglish.com makes the extension look signed out forever.
   it('syncs the production Clerk session from the Frontend API host', () => {
     const key = 'pk_live_Y2xlcmsuY2F0Z2xpc2guY29tJA' // .env.production
-    expect(TARGETS.production.clerkSyncHost).toBe(
+    expect(TARGETS.production.auth.syncHost).toBe(
       `https://${clerkFrontendApiHost(key)}`
     )
     expect(
-      stamp({ ...TARGETS.production, clerkPublishableKey: key })
-        .host_permissions
+      stamp({
+        ...TARGETS.production,
+        auth: { ...TARGETS.production.auth, publishableKey: key },
+      }).host_permissions
     ).toContain('https://clerk.catglish.com/*')
   })
 
