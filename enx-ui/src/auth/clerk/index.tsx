@@ -1,8 +1,9 @@
-import { ClerkProvider, SignIn, SignUp } from '@clerk/nextjs'
+import { ClerkProvider } from '@clerk/nextjs'
 import { clerkMiddleware } from '@clerk/nextjs/server'
 import type { NextFetchEvent, NextMiddleware, NextRequest } from 'next/server'
 import type { AuthAdapter } from '../types'
 import ClerkAuthContext from './ClerkAuthContext'
+import { SignInBody, SignUpBody } from './ClerkAuthWidgets'
 
 // The publishable key is a runtime value (see lib/runtimeEnv.ts): without it
 // Clerk falls back to the build-time-inlined NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
@@ -26,8 +27,6 @@ export const clerkAdapter: AuthAdapter = {
     </ClerkProvider>
   ),
   handle,
-  SignInBody: ({ forceRedirectUrl }) => (
-    <SignIn forceRedirectUrl={forceRedirectUrl} />
-  ),
-  SignUpBody: () => <SignUp />,
+  SignInBody,
+  SignUpBody,
 }

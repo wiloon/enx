@@ -57,13 +57,13 @@ describe('proxy', () => {
     errorSpy.mockRestore()
   })
 
-  it('hands non-API paths to the auth adapter', () => {
+  it('returns the auth adapter’s async response for non-API paths', async () => {
     process.env.API_BASE_URL = 'http://enx-api.enx.svc:8091'
     const sentinel = new Response('adapter')
-    handle.mockReturnValue(sentinel)
+    handle.mockResolvedValue(sentinel)
 
     const req = new NextRequest('https://enx.example/app')
-    expect(proxy(req, event)).toBe(sentinel)
+    await expect(proxy(req, event)).resolves.toBe(sentinel)
     expect(handle).toHaveBeenCalledWith(req, event)
   })
 

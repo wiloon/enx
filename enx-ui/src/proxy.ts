@@ -33,7 +33,7 @@ function relayToApi(req: NextRequest): NextResponse {
 // Next 16 renamed middleware.ts to proxy.ts (same role, Node.js runtime).
 export default function proxy(req: NextRequest, event: NextFetchEvent) {
   if (isApiPath(req.nextUrl.pathname)) return relayToApi(req)
-  return getAuthAdapter().handle(req, event) as Response | undefined
+  return getAuthAdapter().handle(req, event)
 }
 
 export const config = {

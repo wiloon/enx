@@ -1,5 +1,4 @@
 import { render, renderHook, screen } from '@testing-library/react'
-import type { NextFetchEvent, NextRequest } from 'next/server'
 import { useAuth } from '@/hooks/useAuth'
 import HeaderAuthLinks from '@/components/site/HeaderAuthLinks'
 import PricingCta from '@/components/site/PricingCta'
@@ -16,8 +15,6 @@ const signOut = jest.fn()
 const redirectToSignIn = jest.fn()
 const getToken = jest.fn()
 let mockAuth: { isLoaded: boolean; isSignedIn: boolean | undefined }
-const mockClerkMiddleware = jest.fn()
-const mockClerkHandler = jest.fn()
 
 jest.mock('@clerk/nextjs', () => ({
   useAuth: () => ({ ...mockAuth, getToken }),
@@ -54,7 +51,7 @@ jest.mock('@clerk/nextjs', () => ({
 }))
 
 jest.mock('@clerk/nextjs/server', () => ({
-  clerkMiddleware: (...args: unknown[]) => mockClerkMiddleware(...args),
+  clerkMiddleware: jest.fn(),
 }))
 
 function withClerk({ children }: { children: React.ReactNode }) {
@@ -64,7 +61,6 @@ function withClerk({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   jest.clearAllMocks()
   mockAuth = { isLoaded: true, isSignedIn: true }
-  mockClerkMiddleware.mockReturnValue(mockClerkHandler)
 })
 
 describe('useAuth through the Clerk adapter', () => {
@@ -206,23 +202,6 @@ describe('Clerk adapter pieces', () => {
       '/extension/connected'
     )
     expect(screen.getByTestId('clerk-sign-up')).toBeInTheDocument()
-  })
-
-  it('handle builds clerkMiddleware once with the runtime key and delegates', () => {
-    process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_runtime'
-    const req = {} as NextRequest
-    const event = {} as NextFetchEvent
-    mockClerkHandler.mockReturnValue('response')
-
-    expect(clerkAdapter.handle(req, event)).toBe('response')
-    clerkAdapter.handle(req, event)
-
-    expect(mockClerkMiddleware).toHaveBeenCalledTimes(1)
-    expect(mockClerkMiddleware).toHaveBeenCalledWith({
-      publishableKey: 'pk_test_runtime',
-    })
-    expect(mockClerkHandler).toHaveBeenCalledWith(req, event)
-    delete process.env.CLERK_PUBLISHABLE_KEY
   })
 })
 

@@ -16,7 +16,7 @@ import path from 'node:path'
 const SRC = path.resolve(__dirname, '../..')
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/
 const CLERK_REFERENCE =
-  /(?:from\s*|import\s*\(\s*|require\s*\(\s*|jest\.(?:mock|doMock|unmock|requireActual|requireMock)\s*\(\s*)['"]@clerk\//
+  /(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*|jest\.(?:mock|doMock|unmock|requireActual|requireMock)\s*\(\s*)['"]@clerk\//
 
 function walk(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -74,6 +74,13 @@ describe('Clerk adapter boundary', () => {
         "import { useAuth } from '@clerk/nextjs'\njest.mock('@clerk/nextjs')\n"
       )
       expect(clerkOutsideAdapter(root)).toEqual([])
+    })
+
+    it('reports a side-effect import outside the adapter', () => {
+      const offender = path.join('components', 'Bad.tsx')
+      writeFileSync(path.join(root, offender), "import '@clerk/nextjs'\n")
+
+      expect(clerkOutsideAdapter(root)).toEqual([offender])
     })
   })
 })
