@@ -17,6 +17,33 @@ linters:
           deny:
             - pkg: github.com/knadh/koanf
               desc: read configuration through enx-api/config (issue #45)
+        # ADR-078 stage 1: the domain core of these packages stays free of
+        # HTTP and SQL machinery; that code lives in adapters/ and httpapi/.
+        domain-core-no-io:
+          files:
+            - "**/enx-api/account/*.go"
+            - "**/enx-api/referral/*.go"
+            - "**/enx-api/preferences/*.go"
+            - "**/enx-api/entitlement/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/gin-gonic/gin
+              desc: domain core must not import HTTP code; use httpapi/ (ADR-078)
+            - pkg: gorm.io/gorm
+              desc: domain core must not import SQL code; use adapters/ (ADR-078)
+            - pkg: database/sql
+              desc: domain core must not import SQL code; use adapters/ (ADR-078)
+            - pkg: net/http
+              desc: domain core must not import HTTP code; use httpapi/ (ADR-078)
+            - pkg: github.com/glebarez/
+              desc: domain core must not import SQLite drivers; use adapters/ (ADR-078)
+            # Stage 3 replaces this entry with enx-api/platform/sqlitex.
+            - pkg: enx-api/utils/sqlitex
+              desc: domain core must not import SQL code; use adapters/ (ADR-078)
+            - pkg: enx-api/enx
+              desc: domain core must not import the legacy enx package (ADR-078)
+            - pkg: enx-api/repo
+              desc: domain core must not import the legacy repo package (ADR-078)
 
 # Don't set goimports.local-prefixes: the module path "enx-api" has no dot,
 # so stdlib and enx-api/... imports share one sorted block (issue #205).
