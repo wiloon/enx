@@ -27,11 +27,12 @@ export async function loadFreeDailyLookupLimit(
   const fetchImpl = options.fetchImpl ?? fetch
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
-  const url = apiProxyUrl(
-    '/api/dictionary/free-daily-lookup-limit',
-    '',
-    baseUrl
-  )
+  let url: URL | null
+  try {
+    url = apiProxyUrl('/api/dictionary/free-daily-lookup-limit', '', baseUrl)
+  } catch {
+    return null
+  }
   if (!url) return null
 
   const controller = new AbortController()

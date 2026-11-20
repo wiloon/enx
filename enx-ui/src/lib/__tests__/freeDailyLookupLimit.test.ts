@@ -26,6 +26,14 @@ describe('loadFreeDailyLookupLimit', () => {
     ).resolves.toBeNull()
   })
 
+  it('returns null when API_BASE_URL is not a valid URL', async () => {
+    const fetchImpl = jest.fn()
+    await expect(
+      loadFreeDailyLookupLimit({ baseUrl: 'not a url', fetchImpl })
+    ).resolves.toBeNull()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
   it('returns a usable free limit from a successful response', async () => {
     const fetchImpl = jest.fn().mockResolvedValue({
       ok: true,
