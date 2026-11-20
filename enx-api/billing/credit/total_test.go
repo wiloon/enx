@@ -3,6 +3,7 @@ package credit
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -278,6 +279,19 @@ func TestExpireTrialsContinuesPastAFailedAccountAndRetriesIt(t *testing.T) {
 // context.Canceled. The sweep must stop there without recording it as an
 // account failure, keeping the account it already forfeited.
 func TestExpireTrialsStopsAtShutdownWithoutRecordingTheInterruptedAccount(t *testing.T) {
+	previousDB := sqlitex.DB
+	t.Cleanup(func() { sqlitex.DB = previousDB })
+	sqlitex.Init(filepath.Join(t.TempDir(), "trial-expiry.db"))
+	db, err := sqlitex.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
 	ids := []string{"u-" + t.Name() + "-1", "u-" + t.Name() + "-2", "u-" + t.Name() + "-3"}
 	for _, id := range ids {
 		seedCreditUser(t, id)
@@ -287,7 +301,7 @@ func TestExpireTrialsStopsAtShutdownWithoutRecordingTheInterruptedAccount(t *tes
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	const name = "test:interrupt_second_account"
-	err := sqlitex.DB.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
+	err = sqlitex.DB.Callback().Raw().Before("gorm:raw").Register(name, func(tx *gorm.DB) {
 		if strings.HasPrefix(tx.Statement.SQL.String(), "UPDATE users") &&
 			len(tx.Statement.Vars) == 1 && tx.Statement.Vars[0] == ids[1] {
 			cancel()
@@ -297,7 +311,6 @@ func TestExpireTrialsStopsAtShutdownWithoutRecordingTheInterruptedAccount(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = sqlitex.DB.Callback().Raw().Remove(name) })
 
 	run, err := ExpireTrials(ctx)
 
