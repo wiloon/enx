@@ -1,11 +1,6 @@
 import { readFileSync } from 'fs'
 import path from 'path'
-import {
-  FREE_DAILY_LOOKUPS,
-  SUBSCRIBED_DAILY_LOOKUPS,
-  SUBSCRIPTION_PLANS,
-  TOPUP_TIERS,
-} from '../plans'
+import { SUBSCRIPTION_PLANS, TOPUP_TIERS } from '../plans'
 
 // The credits a purchase grants come from enx-api/config.toml
 // [stripe.credits]; /pricing and /billing advertise plans.ts. Read the file at
@@ -75,19 +70,10 @@ describe('plans.ts credits match enx-api/config.toml [stripe.credits]', () => {
   })
 })
 
-// /pricing names the daily dictionary lookup limits; enx-api enforces
-// [stripe.quota]. Deployments may override them by env (w10n-config), which
-// this test cannot see -- keep those in step by hand.
-describe('plans.ts lookup limits match enx-api/config.toml [stripe.quota]', () => {
-  it('advertises the free limit the API enforces', () => {
-    expect(FREE_DAILY_LOOKUPS).toBe(
-      configSection('stripe.quota')['dictionary-lookup-daily-free']
-    )
-  })
-
-  it('advertises the subscriber limit the API enforces', () => {
-    expect(SUBSCRIBED_DAILY_LOOKUPS).toBe(
-      configSection('stripe.quota')['dictionary-lookup-daily-subscribed']
-    )
+describe('paid plan features', () => {
+  it('omit the daily lookup line; the subscribed ceiling protects the API only', () => {
+    for (const p of SUBSCRIPTION_PLANS) {
+      expect(p.features.join('\n')).not.toMatch(/lookups? a day/i)
+    }
   })
 })

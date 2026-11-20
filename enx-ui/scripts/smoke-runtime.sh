@@ -69,6 +69,9 @@ if [ -n "${SMOKE_IMAGE:-}" ]; then
     "$SMOKE_IMAGE")"
 else
   cd "$(dirname "$0")/.."
+  # The same launcher the image runs (ADR-036): it validates AUTH_PROVIDER, then
+  # loads server.js from the working directory.
+  LAUNCHER="$PWD/scripts/launch.mjs"
   [ -f .next/standalone/server.js ] || { echo "❌ smoke: .next/standalone/server.js missing -- run 'pnpm build' first" >&2; exit 1; }
   echo "▶ smoke: .next/standalone (runtime env only, scrubbed environment)"
   # `env -i` + a cwd without any .env file: nothing but the variables below.
@@ -80,7 +83,7 @@ else
     CLERK_PUBLISHABLE_KEY="$PK" CLERK_SECRET_KEY="$SK" \
     API_BASE_URL="$API_BASE_URL" SITE_URL="$SITE_URL" \
     ENX_EXTENSION_ID="$EXT_ID" ENX_VERSION="${SMOKE_VERSION:-}" \
-    node server.js) >"$LOG" 2>&1 &
+    node "$LAUNCHER") >"$LOG" 2>&1 &
   PID=$!
 fi
 
@@ -136,3 +139,57 @@ relayed \
   || fail "/api/* was not relayed to the runtime API_BASE_URL (${API_BASE_URL}); target is frozen at build time"
 
 echo "✅ smoke: /api/* relayed to the runtime API_BASE_URL"
+
+# ADR-036: an unsupported AUTH_PROVIDER must stop the same artifact at start-up,
+# with a diagnostic naming the variable, before any HTTP request. The server
+# above ran with the variable unset (Clerk). Stop it first: the port is free.
+if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; PID=""; fi
+if [ -n "$CID" ]; then "$CLI" rm -f "$CID" >/dev/null 2>&1 || true; CID=""; fi
+
+BAD_LOG="$(mktemp)"
+trap 'rm -f "$BAD_LOG"; cleanup' EXIT
+if [ -n "${SMOKE_IMAGE:-}" ]; then
+  BAD_CID="$("$CLI" run -d -e AUTH_PROVIDER=logto \
+    -e CLERK_PUBLISHABLE_KEY="$PK" -e CLERK_SECRET_KEY="$SK" \
+    -e API_BASE_URL="$API_BASE_URL" -e SITE_URL="$SITE_URL" \
+    "$SMOKE_IMAGE")"
+  bad_alive() { [ "$("$CLI" inspect -f '{{.State.Running}}' "$BAD_CID")" = "true" ]; }
+  bad_code() { "$CLI" inspect -f '{{.State.ExitCode}}' "$BAD_CID"; }
+  bad_logs() { "$CLI" logs "$BAD_CID" 2>&1; }
+else
+  (cd .next/standalone && exec env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    NODE_ENV=production PORT="$PORT" AUTH_PROVIDER=logto \
+    CLERK_PUBLISHABLE_KEY="$PK" CLERK_SECRET_KEY="$SK" \
+    API_BASE_URL="$API_BASE_URL" SITE_URL="$SITE_URL" \
+    node "$LAUNCHER") >"$BAD_LOG" 2>&1 &
+  BAD_PID=$!
+  bad_alive() { kill -0 "$BAD_PID" 2>/dev/null; }
+  bad_code() { wait "$BAD_PID" 2>/dev/null && echo 0 || echo $?; }
+  bad_logs() { cat "$BAD_LOG"; }
+fi
+
+bad_deadline=$((SECONDS + TIMEOUT))
+while bad_alive && [ "$SECONDS" -lt "$bad_deadline" ]; do
+  sleep 1
+done
+if bad_alive; then
+  [ -n "${BAD_PID:-}" ] && kill "$BAD_PID" 2>/dev/null || true
+  [ -n "${BAD_CID:-}" ] && "$CLI" rm -f "$BAD_CID" >/dev/null 2>&1 || true
+  echo "❌ smoke: AUTH_PROVIDER=logto still running after ${TIMEOUT}s (want a start-up failure)" >&2
+  exit 1
+fi
+bad_exit="$(bad_code)"
+bad_out="$(bad_logs)"
+[ -n "${BAD_CID:-}" ] && "$CLI" rm -f "$BAD_CID" >/dev/null 2>&1 || true
+if [ "$bad_exit" = "0" ]; then
+  echo "❌ smoke: AUTH_PROVIDER=logto exited 0 (want nonzero)" >&2
+  echo "$bad_out" >&2
+  exit 1
+fi
+if [[ "$bad_out" != *AUTH_PROVIDER* ]]; then
+  echo "❌ smoke: AUTH_PROVIDER=logto exited ${bad_exit} without a diagnostic naming AUTH_PROVIDER" >&2
+  echo "$bad_out" >&2
+  exit 1
+fi
+
+echo "✅ smoke: AUTH_PROVIDER=logto exits ${bad_exit} at start-up with a diagnostic"

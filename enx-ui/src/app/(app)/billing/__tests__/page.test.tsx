@@ -65,6 +65,20 @@ it('shows the monthly subscription tab by default', async () => {
   await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
 })
 
+// ADR-029: paid cards omit the subscribed daily lookup ceiling.
+it('omits the daily lookup line from every paid plan card', async () => {
+  renderPage()
+  await waitFor(() => expect(screen.getByText('Free user')).toBeInTheDocument())
+
+  for (const name of ['Catglish Pro', 'Catglish Pro+', 'Catglish Max']) {
+    const title = screen.getByText(name, {
+      selector: '[data-slot="card-title"]',
+    })
+    const card = title.closest('[data-slot="card"]') as HTMLElement
+    expect(within(card).queryByText(/lookups? a day/i)).toBeNull()
+  }
+})
+
 // ADR-063 Decision 4: the way in to the credit history, not a nav item.
 it('links to the credit history from the balance card', async () => {
   renderPage()

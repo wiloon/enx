@@ -81,7 +81,7 @@ func protectedStatus(t *testing.T, cfg ClerkConfig, token string) (int, *httptes
 	r := gin.New()
 	r.Use(ClerkAuth(cfg, nil))
 	r.GET("/api/me", func(c *gin.Context) {
-		sub, _ := c.Get("clerk_user_id")
+		sub, _ := c.Get("auth_subject")
 		c.JSON(http.StatusOK, gin.H{"sub": sub})
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -129,7 +129,7 @@ func TestOIDCAuth_RemappedClaimsReachTheRouteAndTheStoredProfile(t *testing.T) {
 		t.Errorf("route subject = %v, want logto_2", body["sub"])
 	}
 	var u sqlitex.User
-	if err := sqlitex.DB.First(&u, "clerk_user_id = ?", "logto_2").Error; err != nil {
+	if err := sqlitex.DB.First(&u, "auth_subject = ?", "logto_2").Error; err != nil {
 		t.Fatalf("stored user: %v", err)
 	}
 	if u.Email != "b@example.com" || u.Name != "Bee" || u.AvatarUrl != "https://img.example/b.png" {

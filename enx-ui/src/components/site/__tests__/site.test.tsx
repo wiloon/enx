@@ -3,8 +3,8 @@ import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isLoaded: true, isSignedIn: false }))
-jest.mock('@clerk/nextjs', () => ({
-  useAuth: () => mockUseAuth(),
+jest.mock('@/auth/context', () => ({
+  useAuthContext: () => mockUseAuth(),
 }))
 
 const mockExtensionStatus = jest.fn(() => 'not-installed')

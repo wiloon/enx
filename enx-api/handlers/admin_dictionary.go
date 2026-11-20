@@ -164,7 +164,7 @@ func AdminSyncWordFromEcdict(c *gin.Context) {
 		beforeChinese, beforePron = before.Chinese, before.Pronunciation
 	}
 	logger.Infof("admin AdminSyncWordFromEcdict: %s synced word=%q from ECDICT (matchedBy=%s): chinese %q -> %q, pronunciation %q -> %q",
-		c.GetString("clerk_user_id"), word, matchedBy, beforeChinese, after.Chinese, beforePron, after.Pronunciation)
+		c.GetString("auth_subject"), word, matchedBy, beforeChinese, after.Chinese, beforePron, after.Pronunciation)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
@@ -264,7 +264,7 @@ func AdminEditWord(c *gin.Context) {
 	}
 
 	logger.Infof("admin AdminEditWord: %s edited word=%q (source=%s): chinese %q -> %q, pronunciation %q -> %q",
-		c.GetString("clerk_user_id"), word, after.Source, before.Chinese, after.Chinese, before.Pronunciation, after.Pronunciation)
+		c.GetString("auth_subject"), word, after.Source, before.Chinese, after.Chinese, before.Pronunciation, after.Pronunciation)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "word": adminWordRowFrom(after)})
 }
@@ -285,6 +285,6 @@ func AdminDeleteWord(c *gin.Context) {
 		httpjson.Fail(c, http.StatusInternalServerError, "failed to delete word")
 		return
 	}
-	logger.Infof("admin AdminDeleteWord: %s deleted word=%q (existed=%v)", c.GetString("clerk_user_id"), word, deleted)
+	logger.Infof("admin AdminDeleteWord: %s deleted word=%q (existed=%v)", c.GetString("auth_subject"), word, deleted)
 	c.JSON(http.StatusOK, gin.H{"success": true, "deleted": deleted})
 }

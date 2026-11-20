@@ -110,6 +110,12 @@ func TestClaim(t *testing.T) {
 	if _, err := Claim(due, "", t0, lease, HourlyPass); !errors.Is(err, ErrNoToken) {
 		t.Errorf("Claim without a token err = %v, want ErrNoToken", err)
 	}
+	if _, err := Claim(due, "tok_a", t0, 0, HourlyPass); !errors.Is(err, ErrNoLease) {
+		t.Errorf("Claim with zero lease err = %v, want ErrNoLease", err)
+	}
+	if _, err := Claim(due, "tok_a", t0, -time.Second, HourlyPass); !errors.Is(err, ErrNoLease) {
+		t.Errorf("Claim with negative lease err = %v, want ErrNoLease", err)
+	}
 }
 
 func TestMarkSent(t *testing.T) {

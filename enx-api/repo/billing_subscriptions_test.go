@@ -54,6 +54,18 @@ func TestBillingSubscriptionsWithoutAnAcceptedSubscriptionReturnsDefaults(t *tes
 	}
 }
 
+func TestBillingSubscriptionsEmptyStatusReturnsNone(t *testing.T) {
+	newSubscriptionConflictDB(t)
+	seedBillingOwner(t, "user_1", 0)
+	seedSubscription(t, subscriptionRow{ID: "sub_a", UserID: "user_1", CustomerID: "cus_a", Status: "", Classification: "accepted"})
+	acceptSubscription(t, "user_1", "sub_a")
+
+	got, err := (BillingSubscriptions{}).Subscription(context.Background(), "user_1")
+	if err != nil || got != (subscription.Snapshot{Status: "none"}) {
+		t.Fatalf("Subscription = %+v, %v, want none matching no-row absence", got, err)
+	}
+}
+
 func TestBillingSubscriptionsDatabaseFailureIsNotAbsence(t *testing.T) {
 	newSubscriptionConflictDB(t)
 	if err := sqlitex.DB.Exec("DROP TABLE subscriptions").Error; err != nil {

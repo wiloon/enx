@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@clerk/nextjs'
+import { useAuthContext } from '@/auth/context'
 
 const noopSubscribe = () => () => {}
 
@@ -26,7 +26,7 @@ export default function PricingCta({
     () => true,
     () => false
   )
-  const { isSignedIn } = useAuth()
+  const { isSignedIn } = useAuthContext()
 
   const className =
     variant === 'primary'

@@ -1,4 +1,4 @@
-INSERT INTO users (id, clerk_user_id, name, email, status, created_at, updated_at, last_login_time)
+INSERT INTO users (id, auth_subject, name, email, status, created_at, updated_at, last_login_time)
 VALUES ('u_subscribed', 'user_subscribed', 'Subscribed', 'subscribed@example.com', 'active',
         '2026-09-01 00:00:00+00:00', '2026-09-01 00:00:00+00:00', '2026-10-01 00:00:00+00:00');
 INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, plan, current_period_end, classification, created_at, updated_at)

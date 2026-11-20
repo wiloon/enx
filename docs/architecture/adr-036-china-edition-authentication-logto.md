@@ -88,7 +88,11 @@ Logto 与国内版的 enx-api / enx-ui 部署在同一个境内环境，使用�
 - **enx-api 管理外部认证身份**：沿用 ADR-062 的账号管理接口并去掉接口名中的 provider。注销时删除外部认证身份，禁用和解除禁用时同步外部账号状态，撤销会话时让该用户的外部会话下线（ADR-062 Decision 5）。海外版沿用 Clerk Backend API。接入 Logto 时，adapter 用 Logto Management API 提供对应的删除、暂停、恢复和退出会话能力。
 - **enx-ui**：`useAuth`、`ApiAuthBridge`、登录和注册页、`proxy.ts` 的认证处理以及 root layout 的 provider 统一通过 `src/auth/` 中的 auth adapter。服务端按运行期的 `AUTH_PROVIDER=clerk|logto` 选择 adapter（ADR-031），由 root layout 渲染所选 provider，客户端通过统一的 auth context 使用它。每个部署只配置一个 IdP，两个 SDK 可以同时打进包里。
   - `AUTH_PROVIDER` 未设置时默认选 Clerk。显式设置时必须精确匹配已实现的 provider，包括大小写。空值、纯空白、未知值以及尚未实现的 provider（#1028 阶段的 `logto`）使 standalone 进程在启动 Next.js 前以非零状态退出，错误信息指出 `AUTH_PROVIDER`。
-- **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
+- **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。adapter 的边界：
+  - 调 API 用的 token 由 service worker 获取，side panel 和 content script 继续通过 worker 消息取 token、查登录态，不直接碰 adapter 或 SDK。popup 例外：它用同一构建 target 选中的 adapter 维护自己的响应式会话视图（海外版即今天的 `ClerkProvider` + `syncHost` 实时监听），网站登录或登出后已打开的 popup 自动更新。
+  - 会话同步机制归 adapter：Clerk 的会话 cookie 监听（在 worker 顶层同步注册，让 cookie 变化能唤醒被回收的 worker）和「确认已登出 vs 服务暂时不可达」的区分，都属于 Clerk adapter，不留在 worker 的通用代码里。
+  - adapter 给出当前用户的稳定 subject（Clerk 是 `user.id`），扩展本地按账号分开的存储（ADR-032 Decision 4a 的 `savedPages:<userId>`、ADR-081 的 `readingPositions:<userId>`）用它做 key。海外版换成 adapter 之后，这个值必须与今天相同，升级后才能读到原有记录。
+  - provider 只在构建期由 target 决定：生成的 manifest（host 权限、`cookies` 权限）和打进 bundle 的运行期配置来自同一个 target，popup 和 worker 用的是这个 target 选中的 adapter。
 - **改造顺序**：先抽接口、海外版行为不变，单独合并上线；再加 Logto 实现。每一步都由测试护住。
 
 ### 4. 用 `unionid` 识别微信用户
@@ -181,5 +185,6 @@ Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.c
 
 - #1031：Decision 8 写明 `DELETE /api/me` 的请求体字段 `confirmation`、不匹配时的错误码 `confirmation_mismatch`，以及 enx-ui 按钮与服务端同样去掉首尾空格再比较，让接口、界面和测试对齐；并把「首尾空格」统一定义为 ASCII 空白（Go 和 JavaScript 的默认 trim 集合不同），写明「同一微信」文案随国内版 enx-ui 工作改，#1031 不改。
 
+- #1029：明确 enx-chrome adapter 的边界——API token 由 service worker 获取，popup 通过所选 adapter 保留自己的实时会话视图（原文「会话状态只在 worker」与 popup 的实时同步冲突），Clerk 的会话 cookie 监听和登出判定归 adapter，adapter 给出的 subject 与今天的 Clerk `user.id` 相同以保住按账号存储的本地数据，provider 由构建 target 统一决定 manifest 和运行期配置。
 - #1028：明确 enx-ui 在服务端选择 adapter 并通过 auth context 提供客户端会话，补齐 `AUTH_PROVIDER` 的默认值和启动校验规则，避免配置错误后继续运行。
 - #1027：补充第一步上线的迁移失败与回退约束，明确账号管理接口的职责，并纠正空邮箱开通的现状及其适用版本。

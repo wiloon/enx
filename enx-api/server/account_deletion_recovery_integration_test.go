@@ -21,7 +21,7 @@ import (
 )
 
 type deletionClerk struct {
-	account.Clerk
+	account.ExternalIdentity
 	remove func() error
 }
 
@@ -29,21 +29,21 @@ func (c deletionClerk) DeleteUser(context.Context, string) error { return c.remo
 
 // The gate is established by a production deletion route. Expiring a
 // persisted lease models elapsed time without minute-long sleeps.
-func deletionRecoveryEnv(t *testing.T) (func(account.Clerk) *httptest.Server, func(bool, string) (int, map[string]any)) {
+func deletionRecoveryEnv(t *testing.T) (func(account.ExternalIdentity) *httptest.Server, func(bool, string) (int, map[string]any)) {
 	t.Helper()
 	jwks := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 	cfg.Account.EmailHMACKey = "test-key"
 
 	sqlitex.Init(filepath.Join(t.TempDir(), "recovery.db"))
 	if err := sqlitex.InitializeBillingSchema(sqlitex.DB); err != nil {
 		t.Fatal(err)
 	}
-	deletionSQL(t, "INSERT INTO users (id, clerk_user_id, email) VALUES ('target', ?, ?)", nonAdminSub, accountPlainEmail)
+	deletionSQL(t, "INSERT INTO users (id, auth_subject, email) VALUES ('target', ?, ?)", nonAdminSub, accountPlainEmail)
 	var server *httptest.Server
-	start := func(clerk account.Clerk) *httptest.Server {
+	start := func(clerk account.ExternalIdentity) *httptest.Server {
 		server = httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, clerk))
 		t.Cleanup(server.Close)
 		return server

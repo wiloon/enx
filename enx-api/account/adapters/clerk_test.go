@@ -72,8 +72,8 @@ func TestClerkFailureIsAnError(t *testing.T) {
 	c := f.serve(t)
 	for name, err := range map[string]error{
 		"delete": c.DeleteUser(context.Background(), "user_1"),
-		"ban":    c.BanUser(context.Background(), "user_1"),
-		"unban":  c.UnbanUser(context.Background(), "user_1"),
+		"ban":    c.DisableUser(context.Background(), "user_1"),
+		"unban":  c.EnableUser(context.Background(), "user_1"),
 		"revoke": c.RevokeSessions(context.Background(), "user_1"),
 	} {
 		if err == nil {
@@ -85,10 +85,10 @@ func TestClerkFailureIsAnError(t *testing.T) {
 func TestClerkBanAndUnban(t *testing.T) {
 	f := &fakeClerkAPI{}
 	c := f.serve(t)
-	if err := c.BanUser(context.Background(), "user_1"); err != nil {
+	if err := c.DisableUser(context.Background(), "user_1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.UnbanUser(context.Background(), "user_1"); err != nil {
+	if err := c.EnableUser(context.Background(), "user_1"); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(f.calls, ","); got != "POST /v1/users/user_1/ban,POST /v1/users/user_1/unban" {
@@ -120,7 +120,7 @@ func TestClerkRevokeSessionsReadsAPaginatedList(t *testing.T) {
 
 func TestClerkEscapesTheUserID(t *testing.T) {
 	f := &fakeClerkAPI{}
-	if err := f.serve(t).BanUser(context.Background(), "user/../x"); err != nil {
+	if err := f.serve(t).DisableUser(context.Background(), "user/../x"); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.calls) != 1 || strings.Contains(f.calls[0], "/../") {

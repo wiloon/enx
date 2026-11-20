@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useAuthContext } from '@/auth/context'
 import { apiService } from '@/services/api'
 
-// Bridges Clerk's session token into the plain ApiService singleton (which is
-// not a hook and can't call useAuth itself). Clerk's getToken() always returns
-// a fresh, short-lived session JWT, so ApiService no longer manages refresh.
+// Bridges the auth provider's session token into the plain ApiService
+// singleton (which is not a hook and can't read the context itself). getToken()
+// always returns a fresh, short-lived session token, so ApiService does not
+// manage refresh.
 export default function ApiAuthBridge() {
-  const { getToken } = useAuth()
+  const { getToken } = useAuthContext()
 
   useEffect(() => {
     apiService.setTokenGetter(() => getToken())

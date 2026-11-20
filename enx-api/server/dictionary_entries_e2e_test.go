@@ -46,7 +46,7 @@ func sendEntries(t *testing.T, method, url, token, body string) (int, string, []
 func userIDOf(t *testing.T, clerkUserID string) string {
 	t.Helper()
 	var id string
-	if err := sqlitex.DB.Raw("SELECT id FROM users WHERE clerk_user_id = ?", clerkUserID).Scan(&id).Error; err != nil || id == "" {
+	if err := sqlitex.DB.Raw("SELECT id FROM users WHERE auth_subject = ?", clerkUserID).Scan(&id).Error; err != nil || id == "" {
 		t.Fatalf("user %s: %q %v", clerkUserID, id, err)
 	}
 	return id

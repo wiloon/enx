@@ -1,11 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import SignInPage from '../page'
 
-// ADR-020: assert the post-sign-in redirect the page hands to Clerk's <SignIn>.
-jest.mock('@clerk/nextjs', () => ({
-  SignIn: ({ forceRedirectUrl }: { forceRedirectUrl?: string }) => (
-    <div data-testid="sign-in" data-force-redirect={forceRedirectUrl ?? ''} />
-  ),
+// ADR-020: assert the post-sign-in redirect the page hands to the selected
+// adapter's sign-in body.
+jest.mock('@/auth', () => ({
+  getAuthAdapter: () => ({
+    SignInBody: ({ forceRedirectUrl }: { forceRedirectUrl?: string }) => (
+      <div data-testid="sign-in" data-force-redirect={forceRedirectUrl ?? ''} />
+    ),
+  }),
 }))
 
 async function renderPage(searchParams: { src?: string }) {

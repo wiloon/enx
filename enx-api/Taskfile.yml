@@ -41,7 +41,7 @@ tasks:
       Usage: task grant-credits USER=you@example.com AMOUNT=5000 REASON="..." TOKEN=<clerk-jwt> [API=https://enx-api.wiloon.lab]
       TOKEN is the caller's Clerk session JWT -- in the browser console on the
       site: `await window.Clerk.session.getToken()`. The caller's Clerk user id
-      must be in the server's ADMIN_CLERK_USER_IDS.
+      must be in the server's ADMIN_AUTH_SUBJECTS.
     vars:
       API: '{{.API | default "https://enx-api.wiloon.lab"}}'
     requires:

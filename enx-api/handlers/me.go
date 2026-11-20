@@ -12,7 +12,7 @@ import (
 )
 
 // GetMe returns the current user's public fields including status. isAdmin
-// reflects the ADMIN_CLERK_USER_IDS allowlist (ADR-021) and is the only
+// reflects the ADMIN_AUTH_SUBJECTS allowlist (ADR-021) and is the only
 // signal enx-ui uses to decide whether to render the admin navigation; the
 // allowlist itself stays server-side.
 func GetMe(admins middleware.AdminAllowlist) gin.HandlerFunc {
@@ -36,6 +36,6 @@ func serveMe(c *gin.Context, admins middleware.AdminAllowlist) {
 		"avatarUrl": user.AvatarUrl,
 		"createdAt": user.CreateTime.UTC().Format(time.RFC3339),
 		"status":    user.Status,
-		"isAdmin":   admins.Contains(c.GetString("clerk_user_id")),
+		"isAdmin":   admins.Contains(c.GetString("auth_subject")),
 	})
 }

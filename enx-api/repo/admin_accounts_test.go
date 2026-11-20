@@ -13,7 +13,7 @@ import (
 
 func seedAdminOwner(t *testing.T, userID string, createdAt time.Time) {
 	t.Helper()
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, clerk_user_id, email, name, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)",
+	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email, name, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)",
 		userID, "clerk_"+userID, userID+"@example.com", userID, createdAt.UTC().Format("2006-01-02 15:04:05")).Error; err != nil {
 		t.Fatalf("seed user %s: %v", userID, err)
 	}

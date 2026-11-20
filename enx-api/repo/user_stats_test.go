@@ -35,7 +35,7 @@ func seedUser(t *testing.T, clerkID string, createdAt time.Time) {
 	seq++
 	id := fmt.Sprintf("user-%d", seq)
 	if err := sqlitex.DB.Create(&sqlitex.User{
-		Id: id, ClerkUserID: clerkID, Name: id, Email: id, CreatedAt: createdAt,
+		Id: id, AuthSubject: clerkID, Name: id, Email: id, CreatedAt: createdAt,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -56,7 +56,7 @@ func (s *Service) coordinatedDelete(ctx context.Context, u User, opts DeleteOpti
 	}
 	// An error is conservatively uncertain. Retain the gate and recover only
 	// toward completion; never interpret a timeout as proof of non-deletion.
-	if err := s.clerk.DeleteUser(ctx, u.ClerkUserID); err != nil {
+	if err := s.clerk.DeleteUser(ctx, u.AuthSubject); err != nil {
 		return fmt.Errorf("account: delete the Clerk user: %w", err)
 	}
 	return s.coordinator.Complete(ctx, a, s.now())

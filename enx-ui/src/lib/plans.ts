@@ -12,21 +12,16 @@ import { SubscriptionPlan, TopupTier } from '@/services/api'
 // longer placeholders -- production is publicly reachable and a stranger can
 // subscribe.
 //
-// Lookups are not "unlimited" on any tier: every tier has a daily ceiling,
-// subscribers just get a far higher one (ADR-029). The ceilings mirror
-// enx-api/config.toml [stripe.quota] (a test checks) and the deployments'
-// env overrides in w10n-config (kept in step by hand). Since ADR-080 prefetch
-// spends none of it, so the count is close to clicks; the first click on a new
-// word counts 2, hence "up to".
-export const FREE_DAILY_LOOKUPS = 2000
-export const SUBSCRIBED_DAILY_LOOKUPS = 20000
+// Lookups are not "unlimited" on any tier: every tier has a daily ceiling
+// (ADR-029). The Free card reads the effective free ceiling from enx-api at
+// request time; paid cards omit the subscribed ceiling, which only protects
+// the API.
 
 const fmt = (n: number) => n.toLocaleString('en-US')
 
 // What every paid plan adds on top of Free; the plans differ only in credits.
 const PAID_FEATURES = [
   'Everything in Free',
-  `Up to ${fmt(SUBSCRIBED_DAILY_LOOKUPS)} dictionary lookups a day`,
   'AI translation of sentences and in-context word meanings',
 ]
 
@@ -62,15 +57,23 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
   },
 ]
 
+/** Free-card feature lines; `dailyLimit` null/unusable → no-number copy. */
+export function freePlanFeatures(dailyLimit: number | null): string[] {
+  const lookupLine =
+    dailyLimit !== null && Number.isSafeInteger(dailyLimit) && dailyLimit > 0
+      ? `Click any word for its dictionary meaning, up to ${fmt(dailyLimit)} lookups a day`
+      : 'Click any word for its dictionary meaning, with a daily limit'
+  return [
+    'Underlines the words you have looked up, on any English page',
+    lookupLine,
+    'A word list built from what you look up',
+  ]
+}
+
 // What a signed-in user gets without paying.
 export const FREE_PLAN = {
   name: 'Free',
   priceLabel: '$0',
-  features: [
-    'Underlines the words you have looked up, on any English page',
-    `Click any word for its dictionary meaning, up to ${fmt(FREE_DAILY_LOOKUPS)} lookups a day`,
-    'A word list built from what you look up',
-  ],
   note: 'AI translation uses credits, which come with a plan or a top-up.',
 } as const
 

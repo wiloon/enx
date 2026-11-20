@@ -1,34 +1,18 @@
 'use client'
 
-import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/nextjs'
-import { User } from '@/types'
+import { useAuthContext } from '@/auth/context'
 
-// Thin adapter over Clerk (ADR-015) that keeps the surface the app already
-// consumes: { user, isLoading, isAuthenticated, signIn, logout }. Session
-// tokens, refresh, and the /auth/callback exchange are all Clerk's job now.
+// The surface the app consumes: { user, isLoading, isAuthenticated, signIn,
+// logout }, derived from the provider-neutral auth context (ADR-036). Session
+// tokens, refresh and the OAuth callback are the selected provider's job.
 export const useAuth = () => {
-  const { isLoaded, isSignedIn } = useClerkAuth()
-  const { user: clerkUser } = useUser()
-  const clerk = useClerk()
-
-  const user: User | null = clerkUser
-    ? {
-        username:
-          clerkUser.fullName ||
-          clerkUser.username ||
-          clerkUser.primaryEmailAddress?.emailAddress ||
-          'user',
-        email: clerkUser.primaryEmailAddress?.emailAddress ?? '',
-        status: 'active',
-        isLoggedIn: true,
-      }
-    : null
+  const { isLoaded, isSignedIn, user, signIn, logout } = useAuthContext()
 
   return {
     user,
     isLoading: !isLoaded,
-    isAuthenticated: Boolean(isSignedIn),
-    signIn: () => clerk.redirectToSignIn(),
-    logout: () => clerk.signOut({ redirectUrl: '/' }),
+    isAuthenticated: isSignedIn,
+    signIn: () => signIn(),
+    logout: () => logout(),
   }
 }
