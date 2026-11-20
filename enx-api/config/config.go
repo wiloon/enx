@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ type Config struct {
 	Resend            Resend            `mapstructure:"resend"`
 	App               App               `mapstructure:"app"`
 	Clerk             Clerk             `mapstructure:"clerk"`
+	OIDC              OIDC              `mapstructure:"oidc"`
 	Admin             Admin             `mapstructure:"admin"`
 	Account           Account           `mapstructure:"account"`
 	SentenceTranslate SentenceTranslate `mapstructure:"sentence-translate"`
@@ -115,6 +117,80 @@ type Clerk struct {
 	// off (503); everything else works without it. A production issuer
 	// requires it (Validate).
 	SecretKey Secret `mapstructure:"secret-key"`
+}
+
+// OIDC is the access-token verifier (ADR-036). Load resolves it: an unset
+// issuer, JWKS URL or party list takes the Clerk value, so a Clerk-only
+// deployment needs no oidc.* setting.
+type OIDC struct {
+	Issuer  string `mapstructure:"issuer"`
+	JWKSURL string `mapstructure:"jwks-url"`
+	// Audience, when set, must be present in the token's aud claim.
+	Audience string `mapstructure:"audience"`
+	// AuthorizedParties is checked against AuthorizedPartyClaim; it does not
+	// affect CORS, which keeps using clerk.authorized-parties.
+	AuthorizedParties        []string `mapstructure:"authorized-parties"`
+	AuthorizedPartyClaim     string   `mapstructure:"authorized-party-claim"`
+	AllowedSigningAlgorithms []string `mapstructure:"allowed-signing-algorithms"`
+	SubjectClaim             string   `mapstructure:"subject-claim"`
+	EmailClaim               string   `mapstructure:"email-claim"`
+	NameClaim                string   `mapstructure:"name-claim"`
+	ImageURLClaim            string   `mapstructure:"image-url-claim"`
+}
+
+// EffectiveOIDC is the OIDC section with the Clerk values filled in where it leaves them unset.
+// A JWKS URL is derived only for the Clerk issuer: any other issuer must
+// configure its own (validate).
+func (c *Config) EffectiveOIDC() OIDC {
+	o := c.OIDC
+	if o.Issuer == "" {
+		o.Issuer = c.Clerk.Issuer
+	}
+	if o.JWKSURL == "" && o.Issuer != "" && o.Issuer == c.Clerk.Issuer {
+		o.JWKSURL = c.Clerk.JWKSURL
+		if o.JWKSURL == "" {
+			o.JWKSURL = strings.TrimRight(o.Issuer, "/") + "/.well-known/jwks.json"
+		}
+	}
+	if len(o.AuthorizedParties) == 0 {
+		o.AuthorizedParties = c.Clerk.AuthorizedParties
+	}
+	return o
+}
+
+// supportedSigningAlgorithms are the asymmetric algorithms the JWT and JWKS
+// verifier handles. HS* and none are never acceptable for a JWKS verifier.
+var supportedSigningAlgorithms = map[string]bool{
+	"RS256": true, "RS384": true, "RS512": true,
+	"PS256": true, "PS384": true, "PS512": true,
+	"ES256": true, "ES384": true, "ES512": true,
+}
+
+func (o OIDC) validate() []error {
+	var errs []error
+	if o.Issuer != "" && o.JWKSURL == "" {
+		errs = append(errs, errors.New("config: oidc.jwks-url (OIDC_JWKS_URL) is required when oidc.issuer differs from clerk.issuer"))
+	}
+	if len(o.AllowedSigningAlgorithms) == 0 {
+		errs = append(errs, errors.New("config: oidc.allowed-signing-algorithms must not be empty"))
+	}
+	for _, alg := range o.AllowedSigningAlgorithms {
+		if !supportedSigningAlgorithms[alg] {
+			errs = append(errs, fmt.Errorf("config: oidc.allowed-signing-algorithms has %q; want an asymmetric RS*, PS* or ES* algorithm", alg))
+		}
+	}
+	for key, claim := range map[string]string{
+		"authorized-party-claim": o.AuthorizedPartyClaim,
+		"subject-claim":          o.SubjectClaim,
+		"email-claim":            o.EmailClaim,
+		"name-claim":             o.NameClaim,
+		"image-url-claim":        o.ImageURLClaim,
+	} {
+		if claim == "" {
+			errs = append(errs, fmt.Errorf("config: oidc.%s must not be empty", key))
+		}
+	}
+	return errs
 }
 
 // clerkDevDomain hosts every Clerk development instance; a production
@@ -499,6 +575,12 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.File = file
 
+	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
+		return strings.TrimSpace(party) != ""
+	}) {
+		return nil, errors.New("config: oidc.authorized-parties must list at least one non-blank value when set")
+	}
+	cfg.OIDC = cfg.EffectiveOIDC()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -583,6 +665,11 @@ func envValues() map[string]any {
 		if v := os.Getenv(env); v != "" {
 			m[key] = v
 		}
+	}
+	// A defined but empty algorithm list is a mistake to refuse, not a
+	// placeholder to ignore: it would otherwise silently keep the default.
+	if v, ok := os.LookupEnv("OIDC_ALLOWED_SIGNING_ALGORITHMS"); ok && v == "" {
+		m["oidc.allowed-signing-algorithms"] = ""
 	}
 	return m
 }
@@ -737,6 +824,7 @@ func (c *Config) Validate() error {
 	positive("feedback.daily-limit", c.Feedback.DailyLimit > 0)
 
 	errs = append(errs, c.Clerk.validate()...)
+	errs = append(errs, c.EffectiveOIDC().validate()...)
 
 	return errors.Join(errs...)
 }
@@ -864,6 +952,15 @@ func defaults() map[string]any {
 	// previous value is older than this interval.
 	set("user.last-login-update-interval", "5m")
 
+	// ADR-036: the verifier's Clerk-compatible claim and algorithm defaults.
+	// The issuer, JWKS URL and party list default from clerk.* (EffectiveOIDC).
+	set("oidc.authorized-party-claim", "azp")
+	set("oidc.allowed-signing-algorithms", []string{"RS256"})
+	set("oidc.subject-claim", "sub")
+	set("oidc.email-claim", "email")
+	set("oidc.name-claim", "name")
+	set("oidc.image-url-claim", "image_url")
+
 	// Unset: the ops user-stats endpoint is off (ADR-058 Decision 4).
 	set("ops.stats-token", "")
 	return d
@@ -900,6 +997,17 @@ var envBindings = map[string]string{
 	// Clerk Backend API key (ADR-062): homelab mounts it from the enx-clerk
 	// Secret, prod reads it from /opt/enx/enx-api.env.
 	"clerk.secret-key": "CLERK_SECRET_KEY",
+	// ADR-036 token verifier; list values are space-separated.
+	"oidc.issuer":                     "OIDC_ISSUER",
+	"oidc.jwks-url":                   "OIDC_JWKS_URL",
+	"oidc.audience":                   "OIDC_AUDIENCE",
+	"oidc.authorized-parties":         "OIDC_AUTHORIZED_PARTIES",
+	"oidc.authorized-party-claim":     "OIDC_AUTHORIZED_PARTY_CLAIM",
+	"oidc.allowed-signing-algorithms": "OIDC_ALLOWED_SIGNING_ALGORITHMS",
+	"oidc.subject-claim":              "OIDC_SUBJECT_CLAIM",
+	"oidc.email-claim":                "OIDC_EMAIL_CLAIM",
+	"oidc.name-claim":                 "OIDC_NAME_CLAIM",
+	"oidc.image-url-claim":            "OIDC_IMAGE_URL_CLAIM",
 	// ADR-062 Decision 3: the trial grant record's email HMAC key.
 	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
 	// Space-separated Clerk user ids allowed to call POST /api/admin/*.

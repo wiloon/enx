@@ -244,16 +244,7 @@ func backfillTrialGrants(cfg *config.Config) {
 func runReferralRewards(ctx context.Context, svc *referral.Service) {
 	settle := func(ctx context.Context) {
 		run, err := svc.PayDueRewards(ctx)
-		if err != nil {
-			logJobFailure(ctx, "referral: pay due rewards", err)
-			return
-		}
-		for _, err := range run.Errors {
-			logger.Warnf("referral: reward left pending for the next run: %v", err)
-		}
-		if run.Rewarded > 0 || run.Forfeited > 0 {
-			logger.Infof("referral: %d reward(s) paid, %d forfeited", run.Rewarded, run.Forfeited)
-		}
+		reportRewardRun(ctx, run, err)
 	}
 
 	runPeriodic(ctx, time.Hour, settle)
@@ -266,19 +257,38 @@ func runReferralRewards(ctx context.Context, svc *referral.Service) {
 func runTrialExpiry(ctx context.Context) {
 	sweep := func(ctx context.Context) {
 		run, err := credit.ExpireTrials(ctx)
-		if err != nil {
-			logJobFailure(ctx, "credit: expire trials", err)
-			return
-		}
-		for _, err := range run.Errors {
-			logger.Warnf("credit: trial left for the next run: %v", err)
-		}
-		if run.Expired > 0 {
-			logger.Infof("credit: %d expired trial(s) forfeited", run.Expired)
-		}
+		reportTrialSweep(ctx, run, err)
 	}
 
 	runPeriodic(ctx, time.Hour, sweep)
+}
+
+// reportRewardRun logs what one referral reward pass did, a partial pass
+// cut short by shutdown included, then the pass's failure if any.
+func reportRewardRun(ctx context.Context, run referral.RewardRun, err error) {
+	for _, rowErr := range run.Errors {
+		logger.Warnf("referral: reward left pending for the next run: %v", rowErr)
+	}
+	if run.Rewarded > 0 || run.Forfeited > 0 {
+		logger.Infof("referral: %d reward(s) paid, %d forfeited", run.Rewarded, run.Forfeited)
+	}
+	if err != nil {
+		logJobFailure(ctx, "referral: pay due rewards", err)
+	}
+}
+
+// reportTrialSweep logs what one trial-expiry sweep did, a partial sweep cut
+// short by shutdown included, then the sweep's failure if any.
+func reportTrialSweep(ctx context.Context, run credit.TrialSweep, err error) {
+	for _, rowErr := range run.Errors {
+		logger.Warnf("credit: trial left for the next run: %v", rowErr)
+	}
+	if run.Expired > 0 {
+		logger.Infof("credit: %d expired trial(s) forfeited", run.Expired)
+	}
+	if err != nil {
+		logJobFailure(ctx, "credit: expire trials", err)
+	}
 }
 
 // logJobFailure reports a periodic job's failure. A cancellation is the

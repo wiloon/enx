@@ -4,11 +4,30 @@ import http from 'node:http'
 // There is deliberately no network client or real-provider fallback here.
 const fixtures = [
   ['rephrase', '"idiomatic"', { idiomatic: '[fake] Could you review this?', alternatives: [{ text: 'Please take a look.', register: 'casual' }], notes: [] }],
+  ['sentence-words', 'numbered list of target words', userContent => ({
+    sentence: '[fake] 这只猫在读书。',
+    words: listedWords(userContent).map(word => ({ word, chinese: `[fake] ${word}义`, why: '' })),
+  })],
   ['sentence-word', '"sentence"', { sentence: '[fake] 这只猫在读书。', word: '猫' }],
   ['word-context', '"why"', { word: '猫', why: '' }],
-  ['word-definition', '"is_word"', { is_word: true, quality: 9, senses: [{ pos: 'n.', zh: '很有魅力的人' }] }],
+  // Words starting with "zlq" come back below ai-word.min-quality, so an e2e
+  // word can become an AI candidate definition (ADR-091).
+  ['word-definition', '"is_word"', userContent => ({
+    is_word: true,
+    quality: /^Word:\s*zlq/im.test(userContent) ? 5 : 9,
+    senses: [{ pos: 'n.', zh: '很有魅力的人' }],
+  })],
   ['sentence', 'English-to-Chinese translator', '[fake] 这只猫在读书。'],
 ]
+
+// The user message lists targets as "N. word[ | Dictionary definition: ...]".
+function listedWords(userContent) {
+  const header = '\nWords:\n'
+  const start = userContent.lastIndexOf(header)
+  if (start === -1) return []
+  const targets = userContent.slice(start + header.length)
+  return [...targets.matchAll(/^\d+\. (.+?)(?: \| Dictionary definition: .*)?$/gm)].map(match => match[1])
+}
 
 const server = http.createServer(async (req, res) => {
   const send = (status, body) => {
@@ -37,13 +56,8 @@ const server = http.createServer(async (req, res) => {
   const fixture = fixtures.find(([, marker]) => prompt.includes(marker))
   if (!fixture) return send(422, { error: { message: 'Unsupported fake AI prompt' } })
   const [feature, , fixtureAnswer] = fixture
-  let answer = fixtureAnswer
-  if (feature === 'word-definition') {
-    // Words starting with "zlq" come back below ai-word.min-quality, so an e2e
-    // word can become an AI candidate definition (ADR-091).
-    const lowQuality = request.messages.some(m => m.role === 'user' && /^Word:\s*zlq/i.test(m.content))
-    if (lowQuality) answer = { ...fixtureAnswer, quality: 5 }
-  }
+  const userContent = request.messages.filter(message => message.role === 'user').map(message => message.content).join('\n')
+  const answer = typeof fixtureAnswer === 'function' ? fixtureAnswer(userContent) : fixtureAnswer
   console.log(JSON.stringify({ event: 'completion', feature }))
   return send(200, {
     id: 'chatcmpl-fake', object: 'chat.completion', model: request.model ?? 'fake',

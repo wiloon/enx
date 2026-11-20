@@ -32,7 +32,12 @@ import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 import { classifyLoadedClerk } from './clerkSessionSync'
 import { createClerkClient } from '@clerk/chrome-extension/client'
 import { config } from '@/config/env'
-import { LatestPageWordLookup, PendingSentenceContext, WordData } from '@/types'
+import {
+  LatestPageWordLookup,
+  PendingSentenceContext,
+  SentenceWordGloss,
+  WordData,
+} from '@/types'
 import {
   heartbeat,
   readSwLog,
@@ -1311,6 +1316,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.word || ''
           )
 
+        case 'translateSentenceWithWords':
+          return await handleTranslateSentenceWithWords(
+            request.sentence || '',
+            request.sentenceWords || []
+          )
+
         case 'validateSession':
           return await makeApiRequest('/api/me')
 
@@ -1819,6 +1830,47 @@ const handleTranslateSentenceWithWord = async (
       success: true,
       chinese: response.data.chinese as string,
       wordChinese: (response.data.wordChinese as string) || '',
+    }
+  }
+
+  return {
+    success: false,
+    error: response.error || 'Translation service unavailable',
+    ...sessionFlags(response),
+    status: response.status,
+  }
+}
+
+// The sentence plus every absorbed word card (ADR-023 Decision 9) in one AI
+// round-trip. A word the model glossed blankly comes back with an empty
+// `chinese`: SidePanel.tsx sends that one a standalone translateWordInContext.
+const handleTranslateSentenceWithWords = async (
+  sentence: string,
+  words: { word: string; dictionaryChinese: string }[]
+) => {
+  const requested = words.filter(w => w.word && w.word.trim() !== '')
+  if (!sentence || sentence.trim() === '' || requested.length === 0) {
+    return { success: false, error: 'sentence and words are required' }
+  }
+
+  const response = await makeApiRequest('/api/translate/sentence-with-words', {
+    method: 'POST',
+    body: JSON.stringify({
+      sentence: sentence.trim(),
+      words: requested.map(w => ({
+        word: w.word.trim(),
+        dictionaryChinese: w.dictionaryChinese || '',
+      })),
+    }),
+  })
+
+  if (response.success && response.data?.chinese) {
+    return {
+      success: true,
+      chinese: response.data.chinese as string,
+      words: Array.isArray(response.data.words)
+        ? (response.data.words as SentenceWordGloss[])
+        : [],
     }
   }
 

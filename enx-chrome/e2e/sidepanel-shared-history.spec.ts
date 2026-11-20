@@ -9,6 +9,7 @@ import type { BrowserContext, Page } from '@playwright/test'
 import { FIXTURE_ORIGIN, loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import {
+  clickWord,
   clickWordAndWaitForPopup,
   enableLearningMode,
   mockBackendFetch,
@@ -56,10 +57,8 @@ async function sendOneSentenceFromPage(page: Page, wordIndex = 0) {
 function sentenceTranslatePosts(
   posts: { url: string; body: unknown }[]
 ): { url: string; body: unknown }[] {
-  return posts.filter(
-    p =>
-      p.url.includes('/api/translate/sentence') &&
-      !p.url.includes('sentence-with-word')
+  return posts.filter(p =>
+    /\/api\/translate\/sentence(-with-words)?(\?|$)/.test(p.url)
   )
 }
 
@@ -88,6 +87,49 @@ test.describe('Side Panel shared history (ADR-090)', () => {
     await expect
       .poll(async () => sentenceTranslatePosts(await translatePosts(context)))
       .toHaveLength(1)
+  })
+
+  test('a sentence absorbs the lookup card above it → one combined translate (ADR-023 Decision 9)', async ({
+    page,
+    context,
+    extensionId,
+    signedIn: _signedIn,
+  }) => {
+    await mockBackendFetch(context, {
+      wordData: { Id: 'w-stub', LoadCount: 3, Known: false },
+    })
+    await page.goto(TEST_PAGE_PATH, { waitUntil: 'domcontentloaded' })
+    await enableLearningMode(page, extensionId)
+    await waitForContentScript(page)
+
+    const tabId = await readingTabId(page, extensionId)
+    const panel = await openPanel(context, extensionId, tabId)
+
+    const popover = await clickWord(page, 'development')
+    const lookupCard = panel.getByTestId('sidepanel-card-development')
+    await expect(lookupCard).toHaveCount(1)
+    await popover.getByTestId('word-popover-sentence-translation').click()
+
+    await expect(panel.getByTestId('sidepanel-chinese')).toHaveText('译文')
+    const nestedCard = panel
+      .getByTestId('sidepanel-sentence-words')
+      .getByTestId('sidepanel-card-development')
+    await expect(
+      nestedCard.getByText('development义', { exact: true })
+    ).toBeVisible()
+    const bottomInset = await nestedCard.evaluate(card => {
+      const list = card.parentElement!
+      return (
+        list.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom
+      )
+    })
+    expect(bottomInset).toBeCloseTo(6)
+    await expect(lookupCard).toHaveCount(1)
+    await expect
+      .poll(async () =>
+        (await translatePosts(context)).map(p => new URL(p.url).pathname)
+      )
+      .toEqual(['/api/translate/sentence-with-words'])
   })
 
   test('panel opened after translations shows prior cards and sends no new request', async ({

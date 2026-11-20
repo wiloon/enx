@@ -37,6 +37,8 @@ import {
   chromePanelHistoryDeps,
   createPanelHistoryStore,
   panelHistoryKey,
+  type CombinedPlan,
+  type CombinedResponse,
   type PlannedRequest,
   type StoredCleared,
   type StoredPanelHistory,
@@ -765,7 +767,14 @@ function SentenceBlock({
       </div>
 
       {entry.words.length > 0 && (
-        <div data-testid="sidepanel-sentence-words" className="space-y-2">
+        // pb-1.5 is optical compensation: the sentence's line-height adds
+        // ~6px of visual space under the group's top padding, while the
+        // nested cards end in a hard accent border. 12 + 6 = 18px balances
+        // the bottom against the top.
+        <div
+          data-testid="sidepanel-sentence-words"
+          className="space-y-2 pb-1.5"
+        >
           {entry.words.map(card => (
             <WordCard
               key={card.key}
@@ -1061,13 +1070,7 @@ function SidePanelContent() {
       cancelled = true
       chrome.storage.onChanged.removeListener(listener)
     }
-  }, [
-    tabId,
-    store,
-    publish,
-    claimSentenceEvent,
-    claimPageWordEvent,
-  ])
+  }, [tabId, store, publish, claimSentenceEvent, claimPageWordEvent])
 
   // Ask the worker at delivery: its account fence advances before its
   // asynchronous invalidation notification can reach this panel.
@@ -1309,7 +1312,8 @@ function SidePanelContent() {
               card.key,
               card.token
             )
-            if (committed) fetchContextTranslation(word, sentence, card, chinese)
+            if (committed)
+              fetchContextTranslation(word, sentence, card, chinese)
           })
         }
       })
@@ -1363,11 +1367,92 @@ function SidePanelContent() {
     [accountFence, patchEntries]
   )
 
+  // The sentence and the word cards it absorbed in one request (ADR-023
+  // Decision 9). The store writes the result back to the sentence and to each
+  // word under its own token; a word left without a gloss gets an individual
+  // request (at once when visible, after Undo when only in the Clear stash).
+  const translateSentenceWithWords = useCallback(
+    (combined: CombinedPlan) => {
+      const current = accountFence.capture()
+      const isActive = lookupScope.capture()
+      const failure = (response?: BackgroundResponse): CombinedResponse => ({
+        success: false,
+        error: response?.error || 'Translation service unavailable',
+        status: response?.status,
+        sessionExpired: response ? isSignedOutFailure(response) : false,
+        sessionUnverified: response ? isUnverifiedFailure(response) : false,
+      })
+      const write = (response: CombinedResponse) => {
+        if (tabId === undefined) return
+        void store
+          .applySentenceWithWords(tabId, combined, response)
+          .then(result => {
+            if (!result.committed) return
+            for (const request of [...result.plan, ...result.deferred]) {
+              if (request.type !== 'fetchContextTranslation') continue
+              const dispatch = () => {
+                if (!isActive()) return
+                void store.dispatchContextFallback(
+                  tabId,
+                  request,
+                  () => {
+                    if (!isActive()) return
+                    fetchContextTranslation(
+                      request.word,
+                      request.sentence,
+                      request,
+                      request.dictionaryChinese
+                    )
+                  },
+                  state => {
+                    history.mirrorFromStore(state.entries, state.cleared)
+                    void history.whenVisible(request, dispatch)
+                  }
+                )
+              }
+              dispatch()
+            }
+          })
+      }
+      sendMessageToBackground<BackgroundResponse>({
+        type: 'translateSentenceWithWords',
+        sentence: combined.sentence,
+        sentenceWords: combined.words.map(w => ({
+          word: w.word,
+          dictionaryChinese: w.dictionaryChinese,
+        })),
+      } satisfies ContentMessage)
+        .then(checkAccountFreshness)
+        .then(delivered => {
+          const response = current(delivered)
+          write(
+            response.success && response.chinese
+              ? {
+                  success: true,
+                  chinese: response.chinese,
+                  words: response.words ?? [],
+                }
+              : failure(response)
+          )
+        })
+        .catch(error => {
+          console.error(
+            'SidePanel: combined sentence translation failed',
+            error
+          )
+          write(failure())
+        })
+    },
+    [accountFence, lookupScope, store, tabId, history, fetchContextTranslation]
+  )
+
   const dispatchPlan = useCallback(
     (plan: PlannedRequest[]) => {
       for (const req of plan) {
         if (req.type === 'translateSentence') {
           translateSentence(req.sentenceId, req.sentence, req.token)
+        } else if (req.type === 'translateSentenceWithWords') {
+          translateSentenceWithWords(req)
         } else if (req.type === 'fetchWordContext') {
           fetchWordContext(
             req.word,
@@ -1401,6 +1486,7 @@ function SidePanelContent() {
     },
     [
       translateSentence,
+      translateSentenceWithWords,
       fetchWordContext,
       fetchContextTranslation,
       fetchDictionary,

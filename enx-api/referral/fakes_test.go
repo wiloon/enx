@@ -234,6 +234,8 @@ type fakePayments struct {
 	charges  map[string]ChargeState
 	// calls counts questions asked of Stripe, either method.
 	calls int
+	// onCharge, when set, answers Charge instead of the charges map.
+	onCharge func(paymentIntentID string) (ChargeState, error)
 }
 
 func (f *fakePayments) InvoicePaymentIntent(_ context.Context, invoiceID string) (string, error) {
@@ -247,6 +249,9 @@ func (f *fakePayments) InvoicePaymentIntent(_ context.Context, invoiceID string)
 
 func (f *fakePayments) Charge(_ context.Context, paymentIntentID string) (ChargeState, error) {
 	f.calls++
+	if f.onCharge != nil {
+		return f.onCharge(paymentIntentID)
+	}
 	c, ok := f.charges[paymentIntentID]
 	if !ok {
 		return ChargeState{}, errors.New("stripe: unavailable")

@@ -28,7 +28,7 @@ Each sub-project's `Taskfile.yml` and `package.json` are the source of truth. Th
 
 | Sub-project | Unit | Other |
 |---|---|---|
-| enx-api | `task test` | `task test-integration`, `task test-coverage`, `task test-pkg PKG=./enx`; see `enx-api/TESTING.md` |
+| enx-api | `task test` | `task test-integration`, `task test-coverage`, `task test-pkg PKG=./enx`; see `enx-api/docs/TESTING.md` |
 | enx-chrome | `pnpm test` | `pnpm build:e2e && pnpm test:e2e`; see `enx-chrome/E2E_TESTING.md` |
 | enx-ui | `pnpm test` | `pnpm test:e2e` |
 

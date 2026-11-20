@@ -6,7 +6,7 @@
 | **日期** | 2026-09-24 起草；2026-11-19 修订并接受 |
 | **决策者** | wiloon |
 | **前提** | [`adr-035`](./adr-035-global-and-china-editions-dual-deployment.md)（海外版 / 国内版双部署，版本差异只允许以部署配置存在） |
-| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见 Decision 5；[`adr-062`](./adr-062-account-deletion-and-disable.md) **Decision 3**（试用发放记录只按邮箱）—— 只对国内版，见 Decision 7；ADR-062 **Decision 2 的自助注销确认方式**（输入邮箱）—— **两个版本**都改为输入 `DELETE`，见 Decision 8。两份 ADR 的其余内容不变 |
+| **修订** | [`adr-015`](./adr-015-cognito-to-clerk-auth-migration.md) **Rationale 第 7 点**（`users.clerk_user_id` 用 provider 命名的单列）—— 见 Decision 5；ADR-015 **2026-10-20 补充第 3 点**（新用户开通要求邮箱）—— 只对国内版，见 Decision 6；[`adr-062`](./adr-062-account-deletion-and-disable.md) **Decision 3**（试用发放记录只按邮箱）—— 只对国内版，见 Decision 7；ADR-062 **Decision 2 的自助注销确认方式**（输入邮箱）—— **两个版本**都改为输入 `DELETE`，见 Decision 8。两份 ADR 的其余内容不变 |
 | **相关** | [`adr-020`](./adr-020-extension-sign-in-return-flow.md)（扩展登录回跳）、[`adr-048`](./adr-048-free-trial-ai-credits.md)（试用积分）、[`adr-051`](./adr-051-referral-credits.md)（邀请积分）、#1023（可选绑定手机号） |
 
 ---
@@ -84,8 +84,10 @@ Logto 与国内版的 enx-api / enx-ui 部署在同一个境内环境，使用�
 
 遵循 ADR-035 第 1、3、4 条：两个版本跑同一份代码，差异只在部署配置。**业务规则不知道用户是用哪个 IdP 登录的**：生词本、配额、积分、试用、注销都只认本地用户身份，IdP 的差异只在 adapter 里。
 
-- **enx-api**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，配置项是 issuer、JWKS URL、受众 / authorized party，以及「从哪个 claim 取 subject 和资料」。Clerk 和 Logto 都发签名 JWT + 公开 JWKS，验签路径（`keyfunc` + `golang-jwt`）不变，差异在 claim 的校验和映射，以及**签名算法**：Clerk 用 RS256，自托管 Logto 默认用 ES384（#1026 原型实测）。允许的签名算法也是配置项（海外版 RS256、国内版 ES384），不在列表里的一律拒绝；不改 Logto 的密钥类型（所有者 2026-11-19 决定）。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。注销时删除外部认证身份（ADR-062）也走同一个 seam：Clerk Backend API 或 Logto Management API。
-- **enx-ui**：`useAuth` / `ApiAuthBridge` / 登录页 / `middleware.ts` / root layout 的 provider 收拢到一个 auth adapter 后面，运行期按 `AUTH_PROVIDER=clerk|logto` 选择（和 ADR-031 的运行期配置一致；两个 SDK 同时打进包里可以接受）。
+- **enx-api 验证 JWT**：`middleware/clerk_auth.go` 泛化为「验 OIDC / JWT」的 middleware，按部署配置 issuer、JWKS URL、受众、authorized party 及其 claim，以及 subject 和资料的 claim 映射。Clerk 和 Logto 都发签名 JWT + 公开 JWKS，沿用 `keyfunc` + `golang-jwt` 验签。允许的签名算法由配置通过 `jwt.WithValidMethods` 限定：海外版 RS256，国内版 ES384（#1026 原型实测）。Logto 沿用原有密钥类型（所有者 2026-11-19 决定）。Logto 用 API resource 签发的 access token，校验 `aud` = 该 resource indicator。
+- **enx-api 管理外部认证身份**：沿用 ADR-062 的账号管理接口并去掉接口名中的 provider。注销时删除外部认证身份，禁用和解除禁用时同步外部账号状态，撤销会话时让该用户的外部会话下线（ADR-062 Decision 5）。海外版沿用 Clerk Backend API。接入 Logto 时，adapter 用 Logto Management API 提供对应的删除、暂停、恢复和退出会话能力。
+- **enx-ui**：`useAuth`、`ApiAuthBridge`、登录和注册页、`proxy.ts` 的认证处理以及 root layout 的 provider 统一通过 `src/auth/` 中的 auth adapter。服务端按运行期的 `AUTH_PROVIDER=clerk|logto` 选择 adapter（ADR-031），由 root layout 渲染所选 provider，客户端通过统一的 auth context 使用它。每个部署只配置一个 IdP，两个 SDK 可以同时打进包里。
+  - `AUTH_PROVIDER` 未设置时默认选 Clerk。显式设置时必须精确匹配已实现的 provider，包括大小写。空值、纯空白、未知值以及尚未实现的 provider（#1028 阶段的 `logto`）使 standalone 进程在启动 Next.js 前以非零状态退出，错误信息指出 `AUTH_PROVIDER`。
 - **enx-chrome**：同样收拢到一个 adapter，但按**构建期 target** 选择（`targets.ts` 里的 `clerkPublishableKey` / `clerkSyncHost` 改为按 provider 区分的 auth 配置），国内版 target 只打包 Logto SDK。
 - **改造顺序**：先抽接口、海外版行为不变，单独合并上线；再加 Logto 实现。每一步都由测试护住。
 
@@ -99,13 +101,13 @@ Logto 的微信 connector 有 `unionid` 时用它作为社交身份 ID，没有�
 
 这是对 ADR-015 Rationale 7 的修订，但保留了它的核心判断：**每个部署只有一个 IdP**，所以 `(issuer, sub)` 里的 issuer 由部署决定，不用存进每一行，加 `auth_provider` 仍然是死列。改的只是名字：同一份 schema 要在 Clerk 和 Logto 两种部署下运行，provider 命名的列名在国内版里是错的。
 
-同理：`ADMIN_CLERK_USER_IDS` → `ADMIN_AUTH_SUBJECTS`；`GetOrCreateByClerkUserID` → `GetOrCreateByAuthSubject`。海外版已有数据是纯列改名的 migration，值不变。
+同理：`ADMIN_CLERK_USER_IDS` → `ADMIN_AUTH_SUBJECTS`，`GetOrCreateByClerkUserID` → `GetOrCreateByAuthSubject`。海外版已有数据只改列名和对应的唯一索引名，值不变。应用启动时在 AutoMigrate 前完成事务迁移，失败则停止启动。
 
 ### 6. 国内版用户没有邮箱
 
 微信登录**没有邮箱，也没有手机号**。
 
-- 首次开通：`GetOrCreateByClerkUserID` 已经允许 email 为空，名字取 token 里的微信昵称，没有就用 `user-<sub 前 8 位>`。这个行为保留并有测试覆盖。
+- 首次开通：海外版沿用 ADR-015 2026-10-20 补充第 3 点。新用户缺少邮箱时返回 `403 email_required`，已有用户可继续登录。#1027 保留这一规则。接入 Logto 时，国内版才允许空邮箱开通，名字取配置指定的昵称 claim，缺省时用 `user-<sub 前 8 位>`，并覆盖这两条开通路径的测试。Decision 7 实现前，现有新用户钩子遇到空邮箱时不发试用积分。
 - 凡是假设「用户一定有邮箱」的地方（通知、账单收据、退款通知、法律页联系方式）在国内版改为站内消息，或者不发。具体随国内版收款 ADR 一起定。
 
 ### 7. 国内版的试用发放记录按微信 `unionid` 记
@@ -165,6 +167,7 @@ Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.c
 - **多一个有状态服务**：Logto + PostgreSQL（enx-api 仍然是 SQLite）。升级、备份、安全补丁都归自己。
 - 国内版的登录是托管页跳转，没有 Clerk 内嵌组件那么顺滑；可以用 Logto 的品牌定制缓解。
 - seam 改造会动三端约 40 个文件，而且同时影响海外版，要按 Decision 3 的顺序两步走。
+- #1027 的改名对旧镜像是单向的。旧镜像启动时会重新添加空的 `clerk_user_id` 列，之后的 Clerk 登录可能另建本地账号。迁移后使用兼容 `auth_subject` 的镜像恢复服务。迁移前备份对应的是旧 schema 和当时的数据。
 
 ## Revisit Triggers
 
@@ -173,3 +176,8 @@ Logto 里给扩展用的应用要同时配置回调地址 `https://<扩展 id>.c
 - 主管部门要求国内版收集手机号。
 - Logto 停止维护自托管版，或改变开源许可。
 - 运维 Logto + PostgreSQL 的负担明显超出预期 → 重新评估 Casdoor（自托管）或 Authing（SaaS）。
+
+## 修订记录
+
+- #1028：明确 enx-ui 在服务端选择 adapter 并通过 auth context 提供客户端会话，补齐 `AUTH_PROVIDER` 的默认值和启动校验规则，避免配置错误后继续运行。
+- #1027：补充第一步上线的迁移失败与回退约束，明确账号管理接口的职责，并纠正空邮箱开通的现状及其适用版本。

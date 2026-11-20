@@ -117,7 +117,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	router.GET("/api/version", handlers.GetVersionSimple)
 
 	admins := middleware.NewAdminAllowlist(cfg.Admin.ClerkUserIDs)
-	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.Clerk, cfg.User), m)
+	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.EffectiveOIDC(), cfg.User), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
 	// table and ECDICT, plus the per-user review log.
