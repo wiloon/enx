@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 export function checkBundleEnv(root) {
   let javascriptFiles = 0
+  const offenders = []
   function scan(directory) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const file = join(directory, entry.name)
@@ -12,11 +13,10 @@ export function checkBundleEnv(root) {
       } else {
         const source = readFileSync(file, 'utf8')
         if (file.endsWith('.js')) javascriptFiles++
-        const match = source.match(
-          /(?:\b(VITE_[A-Za-z0-9_]+)|"(VITE_[A-Za-z0-9_]+)"|'(VITE_[A-Za-z0-9_]+)')\s*:/
-        )
-        if (match) {
-          throw new Error(
+        const pattern =
+          /(?:\b(VITE_[A-Za-z0-9_]+)|"(VITE_[A-Za-z0-9_]+)"|'(VITE_[A-Za-z0-9_]+)')\s*:/g
+        for (const match of source.matchAll(pattern)) {
+          offenders.push(
             `${file}: forbidden env object key ${match[1] ?? match[2] ?? match[3]}`
           )
         }
@@ -24,6 +24,9 @@ export function checkBundleEnv(root) {
     }
   }
   scan(root)
+  if (offenders.length) {
+    throw new Error(offenders.join('\n'))
+  }
   if (!javascriptFiles)
     throw new Error(`${root}: no JavaScript bundles (.js) found`)
   return javascriptFiles
