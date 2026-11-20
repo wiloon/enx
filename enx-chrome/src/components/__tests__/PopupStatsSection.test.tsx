@@ -66,8 +66,8 @@ describe('PopupStatsSection', () => {
     ;(chrome.runtime.sendMessage as jest.Mock).mockResolvedValue({
       stats: null,
       billing: {
-        subscriptionBalance: 100,
-        topupBalance: 0,
+        subscriptionBalance: 0,
+        topupBalance: 8,
         trialBalance: 0,
         trialExpiresAt: null,
         subscriptionStatus: 'active',
@@ -77,12 +77,13 @@ describe('PopupStatsSection', () => {
 
     render(<PopupStatsSection />)
 
-    await waitFor(() => {
-      expect(screen.getAllByText('—')).toHaveLength(2)
-    })
+    // The notice only appears once the reply has been applied.
     expect(
-      screen.queryByTestId('popup-stats-credit-notice')
-    ).not.toBeInTheDocument()
+      await screen.findByRole('link', {
+        name: 'Only 8 AI credits left · Get more',
+      })
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('—')).toHaveLength(2)
   })
 
   it('hides the notice when the billing half failed', async () => {

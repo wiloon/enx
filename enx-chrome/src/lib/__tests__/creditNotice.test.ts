@@ -54,6 +54,32 @@ describe('creditNotice', () => {
     ).toEqual({ text: 'Trial credits expire tomorrow', href: '/billing' })
   })
 
+  it('says tomorrow at exactly 24h', () => {
+    const expires = new Date(NOW.getTime() + 24 * 60 * 60 * 1000)
+    expect(
+      creditNotice(
+        billing({
+          trialBalance: 10,
+          trialExpiresAt: Math.floor(expires.getTime() / 1000),
+        }),
+        NOW
+      )
+    ).toEqual({ text: 'Trial credits expire tomorrow', href: '/billing' })
+  })
+
+  it('says 24 hours at 24h minus 1s', () => {
+    const expires = new Date(NOW.getTime() + 24 * 60 * 60 * 1000 - 1000)
+    expect(
+      creditNotice(
+        billing({
+          trialBalance: 10,
+          trialExpiresAt: Math.floor(expires.getTime() / 1000),
+        }),
+        NOW
+      )
+    ).toEqual({ text: 'Trial credits expire in 24 hours', href: '/billing' })
+  })
+
   it('shows trial expiry at exactly 48h', () => {
     const expires = new Date(NOW.getTime() + 48 * 60 * 60 * 1000)
     expect(

@@ -3743,7 +3743,9 @@ describe('handleGetPopupSummary', () => {
   }
 
   it('queries overview with the local date and returns both halves', async () => {
-    const now = new Date(2026, 5, 15, 12, 0, 0) // local 2026-06-15
+    // Local 2026-06-15 20:00 (TZ pinned to Los Angeles in jest.globalSetup.js)
+    // is already 2026-06-16 in UTC.
+    const now = new Date(2026, 5, 15, 20, 0, 0)
     ;(global.fetch as jest.Mock).mockImplementation(async (url: string) => {
       if (String(url).includes('/api/stats/overview')) {
         return jsonResponse(200, overview)

@@ -533,7 +533,7 @@ func TestMeAnswers503WhenCreditPoolsCannotBeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := newTestBillingHandler(nil, "https://example.com", testStripe(), nil)
+	h := NewHandler(nil, "https://example.com", testStripe().Price, activeSubscriptionReader{}, nil, 20)
 	w := doRequest(t, http.MethodGet, "/billing/me", h.Me, "u-pools-down", ``)
 	if w.Code != http.StatusServiceUnavailable || !bytes.Contains(w.Body.Bytes(), []byte(`"success":false`)) {
 		t.Fatalf("got %d %s, want 503 with success false rather than zeros", w.Code, w.Body.String())
@@ -541,6 +541,12 @@ func TestMeAnswers503WhenCreditPoolsCannotBeRead(t *testing.T) {
 	if !bytes.Contains(w.Body.Bytes(), []byte("Billing information is unavailable")) {
 		t.Fatalf("body = %s, want the billing-unavailable message", w.Body.String())
 	}
+}
+
+type activeSubscriptionReader struct{}
+
+func (activeSubscriptionReader) Subscription(context.Context, string) (subscription.Snapshot, error) {
+	return subscription.Snapshot{Status: "active"}, nil
 }
 
 type failingSubscriptionReader struct{}
