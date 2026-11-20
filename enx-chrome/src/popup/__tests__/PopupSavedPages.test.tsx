@@ -14,11 +14,8 @@ import type { ReactNode } from 'react'
 
 const PAGE_URL = 'https://example.com/article'
 
-const harness = {
-  subject: 'user-a',
-  listeners: new Set<() => void>(),
-  selectPopupAuth: null as jest.Mock | null,
-}
+// Bound in the selectPopupAuth mock factory (hoisted before imports).
+import { harness } from './fakePopupAuthHarness'
 
 jest.mock('@/config/env', () => ({
   config: {
@@ -38,16 +35,25 @@ jest.mock('@/config/env', () => ({
 }))
 
 jest.mock('@/lib/sentry', () => ({ initSentry: jest.fn() }))
-jest.mock('@/components/CatglishLogo', () => () => (
-  <div data-testid="catglish-logo" />
-))
+jest.mock('@/components/CatglishLogo', () => {
+  function MockCatglishLogo() {
+    return <div data-testid="catglish-logo" />
+  }
+  return MockCatglishLogo
+})
 jest.mock('@/components/ArticleChoiceControl', () => () => null)
 jest.mock('@/components/LearningModeCard', () => () => null)
 jest.mock('@/components/DebugPanel', () => () => null)
 jest.mock('@/components/PageReportPrompt', () => () => null)
 jest.mock('@/components/SendFeedback', () => ({
   __esModule: true,
-  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  default: function MockSendFeedback({
+    children,
+  }: {
+    children: ReactNode
+  }) {
+    return <div>{children}</div>
+  },
 }))
 jest.mock('@/hooks/useActiveTabSidePanel', () => ({
   useActiveTabSidePanel: () => ({ open: false, toggle: jest.fn() }),
@@ -75,43 +81,10 @@ jest.mock('@/lib/learningModeStatus', () => ({
 }))
 
 jest.mock('@/lib/auth/selectPopupAuth', () => {
-  const React = require('react') as typeof import('react')
-  const { AuthContextProvider } = require('@/lib/auth/context') as {
-    AuthContextProvider: typeof import('@/lib/auth/context').AuthContextProvider
-  }
-
-  function FakeAuthProvider({ children }: { children: React.ReactNode }) {
-    const snapshot = React.useSyncExternalStore(
-      (listener: () => void) => {
-        harness.listeners.add(listener)
-        return () => harness.listeners.delete(listener)
-      },
-      () => harness.subject
-    )
-    const user = React.useMemo(
-      () => ({
-        id: snapshot,
-        fullName: snapshot,
-        username: snapshot,
-        primaryEmail: `${snapshot}@example.com`,
-      }),
-      [snapshot]
-    )
-    const value = React.useMemo(
-      () => ({
-        isLoaded: true,
-        isSignedIn: true,
-        user,
-        sessionId: `sess-${snapshot}`,
-        signOut: async () => {},
-      }),
-      [user]
-    )
-    return React.createElement(AuthContextProvider, { value }, children)
-  }
-
-  const selectPopupAuth = jest.fn(() => ({ Provider: FakeAuthProvider }))
-  harness.selectPopupAuth = selectPopupAuth
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const mod = require('./fakePopupAuthHarness') as typeof import('./fakePopupAuthHarness')
+  const selectPopupAuth = jest.fn(() => ({ Provider: mod.FakeAuthProvider }))
+  mod.harness.selectPopupAuth = selectPopupAuth
   return { selectPopupAuth }
 })
 

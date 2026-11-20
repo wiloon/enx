@@ -45,19 +45,18 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
 export function createClerkPopupAuth(
   config: ClerkAuthConfig
 ): PopupAuthAdapter {
-  return {
-    Provider({ children }) {
-      return (
-        <ClerkProvider
-          publishableKey={config.publishableKey}
-          syncHost={config.syncHost}
-          // Pick up a session change on the website without reopening the popup.
-          __experimental_syncHostListener
-          afterSignOutUrl="/popup.html"
-        >
-          <ClerkAuthBridge>{children}</ClerkAuthBridge>
-        </ClerkProvider>
-      )
-    },
+  function ClerkPopupAuthProvider({ children }: { children: ReactNode }) {
+    return (
+      <ClerkProvider
+        publishableKey={config.publishableKey}
+        syncHost={config.syncHost}
+        // Pick up a session change on the website without reopening the popup.
+        __experimental_syncHostListener
+        afterSignOutUrl="/popup.html"
+      >
+        <ClerkAuthBridge>{children}</ClerkAuthBridge>
+      </ClerkProvider>
+    )
   }
+  return { Provider: ClerkPopupAuthProvider }
 }
