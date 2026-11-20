@@ -90,7 +90,9 @@ describe('/pricing', () => {
   })
 
   it('falls back to the no-number Free copy when the request fails', async () => {
-    global.fetch = jest.fn().mockRejectedValue(new Error('network')) as unknown as typeof fetch
+    global.fetch = jest
+      .fn()
+      .mockRejectedValue(new Error('network')) as unknown as typeof fetch
     await renderPricing()
 
     const c = within(card(FREE_PLAN.name))

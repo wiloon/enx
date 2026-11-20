@@ -26,9 +26,7 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Small top-up')).toContainText('$2.99')
     await expect(card(page, 'Free')).toContainText('$0')
     // Stub API returns 1234 (playwright webServer); formatted with en-US commas.
-    await expect(card(page, 'Free')).toContainText(
-      'up to 1,234 lookups a day'
-    )
+    await expect(card(page, 'Free')).toContainText('up to 1,234 lookups a day')
     for (const name of ['Catglish Pro', 'Catglish Pro+', 'Catglish Max']) {
       await expect(card(page, name)).not.toContainText(/lookups? a day/i)
     }
