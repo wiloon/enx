@@ -15,7 +15,7 @@ Brand colour leads (P-6): design every element around the Catglish brand teal, a
 
 ## Interaction
 
-Every control answers the hand: hover, pressed (`active:`) and `focus-visible` states, and a disabled look while it can't run. In enx-ui, `buttonVariants` in `src/components/ui/button.tsx` gives buttons hover, `focus-visible` and disabled, but no pressed state yet; add `active:` to a control you touch. enx-chrome has no `buttonVariants`, so its controls supply all of their own states.
+Every control answers the hand: hover, pressed (`active:`) and `focus-visible` states, and a disabled look while it can't run. In enx-ui, `buttonVariants` in `src/components/ui/button.tsx` gives buttons hover, pressed (`active:scale-[0.97]`, and the brand variant a pressed brightness), `focus-visible` and disabled. enx-chrome has no `buttonVariants`, so its controls supply all of their own states.
 
 ## enx-ui app pages
 
