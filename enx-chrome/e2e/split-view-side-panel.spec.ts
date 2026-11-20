@@ -189,10 +189,8 @@ async function panelContent(context: BrowserContext, targetId: string) {
 function sentenceTranslatePosts(
   posts: { url: string; body: unknown }[]
 ): { url: string; body: unknown }[] {
-  return posts.filter(
-    p =>
-      p.url.includes('/api/translate/sentence') &&
-      !p.url.includes('sentence-with-word')
+  return posts.filter(p =>
+    /\/api\/translate\/sentence(-with-words)?(\?|$)/.test(p.url)
   )
 }
 

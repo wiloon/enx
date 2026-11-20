@@ -14,6 +14,7 @@ import {
   findSentence,
   patchSentence,
   sentenceCardId,
+  topLevelPhraseCardKey,
   type PanelEntry,
 } from '@/lib/panelHistory'
 import { createFakePanelHistoryDeps } from '@/test/fakePanelHistoryDeps'
@@ -472,9 +473,7 @@ describe('panelHistoryStore (ADR-090)', () => {
         store.retryContext(7, SENTENCE_ID, 'cats'),
         store.retryContext(7, SENTENCE_ID, 'cats'),
       ])
-      expect(
-        countOf([...a.plan, ...b.plan], 'fetchContextTranslation')
-      ).toBe(1)
+      expect(countOf([...a.plan, ...b.plan], 'fetchContextTranslation')).toBe(1)
 
       // Removal in one panel crossing a Retry from the other: no request.
       await store.patchEntries(7, entries =>
@@ -534,7 +533,8 @@ describe('panelHistoryStore (ADR-090)', () => {
       const again = await store.upsertPhrase(7, 'big cats', SENTENCE, undefined)
       expect(again.plan).toEqual([])
 
-      const key = first.state.entries[0].kind === 'word' && first.state.entries[0].key
+      const key =
+        first.state.entries[0].kind === 'word' && first.state.entries[0].key
       await store.patchEntries(7, entries =>
         entries.map(e =>
           e.kind === 'word' ? { ...e, contextStatus: 'error' as const } : e
@@ -594,6 +594,472 @@ describe('panelHistoryStore (ADR-090)', () => {
       expect(
         await store.markContextSent(7, SENTENCE_ID, word.key, word.token!)
       ).toBe(false)
+    })
+  })
+
+  describe('a sentence absorbs the matching page cards (ADR-023 Decision 9)', () => {
+    type Combined = Extract<
+      PlannedRequest,
+      { type: 'translateSentenceWithWords' }
+    >
+    const lookup = (
+      store: ReturnType<typeof createPanelHistoryStore>,
+      word: string
+    ) =>
+      store.claimPageWordEvent(7, {
+        eventId: `lookup-${word}-${Math.random()}`,
+        word,
+        ecp: {
+          Pronunciation: '',
+          LoadCount: 1,
+          Chinese: `${word}-dict`,
+        } as never,
+      })
+    const sentenceEvent = (word: string, sentence = SENTENCE) => ({
+      eventId: `s-${Math.random()}`,
+      sentence,
+      word,
+    })
+    const topKeys = (entries: PanelEntry[]) =>
+      entries.map(e => (e.kind === 'word' ? e.key : 'S'))
+    const setup = async () => {
+      const deps = createFakePanelHistoryDeps({ now: () => 1_000 })
+      const store = createPanelHistoryStore(deps)
+      // Newest first: great, cats, dogs (not in the sentence).
+      await lookup(store, 'dogs')
+      await lookup(store, 'cats')
+      await lookup(store, 'great')
+      return { deps, store }
+    }
+    const combinedOf = (plan: PlannedRequest[]) =>
+      plan.find(p => p.type === 'translateSentenceWithWords') as Combined
+
+    it('absorbs every matching card above the first sentence, anchor first, with one combined request', async () => {
+      const { store } = await setup()
+      const result = await store.claimSentenceEvent(7, sentenceEvent('great'))
+
+      expect(topKeys(result.state.entries)).toEqual(['S', 'dogs'])
+      const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+      expect(sentence.words.map(w => w.key)).toEqual(['great', 'cats'])
+      expect(sentence.words.every(w => w.contextStatus === 'loading')).toBe(
+        true
+      )
+      expect(result.plan).toHaveLength(1)
+      const combined = combinedOf(result.plan)
+      expect(combined.sentenceId).toBe(SENTENCE_ID)
+      expect(combined.words.map(w => [w.key, w.dictionaryChinese])).toEqual([
+        ['great', 'great-dict'],
+        ['cats', 'cats-dict'],
+      ])
+      const tokens = [combined.token, ...combined.words.map(w => w.token)]
+      expect(new Set(tokens).size).toBe(3)
+    })
+
+    it('absorbs for an anchorless drag-selected sentence, in prior top-level order', async () => {
+      const { store } = await setup()
+      const result = await store.claimSentenceEvent(7, sentenceEvent(''))
+      const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+      expect(sentence.words.map(w => w.key)).toEqual(['great', 'cats'])
+      expect(combinedOf(result.plan).words).toHaveLength(2)
+    })
+
+    it('stops at the first sentence card; older matching cards stay at the top level', async () => {
+      const { store } = await setup()
+      await store.claimSentenceEvent(7, sentenceEvent('', 'Something else.'))
+      await lookup(store, 'are')
+      const result = await store.claimSentenceEvent(7, sentenceEvent('are'))
+      expect(topKeys(result.state.entries)).toEqual([
+        'S',
+        'S',
+        'great',
+        'cats',
+        'dogs',
+      ])
+      const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+      expect(sentence.words.map(w => w.key)).toEqual(['are'])
+      expect(combinedOf(result.plan).words.map(w => w.key)).toEqual(['are'])
+    })
+
+    it('leaves phrase cards, scoped cards and unmatched words at the top level in order', async () => {
+      const { store } = await setup()
+      await store.upsertPhrase(7, 'great pets', SENTENCE, undefined)
+      await store.patchEntries(7, entries =>
+        entries.map(e =>
+          e.kind === 'word' && e.key === 'cats'
+            ? { ...e, contextStatus: 'loaded' as const }
+            : e
+        )
+      )
+      const result = await store.claimSentenceEvent(7, sentenceEvent(''))
+      const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+      expect(sentence.words.map(w => w.key)).toEqual(['great'])
+      expect(topKeys(result.state.entries)).toEqual([
+        'S',
+        topLevelPhraseCardKey('great pets', SENTENCE),
+        'cats',
+        'dogs',
+      ])
+    })
+
+    it('plain translateSentence when nothing is absorbed; a seeded anchor still uses fetchWordContext', async () => {
+      const deps = createFakePanelHistoryDeps()
+      const store = createPanelHistoryStore(deps)
+      const result = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(result.plan.map(p => p.type)).toEqual([
+        'translateSentence',
+        'fetchWordContext',
+      ])
+    })
+
+    it('a loaded sentence asks context individually for each newly absorbed word and leaves the sentence alone', async () => {
+      const { store } = await setup()
+      const first = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      const sentenceToken = findSentence(
+        first.state.entries,
+        SENTENCE_ID
+      )!.token
+      await store.patchEntries(7, entries =>
+        patchSentence(
+          entries,
+          SENTENCE_ID,
+          { status: 'loaded', chinese: '译' },
+          sentenceToken
+        )
+      )
+      await lookup(store, 'are')
+      const again = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(again.plan.map(p => p.type)).toEqual(['fetchContextTranslation'])
+      const sentence = findSentence(again.state.entries, SENTENCE_ID)!
+      expect(sentence.status).toBe('loaded')
+      expect(sentence.token).toBe(sentenceToken)
+      expect(sentence.words.map(w => w.key)).toEqual(['great', 'are', 'cats'])
+    })
+
+    it('a resend keeps the nested card and drops the top-level duplicate without copying data', async () => {
+      const { store } = await setup()
+      await store.claimSentenceEvent(7, sentenceEvent('great'))
+      const before = findCard(
+        (await store.read(7)).entries,
+        SENTENCE_ID,
+        'cats'
+      )!
+      await lookup(store, 'cats')
+      const again = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(topKeys(again.state.entries)).toEqual(['S', 'dogs'])
+      expect(findCard(again.state.entries, SENTENCE_ID, 'cats')).toEqual(before)
+      expect(countOf(again.plan, 'fetchContextTranslation')).toBe(0)
+    })
+
+    it('a loading sentence asks context individually for a newly absorbed word and keeps its request', async () => {
+      const { store } = await setup()
+      const first = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      const combined = combinedOf(first.plan)
+      await lookup(store, 'are')
+      const again = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(again.plan).toEqual([
+        {
+          type: 'fetchContextTranslation',
+          sentenceId: SENTENCE_ID,
+          sentence: SENTENCE,
+          key: 'are',
+          word: 'are',
+          token: expect.any(Number),
+          dictionaryChinese: 'are-dict',
+        },
+      ])
+      expect(findSentence(again.state.entries, SENTENCE_ID)).toMatchObject({
+        status: 'loading',
+        token: combined.token,
+      })
+    })
+
+    const failSentence = (
+      store: ReturnType<typeof createPanelHistoryStore>,
+      combined: Combined
+    ) =>
+      store.applySentenceWithWords(7, combined, {
+        success: false,
+        error: 'boom',
+        status: 500,
+      })
+
+    it('a failed combined request errors the sentence and every participating word', async () => {
+      const { store } = await setup()
+      const claimed = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      const result = await failSentence(store, combinedOf(claimed.plan))
+      const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+      expect(sentence.status).toBe('error')
+      expect(sentence.errorMessage).toBe('boom')
+      expect(
+        sentence.words.map(w => [w.contextStatus, w.contextError])
+      ).toEqual([
+        ['error', 'boom'],
+        ['error', 'boom'],
+      ])
+      expect(result.plan).toEqual([])
+    })
+
+    it('Retry and an errored resend combine the sentence with the failed absorbed words whose dictionary is loaded', async () => {
+      const { store } = await setup()
+      const claimed = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      await failSentence(store, combinedOf(claimed.plan))
+
+      const retry = await store.retrySentence(7, SENTENCE_ID)
+      expect(retry.plan.map(p => p.type)).toEqual([
+        'translateSentenceWithWords',
+      ])
+      expect(combinedOf(retry.plan).words.map(w => w.key)).toEqual([
+        'great',
+        'cats',
+      ])
+      expect(
+        findSentence(retry.state.entries, SENTENCE_ID)!.words.map(
+          w => w.contextStatus
+        )
+      ).toEqual(['loading', 'loading'])
+
+      await failSentence(store, combinedOf(retry.plan))
+      await lookup(store, 'are')
+      const resend = await store.claimSentenceEvent(7, sentenceEvent('great'))
+      expect(
+        combinedOf(resend.plan)
+          .words.map(w => w.key)
+          .sort()
+      ).toEqual(['are', 'cats', 'great'])
+      expect(countOf(resend.plan, 'translateSentence')).toBe(0)
+    })
+
+    it('Retry of a sentence with no absorbed words is a plain translation', async () => {
+      const deps = createFakePanelHistoryDeps()
+      const store = createPanelHistoryStore(deps)
+      const claimed = await store.claimSentenceEvent(7, sentenceEvent(''))
+      const sentenceToken = findSentence(
+        claimed.state.entries,
+        SENTENCE_ID
+      )!.token
+      await store.patchEntries(7, entries =>
+        patchSentence(
+          entries,
+          SENTENCE_ID,
+          { status: 'error', errorMessage: 'x', token: undefined },
+          sentenceToken
+        )
+      )
+      const retry = await store.retrySentence(7, SENTENCE_ID)
+      expect(retry.plan.map(p => p.type)).toEqual(['translateSentence'])
+    })
+
+    describe('writing the combined response back', () => {
+      const successOf = (words: Combined['words'], blank: string[] = []) => ({
+        success: true as const,
+        chinese: '猫很棒。',
+        words: words.map(w => ({
+          word: w.word,
+          chinese: blank.includes(w.key) ? '' : `${w.key}-ctx`,
+          why: blank.includes(w.key) ? '' : `${w.key}-why`,
+        })),
+      })
+
+      it('commits glosses, and one individual plan with the existing token for each empty gloss', async () => {
+        const { store } = await setup()
+        const claimed = await store.claimSentenceEvent(
+          7,
+          sentenceEvent('great')
+        )
+        const combined = combinedOf(claimed.plan)
+        const result = await store.applySentenceWithWords(
+          7,
+          combined,
+          successOf(combined.words, ['cats'])
+        )
+        const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+        expect(sentence.status).toBe('loaded')
+        expect(sentence.chinese).toBe('猫很棒。')
+        expect(sentence.words.find(w => w.key === 'great')).toMatchObject({
+          contextStatus: 'loaded',
+          contextChinese: 'great-ctx',
+          contextWhy: 'great-why',
+        })
+        expect(sentence.words.find(w => w.key === 'cats')!.contextStatus).toBe(
+          'loading'
+        )
+        const catsRequest = combined.words.find(w => w.key === 'cats')!
+        expect(result.plan).toEqual([
+          {
+            type: 'fetchContextTranslation',
+            word: 'cats',
+            sentence: SENTENCE,
+            sentenceId: SENTENCE_ID,
+            key: 'cats',
+            token: catsRequest.token,
+            dictionaryChinese: 'cats-dict',
+          },
+        ])
+      })
+
+      it('refreshes startedAt when the fallback plan commits', async () => {
+        let now = 1_000
+        const deps = createFakePanelHistoryDeps({ now: () => now })
+        const store = createPanelHistoryStore(deps)
+        await lookup(store, 'cats')
+        const claimed = await store.claimSentenceEvent(7, sentenceEvent(''))
+        const combined = combinedOf(claimed.plan)
+        now = 50_000
+        const result = await store.applySentenceWithWords(
+          7,
+          combined,
+          successOf(combined.words, ['cats'])
+        )
+        expect(
+          findCard(result.state.entries, SENTENCE_ID, 'cats')!.startedAt
+        ).toBe(50_000)
+      })
+
+      it('a stale sentence token does not invalidate a current word token, and vice versa', async () => {
+        const { store } = await setup()
+        const claimed = await store.claimSentenceEvent(
+          7,
+          sentenceEvent('great')
+        )
+        const combined = combinedOf(claimed.plan)
+        // The sentence was retried elsewhere: its token moved on.
+        await store.patchEntries(7, entries =>
+          patchSentence(entries, SENTENCE_ID, { token: combined.token + 99 })
+        )
+        // One word was replaced too.
+        await store.patchEntries(7, entries =>
+          entries.map(e =>
+            e.kind === 'sentence'
+              ? {
+                  ...e,
+                  words: e.words.map(w =>
+                    w.key === 'cats' ? { ...w, token: w.token! + 99 } : w
+                  ),
+                }
+              : e
+          )
+        )
+        const result = await store.applySentenceWithWords(
+          7,
+          combined,
+          successOf(combined.words)
+        )
+        const sentence = findSentence(result.state.entries, SENTENCE_ID)!
+        expect(sentence.status).toBe('loading')
+        expect(sentence.chinese).toBe('')
+        expect(
+          sentence.words.find(w => w.key === 'great')!.contextChinese
+        ).toBe('great-ctx')
+        expect(
+          sentence.words.find(w => w.key === 'cats')!.contextChinese
+        ).toBeUndefined()
+      })
+
+      it('drops the response for a removed card', async () => {
+        const { store } = await setup()
+        const claimed = await store.claimSentenceEvent(
+          7,
+          sentenceEvent('great')
+        )
+        const combined = combinedOf(claimed.plan)
+        await store.removeCard(7, SENTENCE_ID, 'cats')
+        const result = await store.applySentenceWithWords(
+          7,
+          combined,
+          successOf(combined.words, ['great'])
+        )
+        expect(
+          findCard(result.state.entries, SENTENCE_ID, 'cats')
+        ).toBeUndefined()
+        expect(result.plan.map(p => (p as { key: string }).key)).toEqual([
+          'great',
+        ])
+      })
+
+      it('applies to the Clear snapshot and defers the fallback until Undo', async () => {
+        let now = 1_000
+        const deps = createFakePanelHistoryDeps({ now: () => now })
+        const store = createPanelHistoryStore(deps)
+        await lookup(store, 'cats')
+        const claimed = await store.claimSentenceEvent(7, sentenceEvent(''))
+        const combined = combinedOf(claimed.plan)
+        await store.clear(7)
+        const result = await store.applySentenceWithWords(
+          7,
+          combined,
+          successOf(combined.words, ['cats'])
+        )
+        expect(result.plan).toEqual([])
+        expect(result.deferred.map(d => d.key)).toEqual(['cats'])
+        expect(result.state.entries).toEqual([])
+        const snapshot = findSentence(
+          result.state.cleared!.entries,
+          SENTENCE_ID
+        )!
+        expect(snapshot.status).toBe('loaded')
+
+        now = 3_000
+        const undone = await store.undo(7)
+        expect(findSentence(undone.state.entries, SENTENCE_ID)!.chinese).toBe(
+          '猫很棒。'
+        )
+        const cats = findCard(undone.state.entries, SENTENCE_ID, 'cats')!
+        expect(cats.startedAt).toBe(3_000)
+        expect(cats.token).toBe(combined.words[0].token)
+        const send = jest.fn()
+        const defer = jest.fn()
+        await store.dispatchContextFallback(7, result.deferred[0], send, defer)
+        await store.dispatchContextFallback(7, result.deferred[0], send, defer)
+        expect(send).toHaveBeenCalledTimes(1)
+        expect(defer).not.toHaveBeenCalled()
+      })
+
+      it('a failure reaches the Clear snapshot too', async () => {
+        const { store } = await setup()
+        const claimed = await store.claimSentenceEvent(
+          7,
+          sentenceEvent('great')
+        )
+        await store.clear(7)
+        const result = await failSentence(store, combinedOf(claimed.plan))
+        const snapshot = findSentence(
+          result.state.cleared!.entries,
+          SENTENCE_ID
+        )!
+        expect(snapshot.status).toBe('error')
+        expect(snapshot.words.map(w => w.contextStatus)).toEqual([
+          'error',
+          'error',
+        ])
+      })
+
+      it.each(['expiry', 'a new lookup'] as const)(
+        'drops a late combined response after %s discards the snapshot',
+        async discard => {
+          let now = 1_000
+          const store = createPanelHistoryStore(
+            createFakePanelHistoryDeps({ now: () => now })
+          )
+          await lookup(store, 'cats')
+          const claimed = await store.claimSentenceEvent(7, sentenceEvent(''))
+          const combined = combinedOf(claimed.plan)
+          await store.clear(7)
+          if (discard === 'expiry') now += PANEL_HISTORY_UNDO_MS
+          else await lookup(store, 'dogs')
+
+          const result = await store.applySentenceWithWords(
+            7,
+            combined,
+            successOf(combined.words, ['cats'])
+          )
+          expect(result.state.cleared).toBeNull()
+          expect(
+            findSentence(result.state.entries, SENTENCE_ID)
+          ).toBeUndefined()
+          expect(result.plan).toEqual([])
+          expect(result.deferred).toEqual([])
+        }
+      )
     })
   })
 })

@@ -46,6 +46,30 @@ test('rephrase returns structured idiomatic wording rather than a translation', 
   })
 })
 
+test('multi-word sentence prompt returns one gloss per listed word, not the single-word fixture', async t => {
+  const server = spawn(process.execPath, ['server.mjs'], {
+    cwd: import.meta.dirname, env: { ...process.env, PORT: '0', HOST: '127.0.0.1' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
+  t.after(() => server.kill())
+  const [data] = await once(server.stdout, 'data')
+  const response = await fetch(`http://127.0.0.1:${JSON.parse(data).port}/chat/completions`, {
+    method: 'POST', body: JSON.stringify({ messages: [
+      { role: 'system', content: 'You are given an English sentence and a numbered list of target words. {"sentence": "...", "words": []}' },
+      { role: 'user', content: 'Sentence: The cat reads a book.\n1. Cats\nWords:\n1. cat | Dictionary definition: 猫\n2. book' },
+    ] }),
+  })
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.deepEqual(JSON.parse(result.choices[0].message.content), {
+    sentence: '[fake] 这只猫在读书。',
+    words: [
+      { word: 'cat', chinese: '[fake] cat义', why: '' },
+      { word: 'book', chinese: '[fake] book义', why: '' },
+    ],
+  })
+})
+
 for (const scenario of [
   { name: 'sentence with word', prompt: '{"sentence": "translation", "word": "meaning"}', answer: { sentence: '[fake] 这只猫在读书。', word: '猫' } },
   { name: 'word context', prompt: '{"word": "meaning", "why": "explanation"}', answer: { word: '猫', why: '' } },

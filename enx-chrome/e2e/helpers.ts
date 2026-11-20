@@ -573,9 +573,27 @@ export async function mockBackendFetch(
           if (
             holdSentenceTranslation &&
             url.includes('/api/translate/sentence') &&
-            !url.includes('sentence-with-word')
+            /\/api\/translate\/sentence(-with-words)?(\?|$)/.test(url)
           ) {
             await new Promise(() => {})
+          }
+          // ADR-023 Decision 9: one combined call glosses every absorbed word.
+          if (url.includes('/api/translate/sentence-with-words')) {
+            const words = (body.words ?? []) as { word: string }[]
+            return new Response(
+              JSON.stringify({
+                chinese: '译文',
+                words: words.map(w => ({
+                  word: w.word,
+                  chinese: `${w.word}义`,
+                  why: '',
+                })),
+              }),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              }
+            )
           }
           if (url.includes('/api/translate/sentence-with-word')) {
             return new Response(

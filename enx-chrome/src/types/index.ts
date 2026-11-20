@@ -71,6 +71,7 @@ export interface ContentMessage {
     | 'translateSentence'
     | 'translateWordInContext'
     | 'translateSentenceWithWord'
+    | 'translateSentenceWithWords'
     | 'recordPageWordLookup'
     | 'reportReadingProgress'
     | 'submitPageReport'
@@ -111,6 +112,9 @@ export interface ContentMessage {
   // so the model can explain a divergence instead of guessing blind. Empty
   // when the word has no dictionary entry or the lookup failed.
   dictionaryChinese?: string
+  // Set on 'translateSentenceWithWords' (ADR-023 Decision 9): the word cards a
+  // sentence absorbed, each with its dictionary meaning ('' when none).
+  sentenceWords?: { word: string; dictionaryChinese: string }[]
   // Set on 'reportReadingProgress' (ADR-028): one reading session's increment
   // to today's counters. Always a delta, never an absolute -- the content
   // script owns the watermark and reports only what it has not reported yet.
@@ -143,6 +147,12 @@ export interface ContentMessage {
 export interface ReadingStatsDelta {
   wordsRead?: number
   articlesRead?: number
+}
+
+export interface SentenceWordGloss {
+  word: string
+  chinese: string
+  why: string
 }
 
 export interface BackgroundResponse {
@@ -201,6 +211,10 @@ export interface BackgroundResponse {
   // (dictionary-first, so the model has a definition to compare against) --
   // but the endpoint stays available for a future caller.
   wordChinese?: string
+  // Set by the 'translateSentenceWithWords' handler on success: one gloss per
+  // requested word, in request order. An empty `chinese` means the model gave
+  // none and that word needs an individual translateWordInContext call.
+  words?: SentenceWordGloss[]
   // Set by the 'translateWordInContext' handler: one short clause
   // explaining why the contextual meaning differs from the word's
   // dictionary definition passed in the request. Empty when no dictionary
