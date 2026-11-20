@@ -4,12 +4,8 @@ import { test, expect } from '@playwright/test'
 // of the page is that a visitor -- and Stripe's reviewer -- sees prices
 // without an account. Checkout itself is covered by billing.spec.ts.
 
-const card = (page: import('@playwright/test').Page, title: string) =>
-  page.locator('[data-slot="card"]').filter({
-    has: page
-      .locator('[data-slot="card-title"]')
-      .and(page.getByText(title, { exact: true })),
-  })
+const card = (page: import('@playwright/test').Page, text: string) =>
+  page.locator('[data-slot="card"]').filter({ hasText: text })
 
 test.describe('/pricing (signed out)', () => {
   test('shows plans and top-ups without signing in', async ({ page }) => {
@@ -21,7 +17,7 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Catglish Pro+')).toContainText('1,500 credits/mo')
     await expect(card(page, 'Small top-up')).toContainText('$2.99')
     await expect(card(page, 'Free')).toContainText('$0')
-    await expect(card(page, 'Free')).toContainText('lookups a day')
+    await expect(card(page, 'Free')).toContainText('with a daily limit')
     // Not redirected to sign-in.
     await expect(page).toHaveURL(/\/pricing$/)
   })
@@ -30,6 +26,7 @@ test.describe('/pricing (signed out)', () => {
     await page.goto('/pricing')
 
     await card(page, 'Catglish Pro')
+      .first()
       .getByRole('link', { name: 'Subscribe' })
       .click()
     await page.waitForURL(/\/sign-up/)
