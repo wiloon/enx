@@ -82,7 +82,7 @@ func (h *AccountHandler) respond(c *gin.Context, action, targetUserID string, er
 		status, code, message = http.StatusNotFound, "not_found", "No such user."
 	case errors.Is(err, account.ErrProtectedAdmin):
 		status, code, message = http.StatusForbidden, "admin_account",
-			"An admin account cannot be disabled or deleted. Remove it from ADMIN_AUTH_SUBJECTS first."
+			"An admin account cannot be disabled or deleted. Remove the account from the configured admin allowlist first."
 	case errors.Is(err, account.ErrSubscriptionConflict):
 		status, code, message = http.StatusConflict, "subscription_conflict", "Contact an administrator to resolve your subscription issue before deleting your account."
 	case errors.Is(err, account.ErrRenewingSubscription):

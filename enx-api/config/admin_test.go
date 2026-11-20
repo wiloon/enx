@@ -42,6 +42,7 @@ func TestAdminListSelection(t *testing.T) {
 		{"both toml keys, new wins", nil, "[admin]\nauth-subjects = [\"t\"]\nclerk-user-ids = [\"u\"]\n", []string{"t"}, ""},
 		{"legacy toml fallback", nil, "[admin]\nauth-subjects = []\nclerk-user-ids = [\"u\"]\n", []string{"u"}, legacyTOML},
 		{"legacy toml only", nil, "[admin]\nclerk-user-ids = [\"u\"]\n", []string{"u"}, legacyTOML},
+		{"legacy toml scalar", nil, "[admin]\nclerk-user-ids = \"user_a user_b\"\n", []string{"user_a", "user_b"}, legacyTOML},
 		{"unused legacy input", map[string]string{"ADMIN_AUTH_SUBJECTS": "a"}, "[admin]\nclerk-user-ids = [\"u\"]\n", []string{"a"}, ""},
 		{"nothing set", nil, "", nil, ""},
 	}

@@ -78,15 +78,20 @@ func TestMain_DatabaseInitFailureExitsBeforeServing(t *testing.T) {
 	)
 	out, err := cmd.CombinedOutput()
 
+	requireBillingSchemaFailure(t, out, err)
+	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {
+		t.Fatalf("the process went on past the failed initialisation:\n%s", out)
+	}
+}
+
+func requireBillingSchemaFailure(t *testing.T, out []byte, err error) {
+	t.Helper()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
 		t.Fatalf("process ended with %v, want exit status 1; output:\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "unsupported billing schema") {
 		t.Fatalf("output does not name the initialisation error:\n%s", out)
-	}
-	if strings.Contains(string(out), "listening") || strings.Contains(string(out), "auto-migration") {
-		t.Fatalf("the process went on past the failed initialisation:\n%s", out)
 	}
 }
 
@@ -122,7 +127,8 @@ func runFailingStart(t *testing.T, cfgBody string, extraEnv ...string) string {
 		"DB_PATH="+dbPath, "LOG_LEVEL=info", "METRICS_ADDR=127.0.0.1:0",
 		"ADMIN_AUTH_SUBJECTS=", "ADMIN_CLERK_USER_IDS=")
 	cmd.Env = append(cmd.Env, extraEnv...)
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	requireBillingSchemaFailure(t, out, err)
 	return string(out)
 }
 

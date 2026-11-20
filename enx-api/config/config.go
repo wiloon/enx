@@ -291,26 +291,30 @@ func nonBlank(in []string) []string {
 
 // resolveAdmin picks the first non-empty list from ADMIN_AUTH_SUBJECTS,
 // ADMIN_CLERK_USER_IDS, admin.auth-subjects and admin.clerk-user-ids, in that
-// order. file is the koanf state before the environment was merged.
-func (c *Config) resolveAdmin(file *koanf.Koanf) {
-	type source struct {
-		list       []string
-		deprecated string
+// order. fileAdmin contains the admin keys before the environment was merged.
+func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
+	if subjects := strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		return nil
 	}
-	sources := []source{
-		{strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")), ""},
-		{strings.Fields(os.Getenv(adminLegacyEnv)), adminLegacyEnv},
-		{nonBlank(file.Strings("admin.auth-subjects")), ""},
-		{nonBlank(file.Strings(adminLegacyTOML)), adminLegacyTOML},
+	if subjects := strings.Fields(os.Getenv(adminLegacyEnv)); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		c.Admin.DeprecatedSource = adminLegacyEnv
+		return nil
 	}
-	c.Admin.AuthSubjects, c.Admin.DeprecatedSource = nil, ""
-	for _, s := range sources {
-		if len(s.list) > 0 {
-			c.Admin.AuthSubjects = s.list
-			c.Admin.DeprecatedSource = s.deprecated
-			return
+
+	admin, err := decode[Admin](fileAdmin)
+	if err != nil {
+		return err
+	}
+	c.Admin.AuthSubjects = nonBlank(admin.AuthSubjects)
+	if len(c.Admin.AuthSubjects) == 0 {
+		c.Admin.AuthSubjects = nonBlank(admin.LegacyClerkUserIDs)
+		if len(c.Admin.AuthSubjects) > 0 {
+			c.Admin.DeprecatedSource = adminLegacyTOML
 		}
 	}
+	return nil
 }
 
 // Ops is the operator-facing endpoints outside Clerk (ADR-058 Decision 4).
@@ -614,17 +618,19 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	fileState := k.Copy()
+	fileAdmin := k.Cut("admin")
 	if err := k.Load(confmap.Provider(envValues(), "."), nil); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
 
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg.File = file
-	cfg.resolveAdmin(fileState)
+	if err := cfg.resolveAdmin(fileAdmin); err != nil {
+		return nil, fmt.Errorf("config: admin: %w", err)
+	}
 
 	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
 		return strings.TrimSpace(party) != ""
@@ -646,7 +652,7 @@ func Default() *Config {
 	if err := k.Load(confmap.Provider(defaults(), "."), nil); err != nil {
 		panic(fmt.Sprintf("config: defaults do not load: %v", err))
 	}
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
 	}
@@ -725,11 +731,11 @@ func envValues() map[string]any {
 	return m
 }
 
-// decode fills a Config from k. Unknown keys are an error, so a typo in
+// decode fills a config struct from k. Unknown keys are an error, so a typo in
 // config.toml stops the process instead of being ignored. Input is weakly
 // typed because environment values are all strings ("9001" -> int).
-func decode(k *koanf.Koanf) (*Config, error) {
-	var cfg Config
+func decode[T any](k *koanf.Koanf) (*T, error) {
+	var cfg T
 	err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
 		Tag: "mapstructure",
 		DecoderConfig: &mapstructure.DecoderConfig{
