@@ -42,7 +42,7 @@
 
 ## Decision
 
-**选择方案 C：把身份认证从 AWS Cognito 迁到 Clerk。** Google + GitHub 作为 social connections 开启；enx-ui 用 `@clerk/nextjs`、enx-chrome 用 `@clerk/chrome-extension`（配 `syncHost` 指向 Catseye 网站域名）；enx-api 的 `CognitoAuth` middleware 改为验 Clerk session JWT。下线两端手写的 `src/lib/cognito.ts` 与 `w10n-config` 的 Cognito OpenTofu 模块。
+**选择方案 C：把身份认证从 AWS Cognito 迁到 Clerk。** Google + GitHub 作为 social connections 开启；enx-ui 用 `@clerk/nextjs`、enx-chrome 用 `@clerk/chrome-extension`（配 `syncHost` 指向保存 Clerk 会话 cookie 的源：开发实例是网站域名，生产实例是 Clerk Frontend API 域名，如 `clerk.catglish.com`）；enx-api 的 `CognitoAuth` middleware 改为验 Clerk session JWT。下线两端手写的 `src/lib/cognito.ts` 与 `w10n-config` 的 Cognito OpenTofu 模块。
 
 ---
 
@@ -93,7 +93,7 @@
 | --- | --- |
 | **Clerk 控制台** | 建 application；开 Google + GitHub social connections；生产实例填自己的 Google OAuth client、GitHub OAuth app 凭证；**Customize session token 里加 `email`（`{{user.primary_email_address}}`）+ `name`（`{{user.full_name}}`）两个自定义 claim**（供 enx-api 首次开通用户时取邮箱/名，parity 于现在从 Cognito token 读 `email`/`username`）（2026-10-20 起加第三个 claim `image_url`，见文末补充）；设 `azp` 允许的 origin 列表（enx-ui 域名 + 扩展 id）；配 `clerk.catseye.xxx` 域名。**不配 `external_id`**——见 Rationale 第 8 点 |
 | **enx-ui** | 装 `@clerk/nextjs`；`<ClerkProvider>` 包 layout；`LoginForm` → `<SignIn />`；`useAuth` 改用 Clerk hooks；`ApiService` 的 token 取 `getToken()`；删 `src/lib/cognito.ts`、`/auth/callback`、三个 password 占位页 |
-| **enx-chrome** | 装 `@clerk/chrome-extension`；`<ClerkProvider syncHost="https://catseye.xxx">`；`Login.tsx` 用 Clerk 组件/hooks；background 用 Clerk 的 SW 支持取 token；删 `src/lib/cognito.ts` + 手写 PKCE/交换；`manifest.json` 的 `host_permissions` / CSP 按 Clerk 文档调 |
+| **enx-chrome** | 装 `@clerk/chrome-extension`；`<ClerkProvider syncHost=…>`（开发实例为网站域名，生产实例为 Clerk Frontend API 域名；登录 tab 仍开在网站上，见 adr-020）；`Login.tsx` 用 Clerk 组件/hooks；background 用 Clerk 的 SW 支持取 token；删 `src/lib/cognito.ts` + 手写 PKCE/交换；`manifest.json` 的 `host_permissions` / CSP 按 Clerk 文档调 |
 | **enx-api** | `middleware/cognito_auth.go` → `clerk_auth.go`：验 Clerk JWKS + issuer + `azp`（直接替换，不保留 Cognito 分支）；`enx.GetOrCreateByCognitoSub` → `GetOrCreateByClerkUserId`（按 token `sub` 键，邮箱/名取自定义 claim，见 Rationale 第 8 点）；`users` 表把 `cognito_sub` 列改成 `clerk_user_id`（单列，见 Rationale 第 7 点）；`GetUserIDFromContext` 不变（仍返回本地 UUID） |
 | **w10n-config** | 下线 Cognito OpenTofu 资源；`enx-cognito` secret → `enx-clerk`（secret key、JWKS URL、issuer、authorized party）；k8s deployment env 同步；`monetization*.md` 描述更新 |
 | **数据** | 未上线、无真实用户，**不做数据迁移**——清掉 `users` 表里的测试行，homelab/测试账号在 Clerk 重新登录即可 |
@@ -146,6 +146,8 @@
 ---
 
 ## 修订记录
+
+- 2026-11-20（#1029 spec review 第 1 轮）：纠正 `syncHost` 的描述。它指向 Clerk 会话 cookie 所在的源：开发实例是网站（`__clerk_db_jwt`），生产实例是 Frontend API 域名 `clerk.catglish.com`（`__client`），不是网站域名；扩展的登录 tab 开在网站 `frontendBaseUrl` 上（`enx-chrome/src/config/targets.ts`）。
 
 - 2026-10-22（#211 spec review 第 2 轮）：补全旧版 SQLite 唯一性形式、实时 DDL 无损重建及无法解析时停止启动，明确初始化错误返回与进程退出，避免仅用新模型测试而漏迁生产约束；澄清既有 `image_url` 决策包括服务商默认头像。
 
