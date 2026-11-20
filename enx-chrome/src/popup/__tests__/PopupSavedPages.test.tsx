@@ -15,7 +15,7 @@ import type { ReactNode } from 'react'
 const PAGE_URL = 'https://example.com/article'
 
 // Bound in the selectPopupAuth mock factory (hoisted before imports).
-import { harness } from './fakePopupAuthHarness'
+import { harness } from '@/test/fakePopupAuthHarness'
 
 jest.mock('@/config/env', () => ({
   config: {
@@ -82,7 +82,7 @@ jest.mock('@/lib/learningModeStatus', () => ({
 
 jest.mock('@/lib/auth/selectPopupAuth', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
-  const mod = require('./fakePopupAuthHarness') as typeof import('./fakePopupAuthHarness')
+  const mod = require('@/test/fakePopupAuthHarness') as typeof import('@/test/fakePopupAuthHarness')
   const selectPopupAuth = jest.fn(() => ({ Provider: mod.FakeAuthProvider }))
   mod.harness.selectPopupAuth = selectPopupAuth
   return { selectPopupAuth }
