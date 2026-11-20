@@ -35,7 +35,7 @@ _Avoid_: 封号、拉黑、ban（口头可以，代码里用 disabled）
 _Avoid_: trial claim（「认领」专指 adr-051 的邀请码认领）
 
 **会话同步（session sync）**：
-用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 指向网站域名实现。见 adr-015。登录动作的收尾（扩展打开网站登录 tab、登完关掉中转页 `/extension/connected` 并把用户切回原来在读的页面）见 adr-020。
+用户在 Catseye 网站登录后，打开浏览器扩展即为登录态、无需在扩展里再登一次。靠 `@clerk/chrome-extension` 的 `syncHost` 实现：它指向 Clerk 会话 cookie 所在的源（开发实例是网站域名，生产实例是 Clerk Frontend API 域名 `clerk.catglish.com`）；登录 tab 本身开在网站上。见 adr-015。登录动作的收尾（扩展打开网站登录 tab、登完关掉中转页 `/extension/connected` 并把用户切回原来在读的页面）见 adr-020。
 _Avoid_: SSO、单点登录
 
 **登录回跳页（`/extension/connected`）**：
