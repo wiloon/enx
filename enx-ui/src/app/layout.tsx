@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
-import { ClerkProvider } from '@clerk/nextjs'
+import { getAuthAdapter } from '@/auth'
 import './globals.css'
 import NavigationProgressBar from '@/components/site/NavigationProgressBar'
 import QueryProvider from '@/providers/QueryProvider'
@@ -25,8 +25,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const { Provider: AuthProvider } = getAuthAdapter()
   return (
-    <ClerkProvider publishableKey={process.env.CLERK_PUBLISHABLE_KEY}>
+    <AuthProvider>
       {/* The enx-chrome content script stamps <html data-enx-extension>
           before hydration (ADR-019), so <html>'s own attributes differ from
           the server's by design. This only covers <html> itself, not its
@@ -48,6 +49,6 @@ export default function RootLayout({
           </QueryProvider>
         </body>
       </html>
-    </ClerkProvider>
+    </AuthProvider>
   )
 }

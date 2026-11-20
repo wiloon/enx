@@ -8,9 +8,9 @@ import RefundPolicyZhPage from '../zh/refund/page'
 import SiteFooter from '@/components/site/SiteFooter'
 import { AI_PROVIDER, LEGAL, SUBPROCESSORS } from '@/lib/legal'
 
-// SiteHeader renders HeaderAuthLinks, which calls Clerk's useAuth.
-jest.mock('@clerk/nextjs', () => ({
-  useAuth: () => ({ isSignedIn: false }),
+// SiteHeader renders HeaderAuthLinks, which reads the auth context.
+jest.mock('@/auth/context', () => ({
+  useAuthContext: () => ({ isLoaded: true, isSignedIn: false }),
 }))
 
 // The header's Chrome Store button asks whether the extension is installed;

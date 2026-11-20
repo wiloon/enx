@@ -9,8 +9,8 @@ import {
 } from '@/lib/plans'
 
 const mockUseAuth = jest.fn(() => ({ isSignedIn: false }))
-jest.mock('@clerk/nextjs', () => ({
-  useAuth: () => mockUseAuth(),
+jest.mock('@/auth/context', () => ({
+  useAuthContext: () => mockUseAuth(),
 }))
 
 // The header's Chrome Store button asks whether the extension is installed;
