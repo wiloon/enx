@@ -1,19 +1,21 @@
-jest.mock('@clerk/chrome-extension', () => ({
-  ClerkProvider: ({ children }: { children: unknown }) => children,
-  useAuth: () => ({ sessionId: null }),
-  useClerk: () => ({ signOut: jest.fn() }),
-  useUser: () => ({ isLoaded: true, isSignedIn: false, user: null }),
+jest.mock('@/lib/auth/clerk/popupAuth', () => ({
+  ClerkPopupAuthProvider: () => null,
 }))
 
+import { ClerkPopupAuthProvider } from '@/lib/auth/clerk/popupAuth'
 import { selectPopupAuth } from '@/lib/auth/selectPopupAuth'
 
 describe('selectPopupAuth', () => {
   it('selects the Clerk popup adapter for the clerk provider', () => {
-    const popup = selectPopupAuth({
-      provider: 'clerk',
+    const config = {
+      provider: 'clerk' as const,
       publishableKey: 'pk_test_x',
       syncHost: 'https://clerk.example',
+    }
+    const { Provider } = selectPopupAuth(config)
+    expect(Provider({ children: null })).toMatchObject({
+      type: ClerkPopupAuthProvider,
+      props: { config },
     })
-    expect(typeof popup.Provider).toBe('function')
   })
 })

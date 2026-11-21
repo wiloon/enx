@@ -108,6 +108,7 @@ describe('manifest stamping (ADR-019)', () => {
     expect(manifest.host_permissions).toContain(
       `https://${clerkFrontendApiHost(key)}/*`
     )
+    expect(manifest.permissions).toContain('cookies')
     // Cookie events ignore the port, so the permission is portless.
     expect(manifest.host_permissions).toContain(
       'https://sync.override.example/*'

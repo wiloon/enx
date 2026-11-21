@@ -1,5 +1,5 @@
-import { useMemo, useSyncExternalStore, type ReactNode } from 'react'
-import { AuthContextProvider } from '@/lib/auth/context'
+import { createElement, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { AuthContext } from '@/lib/auth/context'
 
 export const harness = {
   subject: 'user-a',
@@ -34,5 +34,5 @@ export function FakeAuthProvider({ children }: { children: ReactNode }) {
     }),
     [user, snapshot]
   )
-  return <AuthContextProvider value={value}>{children}</AuthContextProvider>
+  return createElement(AuthContext.Provider, { value }, children)
 }

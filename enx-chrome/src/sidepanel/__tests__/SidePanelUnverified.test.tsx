@@ -25,12 +25,12 @@ jest.mock('@/config/env', () => ({
   },
 }))
 jest.mock('@/lib/sentry', () => ({ initSentry: jest.fn() }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 jest.mock('@/services/api', () => ({ sendMessageToBackground: jest.fn() }))
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
 import { sendMessageToBackground } from '@/services/api'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 import { pendingSentenceKey } from '@/lib/sidePanel'
@@ -298,10 +298,7 @@ beforeEach(() => {
     },
   })
   clerkUserId = 'user-a'
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    session: { getToken },
-    user: { id: clerkUserId },
-  }))
+  createClient.mockImplementation(async () => fakeSession(clerkUserId, getToken))
   global.fetch = fetchMock as unknown as typeof fetch
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])

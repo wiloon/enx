@@ -23,15 +23,12 @@ export interface AuthSessionView {
   sessionId: string | null
 }
 
-/**
- * Opaque session client the worker holds. Callers use adapter methods; they
- * never import the IdP SDK.
- */
-export type AuthClient = {
-  session: {
-    getToken: (opts?: { skipCache?: boolean }) => Promise<string | null>
-  } | null
-  user: { id: string } | null
+/** A loaded provider session exposed to the worker. */
+export interface AuthClient {
+  hasSession: () => boolean
+  classifySession: () => Promise<SessionSync>
+  subject: () => AuthSubject | null
+  getToken: (options?: { forceRefresh?: boolean }) => Promise<string | null>
 }
 
 export type SessionCookieChangeInfo = {
@@ -47,8 +44,6 @@ export type SessionCookieChangeInfo = {
 
 export interface WorkerAuthAdapter {
   createClient: () => Promise<AuthClient>
-  classifyLoaded: (client: AuthClient) => Promise<SessionSync>
-  subject: (client: AuthClient) => AuthSubject | null
   /**
    * Register the provider's session-change listener synchronously (MV3: a
    * cookie change must wake an evicted worker). The handler runs only for

@@ -6,11 +6,11 @@ import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import { showAllObserved } from '@/test/fakeIntersectionObserver'
 
 jest.mock('@/config/env')
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 
 type Message = { type?: string; action?: string }
@@ -158,13 +158,10 @@ beforeEach(() => {
   sent = []
   sessionStorage = {}
   // A signed-in Clerk session whose fresh tokens enx-api still refuses.
-  const getToken = jest.fn(async (options?: { skipCache?: boolean }) =>
-    options?.skipCache ? 'fresh-token-f7e3c1d9' : 'cached-token'
+  const getToken = jest.fn(async (options?: { forceRefresh?: boolean }) =>
+    options?.forceRefresh ? 'fresh-token-f7e3c1d9' : 'cached-token'
   )
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    session: { getToken },
-    user: { id: 'user-a' },
-  }))
+  createClient.mockImplementation(async () => fakeSession('user-a', getToken))
   api = url =>
     url.includes('/api/dictionary/entries')
       ? { status: 401, body: {} }
@@ -288,10 +285,7 @@ describe('a lookup whose session token cannot be minted', () => {
   it('shows the ordinary error and leaves learning mode and highlights on', async () => {
     const send = await startReading()
     const bodyChildren = document.body.children.length
-    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-      session: { getToken: async () => null },
-      user: { id: 'user-a' },
-    }))
+    createClient.mockImplementation(async () => fakeSession('user-a', async () => null))
     __resetClerkClientCacheForTests()
     const fetches = (global.fetch as jest.Mock).mock.calls.length
 

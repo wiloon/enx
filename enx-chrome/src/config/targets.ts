@@ -149,37 +149,19 @@ export function resolveTargetName(
   return value ? ALIASES[value.trim().toLowerCase()] : undefined
 }
 
-const AUTH_PROVIDERS = new Set<AuthProviderId>(['clerk'])
-
-function resolveAuthProvider(
-  value: string | undefined,
-  fallback: AuthProviderId
-): AuthProviderId {
-  if (value === undefined || value === '') return fallback
-  if (AUTH_PROVIDERS.has(value as AuthProviderId)) {
-    return value as AuthProviderId
-  }
-  throw new Error(`Unknown auth provider: ${value}`)
-}
-
 /**
- * Per-URL escape hatch: any target value can be overridden without editing this
- * file, e.g. `VITE_API_BASE_URL=http://192.168.50.71:8090 task build`.
+ * Override URLs and Clerk settings without changing the target's provider.
  */
 export function applyOverrides(
   target: Target,
   env: Record<string, string | undefined>
 ): Target {
-  const provider = resolveAuthProvider(
-    env.VITE_AUTH_PROVIDER,
-    target.auth.provider
-  )
   return {
     ...target,
     apiBaseUrl: env.VITE_API_BASE_URL || target.apiBaseUrl,
     frontendBaseUrl: env.VITE_FRONTEND_BASE_URL || target.frontendBaseUrl,
     auth: {
-      provider,
+      ...target.auth,
       publishableKey:
         env.VITE_CLERK_PUBLISHABLE_KEY || target.auth.publishableKey,
       syncHost: env.VITE_CLERK_SYNC_HOST || target.auth.syncHost,

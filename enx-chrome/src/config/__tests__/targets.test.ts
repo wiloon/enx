@@ -59,9 +59,10 @@ describe('resolveBuildTarget', () => {
     expect(target.uiOrigins).toEqual(['https://a.example', 'https://b.example'])
   })
 
-  it('stamps Clerk overrides into the build env', () => {
+  it('stamps the target provider and Clerk setting overrides into the build env', () => {
     const stamped = stampedEnv(
       resolveBuildTarget('production', {
+        VITE_AUTH_PROVIDER: 'unrelated-provider',
         VITE_CLERK_PUBLISHABLE_KEY: 'pk_live_x',
         VITE_CLERK_SYNC_HOST: 'https://clerk.override.example',
       })

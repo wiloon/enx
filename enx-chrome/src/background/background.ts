@@ -193,10 +193,10 @@ const syncAndObserveClerk = async (): Promise<AuthClient> => {
   const requested = clerkGeneration
   const clerk = await syncClerk()
   if (requested !== clerkGeneration) throw new SessionChanged()
-  const sync = await authAdapter.classifyLoaded(clerk)
+  const sync = await clerk.classifySession()
   if (requested !== clerkGeneration) throw new SessionChanged()
   if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
-  await accountSession.observe(authAdapter.subject(clerk))
+  await accountSession.observe(clerk.subject())
   if (requested !== clerkGeneration) throw new SessionChanged()
   return clerk
 }
@@ -255,7 +255,7 @@ const syncClerk = async (): Promise<AuthClient> => {
   const requested = clerkGeneration
   let clerk = await getClerk()
   if (requested !== clerkGeneration) throw new SessionChanged()
-  if (clerk.session) return clerk
+  if (clerk.hasSession()) return clerk
 
   for (
     let attempt = 1;
@@ -267,7 +267,7 @@ const syncClerk = async (): Promise<AuthClient> => {
     clerkClientPromise = null
     clerk = await getClerk()
     if (requested !== clerkGeneration) throw new SessionChanged()
-    if (clerk.session) {
+    if (clerk.hasSession()) {
       swlog(
         `clerk session recovered on retry ${attempt} ` +
           `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot)`
@@ -320,10 +320,9 @@ const recheckSession = () => {
         swlog(`session recheck failed: ${String(error)}`, 'warn')
         return { sync: 'unconfirmed' as const, token: null }
       }
-      if (!clerk.session) return { sync: 'absent' as const, token: null }
+      if (!clerk.hasSession()) return { sync: 'absent' as const, token: null }
       try {
-        const token =
-          (await clerk.session.getToken({ skipCache: true })) ?? null
+        const token = await clerk.getToken({ forceRefresh: true })
         return { sync: 'present' as const, token }
       } catch (error) {
         swlog(`fresh getToken() after recheck threw: ${String(error)}`, 'warn')
@@ -337,12 +336,9 @@ const recheckSession = () => {
   return sessionRecheckInFlight
 }
 
-// `forceRefresh` bypasses clerk-js's in-memory token cache (getToken({
-// skipCache: true })). Needed after a 401: clerk-js refreshes the ~60s session
-// JWT on a setTimeout that does NOT fire while an MV3 worker is suspended, so a
-// warm-looking worker can hand out a token minted 15 min ago -- long expired --
-// without re-minting. Forcing a fresh mint (or surfacing that the mint itself
-// fails) is the only way to tell a stale cache from a real logout.
+// A 401 can mean the worker was suspended while its cached token expired.
+// A forced refresh asks the provider for a fresh token before deciding
+// whether the session has ended.
 // `synced` is a client a cookie-change sync already settled on; its caller
 // waited for it, so it is not synced again.
 const getSessionToken = async (
@@ -368,9 +364,9 @@ const getSessionToken = async (
   }
 
   const isCurrent = accountSession.capture()
-  if (!clerk.session) return { ...noToken, isCurrent, sync: 'absent' }
+  if (!clerk.hasSession()) return { ...noToken, isCurrent, sync: 'absent' }
 
-  const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
+  const getTokenOpts = opts.forceRefresh ? { forceRefresh: true } : undefined
   let failedMints = 0
   let lastMintError: string | null = null
 
@@ -380,7 +376,7 @@ const getSessionToken = async (
     attempt++
   ) {
     try {
-      const token = (await clerk.session.getToken(getTokenOpts)) ?? null
+      const token = await clerk.getToken(getTokenOpts)
       if (token) {
         return {
           token,
@@ -419,7 +415,7 @@ const getSessionToken = async (
 
 const isSignedIn = async (): Promise<boolean> => {
   try {
-    return Boolean((await getSyncedClerk()).session)
+    return (await getSyncedClerk()).hasSession()
   } catch (error) {
     console.error('Clerk session check failed:', error)
     return false
@@ -428,7 +424,7 @@ const isSignedIn = async (): Promise<boolean> => {
 
 const signedInUserId = async (): Promise<string | null> => {
   try {
-    return authAdapter.subject(await getSyncedClerk())
+    return (await getSyncedClerk()).subject()
   } catch {
     return null
   }

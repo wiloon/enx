@@ -1,17 +1,16 @@
 import { clerkSubject } from '../subject'
-import type { AuthClient } from '@/lib/auth/types'
 
 describe('clerkSubject', () => {
   it('equals the Clerk user.id when a session is present', () => {
-    const client: AuthClient = {
-      session: { getToken: async () => 'tok' },
+    const client = {
+      session: {},
       user: { id: 'user_abc' },
     }
     expect(clerkSubject(client)).toBe('user_abc')
   })
 
   it('is null when there is no session', () => {
-    const client: AuthClient = {
+    const client = {
       session: null,
       user: { id: 'user_abc' },
     }

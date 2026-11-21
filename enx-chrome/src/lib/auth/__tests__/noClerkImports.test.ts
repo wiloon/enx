@@ -1,16 +1,10 @@
 /**
  * @jest-environment node
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const SRC = join(__dirname, '..', '..', '..')
-const ALLOWED = new Set([
-  'lib/auth/clerk/workerAuth.ts',
-  'lib/auth/clerk/popupAuth.tsx',
-  'lib/auth/clerk/__tests__/clerkSessionSync.test.ts',
-])
-
 // The quoted module specifier, so static, side-effect, dynamic (including
 // template literals), require and jest.requireActual loads all match.
 const CLERK_SDK_SPECIFIER = /(['"`])@clerk\/chrome-extension(\/[^'"`]*)?\1/
@@ -20,13 +14,11 @@ function importsClerkSdk(source: string): boolean {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) {
-      if (name === 'node_modules' || name === 'dist' || name === 'dist-production')
-        continue
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) {
       walk(path, out)
-    } else if (/\.(ts|tsx)$/.test(name)) {
+    } else if (entry.isFile()) {
       out.push(path)
     }
   }
@@ -34,13 +26,16 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 describe('auth adapter boundary', () => {
+  // Build the fixture specifiers so the source scan can include this test.
+  const sdk = '@clerk/' + 'chrome-extension'
+
   it.each([
-    ["import { ClerkProvider } from '@clerk/chrome-extension'"],
-    ['import "@clerk/chrome-extension"'],
-    ["const m = await import('@clerk/chrome-extension/background')"],
-    ['const m = await import(`@clerk/chrome-extension/client`)'],
-    ["const m = require('@clerk/chrome-extension')"],
-    ["jest.requireActual('@clerk/chrome-extension/background')"],
+    [`import { ClerkProvider } from '${sdk}'`],
+    [`import "${sdk}"`],
+    [`const m = await import('${sdk}/background')`],
+    ['const m = await import(`' + sdk + '/client`)'],
+    [`const m = require('${sdk}')`],
+    [`jest.requireActual('${sdk}/background')`],
   ])('detects the Clerk SDK in %s', source => {
     expect(importsClerkSdk(source)).toBe(true)
   })
@@ -56,11 +51,7 @@ describe('auth adapter boundary', () => {
     const offenders: string[] = []
     for (const file of walk(SRC)) {
       const rel = relative(SRC, file)
-      if (ALLOWED.has(rel)) continue
-      // Tests that exercise the real SDK through the adapter may load it.
-      if (rel.includes('__tests__/') || rel.includes('/test/')) continue
-      // E2E helpers talk to Clerk's testing package, not the extension SDK.
-      if (rel.startsWith('e2e/') || rel.includes('/e2e/')) continue
+      if (rel.startsWith('lib/auth/clerk/')) continue
       const source = readFileSync(file, 'utf8')
       if (importsClerkSdk(source)) {
         offenders.push(rel)

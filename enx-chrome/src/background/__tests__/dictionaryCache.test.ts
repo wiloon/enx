@@ -15,12 +15,12 @@ jest.mock('@/config/env', () => ({
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: async () => ({
-    session: { getToken: async () => 'token' },
-    user: { id: 'cache-user' },
-  }),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
+
+createClient.mockResolvedValue(fakeSession('cache-user', async () => 'token'))
 import { __resetClerkClientCacheForTests } from '../background'
 
 const listener = (chrome.runtime.onMessage.addListener as jest.Mock).mock

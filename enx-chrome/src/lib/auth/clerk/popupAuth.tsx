@@ -5,9 +5,9 @@ import {
   useUser,
 } from '@clerk/chrome-extension'
 import { useMemo, type ReactNode } from 'react'
-import { AuthContextProvider } from '@/lib/auth/context'
+import { AuthContext } from '@/lib/auth/context'
 import type { ClerkAuthConfig } from '@/lib/auth/config'
-import type { AuthUser, PopupAuthAdapter } from '@/lib/auth/types'
+import type { AuthUser } from '@/lib/auth/types'
 
 function toAuthUser(user: {
   id: string
@@ -39,24 +39,25 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
     [isLoaded, isSignedIn, user, sessionId, clerk]
   )
 
-  return <AuthContextProvider value={value}>{children}</AuthContextProvider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-export function createClerkPopupAuth(
+export function ClerkPopupAuthProvider({
+  config,
+  children,
+}: {
   config: ClerkAuthConfig
-): PopupAuthAdapter {
-  function ClerkPopupAuthProvider({ children }: { children: ReactNode }) {
-    return (
-      <ClerkProvider
-        publishableKey={config.publishableKey}
-        syncHost={config.syncHost}
-        // Pick up a session change on the website without reopening the popup.
-        __experimental_syncHostListener
-        afterSignOutUrl="/popup.html"
-      >
-        <ClerkAuthBridge>{children}</ClerkAuthBridge>
-      </ClerkProvider>
-    )
-  }
-  return { Provider: ClerkPopupAuthProvider }
+  children?: ReactNode
+}) {
+  return (
+    <ClerkProvider
+      publishableKey={config.publishableKey}
+      syncHost={config.syncHost}
+      // Pick up a session change on the website without reopening the popup.
+      __experimental_syncHostListener
+      afterSignOutUrl="/popup.html"
+    >
+      <ClerkAuthBridge>{children}</ClerkAuthBridge>
+    </ClerkProvider>
+  )
 }

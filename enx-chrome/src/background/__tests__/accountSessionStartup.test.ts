@@ -13,10 +13,10 @@ jest.mock('@/config/env', () => ({
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
-import { createClerkClient } from '@clerk/chrome-extension/client'
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
 
 it('invalidates pages from account A when a cold worker syncs account B', async () => {
   ;(chrome.storage.session.get as jest.Mock).mockResolvedValue({
@@ -25,10 +25,7 @@ it('invalidates pages from account A when a cold worker syncs account B', async 
   ;(chrome.storage.session.set as jest.Mock).mockResolvedValue(undefined)
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }, { id: 2 }])
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({ success: true })
-  ;(createClerkClient as jest.Mock).mockResolvedValue({
-    user: { id: 'user-b' },
-    session: {},
-  })
+  createClient.mockResolvedValue(fakeSession('user-b'))
   await import('../background')
   await waitFor(() => {
     for (const id of [1, 2]) {

@@ -1,33 +1,30 @@
 import { createClerkClient } from '@clerk/chrome-extension/client'
-import {
-  classifyLoadedClerk,
-  type LoadedClerk,
-} from '@/lib/auth/clerk/clerkSessionSync'
+import { classifyLoadedClerk } from '@/lib/auth/clerk/clerkSessionSync'
 import { registerClerkSessionCookieListener } from '@/lib/auth/clerk/sessionCookie'
 import { clerkSubject } from '@/lib/auth/clerk/subject'
 import type { ClerkAuthConfig } from '@/lib/auth/config'
-import type { AuthClient, WorkerAuthAdapter } from '@/lib/auth/types'
-
-type CreateClerkClient = typeof createClerkClient
+import type { WorkerAuthAdapter } from '@/lib/auth/types'
 
 export function createClerkWorkerAuth(
-  config: ClerkAuthConfig,
-  deps: { createClerkClient?: CreateClerkClient } = {}
+  config: ClerkAuthConfig
 ): WorkerAuthAdapter {
-  const create = deps.createClerkClient ?? createClerkClient
-
   return {
     createClient: async () => {
-      const client = await create({
+      const client = await createClerkClient({
         publishableKey: config.publishableKey,
         syncHost: config.syncHost,
         background: true,
       })
-      return client as AuthClient
+      return {
+        hasSession: () => Boolean(client.session),
+        classifySession: () => classifyLoadedClerk(client),
+        subject: () => clerkSubject(client),
+        getToken: async ({ forceRefresh } = {}) =>
+          (await client.session?.getToken(
+            forceRefresh ? { skipCache: true } : undefined
+          )) ?? null,
+      }
     },
-    classifyLoaded: client =>
-      classifyLoadedClerk(client as unknown as LoadedClerk),
-    subject: clerkSubject,
     registerSessionChangeListener: (cookies, onChange) =>
       registerClerkSessionCookieListener(cookies, config.syncHost, onChange),
   }

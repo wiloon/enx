@@ -14,11 +14,11 @@ jest.mock('@/config/env', () => ({
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient } from '@/test/fakeWorkerAuth'
 import {
   __resetClerkClientCacheForTests,
   __restartReadingPositionWriterForTests,
@@ -83,14 +83,11 @@ beforeEach(() => {
   signedInAs = 'user-a'
   local = {}
   failingSets = 0
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    get session() {
-      return signedInAs ? { getToken: async () => 'jwt' } : null
-    },
-    get user() {
-      return signedInAs ? { id: signedInAs } : null
-    },
-    client: { reload: async () => {} },
+  createClient.mockImplementation(async () => ({
+    hasSession: () => Boolean(signedInAs),
+    subject: () => signedInAs,
+    getToken: async () => (signedInAs ? 'jwt' : null),
+    classifySession: async () => (signedInAs ? 'present' : 'unconfirmed'),
   }))
   const session: Record<string, unknown> = {}
   ;(chrome.storage.session.get as jest.Mock).mockImplementation(

@@ -137,12 +137,15 @@ describe('Popup saved pages through the selected auth adapter', () => {
       within(screen.getByTestId('save-link-card')).getByText('Link saved')
     ).toBeInTheDocument()
 
+    const readStorage = jest.mocked(chrome.storage.local.get)
+    readStorage.mockClear()
     await act(async () => {
       harness.subject = 'user-b'
       harness.listeners.forEach(l => l())
     })
 
     await waitFor(() => {
+      expect(readStorage).toHaveBeenCalledWith('savedPages:user-b')
       expect(
         within(screen.getByTestId('save-link-card')).getByTestId(
           'save-link-save'

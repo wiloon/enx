@@ -8,8 +8,6 @@ describe('selectWorkerAuth', () => {
       syncHost: 'https://clerk.example',
     })
     expect(typeof worker.createClient).toBe('function')
-    expect(typeof worker.classifyLoaded).toBe('function')
-    expect(typeof worker.subject).toBe('function')
     expect(typeof worker.registerSessionChangeListener).toBe('function')
   })
 })

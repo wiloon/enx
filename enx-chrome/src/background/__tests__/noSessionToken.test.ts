@@ -15,11 +15,12 @@ jest.mock('@/config/env', () => ({
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
+import type { AuthClient } from '@/lib/auth'
 import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
 import { ACCOUNT_CHANGED_MESSAGE } from '@/lib/panelAccountFence'
 
@@ -27,58 +28,24 @@ const OWNER_KEY = 'enx-account-session-owner'
 const UNREACHABLE = "Couldn't reach the sign-in service. Please try again."
 const EXPIRED = 'Your session has expired. Please login again.'
 
-type GetTokenOptions = { skipCache?: boolean } | undefined
+type GetTokenOptions = { forceRefresh?: boolean } | undefined
 const getToken = jest.fn<Promise<string | null>, [GetTokenOptions?]>()
 
-// How a read of Clerk's client goes after a load came back empty: Clerk's
-// Frontend API answers with a signed-out client, the request fails and
-// clerk-js swallows it (resolving with no response), or clerk-js throws.
-type ClientRead = 'signed-out' | 'swallowed' | 'throws'
-type AfterResponse = (
-  request: { method?: string; path?: string },
-  response?: { ok: boolean; status: number; payload: unknown }
-) => unknown
+// Script the result of classifying the loaded provider session.
+const signedIn = (user = 'user-a') => async () => fakeSession(user, getToken)
+const empty = (sync: 'absent' | 'unconfirmed') => async (): Promise<AuthClient> => ({
+  hasSession: () => false,
+  subject: () => null,
+  getToken: async () => null,
+  classifySession: async () => sync,
+})
 
-const fakeClerk = (user: string | null, read: ClientRead = 'swallowed') => {
-  const afterResponse: AfterResponse[] = []
-  return {
-    session: user ? { getToken } : null,
-    user: user ? { id: user } : null,
-    client: {
-      reload: async () => {
-        if (read === 'throws') throw new Error('ClerkJS: Network error')
-        if (read === 'signed-out') {
-          afterResponse.forEach(callback =>
-            callback(
-              { method: 'GET', path: '/client' },
-              {
-                ok: true,
-                status: 200,
-                payload: { response: { object: 'client', sessions: [] } },
-              }
-            )
-          )
-        }
-      },
-    },
-    __internal_onAfterResponse: (callback: AfterResponse) => {
-      afterResponse.push(callback)
-    },
-  }
-}
-
-// Each Clerk load (createClerkClient call) takes the next scripted client;
-// the last one repeats.
-let loads: Array<() => Promise<unknown>>
-const loadCount = () => (createClerkClient as jest.Mock).mock.calls.length
-const loadsAs = (...script: Array<() => Promise<unknown>>) => {
+// Each load takes the next scripted client; the last one repeats.
+let loads: Array<() => Promise<AuthClient>>
+const loadCount = () => createClient.mock.calls.length
+const loadsAs = (...script: Array<() => Promise<AuthClient>>) => {
   loads = script
 }
-const signedIn =
-  (user = 'user-a') =>
-  async () =>
-    fakeClerk(user)
-const empty = (read: ClientRead) => async () => fakeClerk(null, read)
 const failing = () => async () => {
   throw new Error('ClerkJS: Network error at /v1/client')
 }
@@ -110,8 +77,8 @@ beforeEach(async () => {
   getToken.mockReset()
   getToken.mockResolvedValue('clerk-session-jwt')
   loadsAs(signedIn())
-  ;(createClerkClient as jest.Mock).mockImplementation(() => {
-    const n = (createClerkClient as jest.Mock).mock.calls.length
+  createClient.mockImplementation(() => {
+    const n = createClient.mock.calls.length
     return loads[Math.min(n, loads.length) - 1]()
   })
   ;(chrome.storage.session.get as jest.Mock).mockImplementation(
@@ -140,7 +107,7 @@ beforeEach(async () => {
   __resetClerkClientCacheForTests()
   fetchMock.mockReset()
   getToken.mockClear()
-  ;(createClerkClient as jest.Mock).mockClear()
+  createClient.mockClear()
   ;(chrome.tabs.sendMessage as jest.Mock).mockClear()
   ;(chrome.runtime.sendMessage as jest.Mock).mockClear()
   ;(chrome.storage.session.set as jest.Mock).mockClear()
@@ -201,18 +168,8 @@ describe('a Clerk sync that cannot confirm the session', () => {
     )
   }, 2000)
 
-  it('is transient when the load comes back empty after a Frontend API network failure', async () => {
-    loadsAs(empty('swallowed'))
-    answer(200)
-
-    const result = await makeApiRequest('/api/translate?word=fox')
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expectTransient(result)
-  })
-
-  it('is transient when the read of the client throws', async () => {
-    loadsAs(empty('throws'))
+  it('is transient when the auth adapter cannot confirm the session', async () => {
+    loadsAs(empty('unconfirmed'))
     answer(200)
 
     const result = await makeApiRequest('/api/translate?word=fox')
@@ -222,7 +179,7 @@ describe('a Clerk sync that cannot confirm the session', () => {
   })
 
   it('lets the next request start clean and ask Clerk again', async () => {
-    loadsAs(empty('swallowed'))
+    loadsAs(empty('unconfirmed'))
     await makeApiRequest('/api/translate?word=fox')
     loadsAs(signedIn())
     answer(200, { English: 'fox' })
@@ -236,7 +193,7 @@ describe('a Clerk sync that cannot confirm the session', () => {
 
 describe('a Clerk sync that confirms the session is gone', () => {
   it('takes the session-loss path without recheck loads beyond the sync retries', async () => {
-    loadsAs(empty('signed-out'))
+    loadsAs(empty('absent'))
     answer(200)
 
     const result = await makeApiRequest('/api/translate?word=fox')
@@ -259,7 +216,7 @@ describe('a Clerk sync that confirms the session is gone', () => {
   it('expires the session when no signed-in owner was known', async () => {
     sessionStorage = {}
     __resetClerkClientCacheForTests()
-    loadsAs(empty('signed-out'))
+    loadsAs(empty('absent'))
 
     const result = await makeApiRequest('/api/translate?word=fox')
 
@@ -276,7 +233,7 @@ describe('a session whose token mints all fail', () => {
   beforeEach(() => getToken.mockResolvedValue(null))
 
   it('ends the session when the recheck finds no session', async () => {
-    loadsAs(signedIn(), empty('signed-out'))
+    loadsAs(signedIn(), empty('absent'))
     answer(200)
 
     const result = await makeApiRequest('/api/translate?word=fox')
@@ -305,7 +262,7 @@ describe('a session whose token mints all fail', () => {
     expectTransient(result)
     // Three cached mints, then one fresh mint after the recheck.
     expect(getToken).toHaveBeenCalledTimes(4)
-    expect(getToken).toHaveBeenLastCalledWith({ skipCache: true })
+    expect(getToken).toHaveBeenLastCalledWith({ forceRefresh: true })
     expect(loadCount()).toBe(2)
   })
 
@@ -335,7 +292,7 @@ describe('a session whose token mints all fail', () => {
 
   it('continues the request when the fresh mint after the recheck succeeds', async () => {
     getToken.mockImplementation(async options =>
-      options?.skipCache ? 'fresh-token' : null
+      options?.forceRefresh ? 'fresh-token' : null
     )
     answer(200, { English: 'fox' })
 
@@ -347,10 +304,9 @@ describe('a session whose token mints all fail', () => {
   })
 
   it('sends nothing when the recheck observes another account', async () => {
-    loadsAs(signedIn(), async () => ({
-      ...fakeClerk('user-b'),
-      session: { getToken: async () => 'user-b-token' },
-    }))
+    loadsAs(signedIn(), async () =>
+      fakeSession('user-b', async () => 'user-b-token')
+    )
     answer(200)
 
     const result = await makeApiRequest('/api/translate?word=fox')
@@ -378,7 +334,7 @@ describe('a session whose token mints all fail', () => {
 
   it('logs one line with the endpoint, the failed mints and the recheck result', async () => {
     getToken.mockRejectedValue(new Error('clerk offline'))
-    loadsAs(signedIn(), empty('swallowed'))
+    loadsAs(signedIn(), empty('unconfirmed'))
 
     await makeApiRequest('/api/translate?word=fox')
 
@@ -396,7 +352,7 @@ describe('a session whose token mints all fail', () => {
 describe('the forced replay after a 401', () => {
   it('never replays without a token, and the recheck decides', async () => {
     getToken.mockImplementation(async options =>
-      options?.skipCache ? null : 'cached-token'
+      options?.forceRefresh ? null : 'cached-token'
     )
     answer(401)
 
@@ -409,7 +365,7 @@ describe('the forced replay after a 401', () => {
   it('replays once with the recheck’s fresh token and never again', async () => {
     let freshMints = 0
     getToken.mockImplementation(async options => {
-      if (!options?.skipCache) return 'cached-token'
+      if (!options?.forceRefresh) return 'cached-token'
       // The three forced mints fail; the one after the recheck succeeds.
       return ++freshMints > 3 ? 'fresh-token' : null
     })
@@ -451,7 +407,7 @@ describe('the session-loss flag through every message handler', () => {
       { type: 'translateWordInContext', sentence: 'A fox.', word: 'fox' },
     ],
   ])('%s returns the session-expired flag', async (_name, request) => {
-    loadsAs(empty('signed-out'))
+    loadsAs(empty('absent'))
     answer(200)
 
     const response = await send(request)
