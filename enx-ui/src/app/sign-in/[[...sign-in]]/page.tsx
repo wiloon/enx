@@ -1,4 +1,4 @@
-import { SignIn } from '@clerk/nextjs'
+import { getAuthAdapter } from '@/auth'
 
 // ADR-020: when the sign-in is started from the ENX extension
 // (`/sign-in?src=extension`), send the user to /extension/connected
@@ -13,9 +13,11 @@ export default async function SignInPage({
   const forceRedirectUrl =
     src === 'extension' ? '/extension/connected' : undefined
 
+  const { SignInBody } = getAuthAdapter()
+
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
-      <SignIn forceRedirectUrl={forceRedirectUrl} />
+      <SignInBody forceRedirectUrl={forceRedirectUrl} />
     </div>
   )
 }

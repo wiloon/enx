@@ -27,7 +27,7 @@ func (Accounts) Get(ctx context.Context, userID string) (account.User, bool, err
 	if err != nil {
 		return account.User{}, false, err
 	}
-	return account.User{ID: u.Id, ClerkUserID: u.ClerkUserID, Email: u.Email, Status: account.Status(u.Status)}, true, nil
+	return account.User{ID: u.Id, AuthSubject: u.AuthSubject, Email: u.Email, Status: account.Status(u.Status)}, true, nil
 }
 
 func (Accounts) SetStatus(ctx context.Context, userID string, status account.Status) error {

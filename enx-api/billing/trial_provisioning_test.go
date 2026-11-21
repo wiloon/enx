@@ -31,7 +31,7 @@ func cleanupClerkUser(t *testing.T, clerkUserID string) {
 	t.Helper()
 	t.Cleanup(func() {
 		var ids []string
-		if err := sqlitex.DB.Raw(`SELECT id FROM users WHERE clerk_user_id = ?`, clerkUserID).Scan(&ids).Error; err != nil {
+		if err := sqlitex.DB.Raw(`SELECT id FROM users WHERE auth_subject = ?`, clerkUserID).Scan(&ids).Error; err != nil {
 			t.Errorf("find %s: %v", clerkUserID, err)
 		}
 		for _, id := range ids {
@@ -41,7 +41,7 @@ func cleanupClerkUser(t *testing.T, clerkUserID string) {
 				}
 			}
 		}
-		if err := sqlitex.DB.Exec(`DELETE FROM users WHERE clerk_user_id = ?`, clerkUserID).Error; err != nil {
+		if err := sqlitex.DB.Exec(`DELETE FROM users WHERE auth_subject = ?`, clerkUserID).Error; err != nil {
 			t.Errorf("clean up users: %v", err)
 		}
 	})
@@ -77,7 +77,7 @@ func TestConcurrentFirstRequestsAllSeeTheTrial(t *testing.T) {
 	var observed atomic.Int32
 	release := make(chan struct{})
 	installNewUserHook(t, pausedHook{grant: trialGrantCounting(&observed), release: release})
-	p := enx.ClerkProfile{Email: "concurrent-trial@example.com"}
+	p := enx.AuthProfile{Email: "concurrent-trial@example.com"}
 
 	const callers = 4
 	results := make(chan provisionedTrial, callers)
@@ -86,7 +86,7 @@ func TestConcurrentFirstRequestsAllSeeTheTrial(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			u, err := enx.GetOrCreateClerkUser(clerkID, p, time.Hour)
+			u, err := enx.GetOrCreateAuthSubjectUser(clerkID, p, time.Hour)
 			if err != nil {
 				results <- provisionedTrial{err: err}
 				return
@@ -137,11 +137,11 @@ func TestFailedTrialGrantLeavesNoPartialGrant(t *testing.T) {
 	var observed atomic.Int32
 	installNewUserHook(t, trialGrantCounting(&observed))
 
-	u, err := enx.GetOrCreateClerkUser(clerkID, enx.ClerkProfile{Email: "failed-trial@example.com"}, time.Hour)
+	u, err := enx.GetOrCreateAuthSubjectUser(clerkID, enx.AuthProfile{Email: "failed-trial@example.com"}, time.Hour)
 	if err != nil {
 		t.Fatalf("a failed grant failed the sign-in: %v", err)
 	}
-	if stored := enx.GetUserByClerkUserID(clerkID); stored.Id != u.Id {
+	if stored := enx.GetUserByAuthSubject(clerkID); stored.Id != u.Id {
 		t.Fatalf("stored user %q, want %q", stored.Id, u.Id)
 	}
 	var trialGrants, ledger int64
@@ -185,14 +185,14 @@ func TestTrialGrantIsNotCountedWhenProvisioningFailsToCommit(t *testing.T) {
 	var observed atomic.Int32
 	installNewUserHook(t, failingCommitHook{grant: trialGrantCounting(&observed)})
 
-	got, err := enx.GetOrCreateClerkUser(clerkID, enx.ClerkProfile{Email: "uncommitted-trial@example.com"}, time.Hour)
+	got, err := enx.GetOrCreateAuthSubjectUser(clerkID, enx.AuthProfile{Email: "uncommitted-trial@example.com"}, time.Hour)
 	if !errors.Is(err, sql.ErrTxDone) || got != nil {
 		t.Fatalf("got user %+v, err %v; want no user and sql.ErrTxDone", got, err)
 	}
 	if observed.Load() != 0 {
 		t.Fatalf("observed %d grants for a provisioning that never committed", observed.Load())
 	}
-	if stored := enx.GetUserByClerkUserID(clerkID); stored.Id != "" {
+	if stored := enx.GetUserByAuthSubject(clerkID); stored.Id != "" {
 		t.Fatalf("user %s stored, want none", stored.Id)
 	}
 }

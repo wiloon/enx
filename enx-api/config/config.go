@@ -260,8 +260,61 @@ type Account struct {
 	EmailHMACKey Secret `mapstructure:"email-hmac-key"`
 }
 
+// Admin is the admin allowlist of external auth subjects (ADR-036). Load
+// resolves it from ADMIN_AUTH_SUBJECTS and the deprecated ADMIN_CLERK_USER_IDS;
+// read AuthSubjects only.
 type Admin struct {
-	ClerkUserIDs []string `mapstructure:"clerk-user-ids"`
+	AuthSubjects []string `mapstructure:"auth-subjects"`
+	// LegacyAuthSubjects only receives the deprecated admin.clerk-user-ids
+	// binding as decoded; authorization reads AuthSubjects only.
+	LegacyAuthSubjects []string `mapstructure:"clerk-user-ids"`
+	// DeprecatedSource names the deprecated input that supplied AuthSubjects
+	// ("" when a current one did, or nothing is set).
+	DeprecatedSource string `mapstructure:"-"`
+}
+
+const (
+	adminLegacyEnv  = "ADMIN_CLERK_USER_IDS"
+	adminLegacyTOML = "admin.clerk-user-ids"
+)
+
+// nonBlank trims every entry and drops the empty ones.
+func nonBlank(in []string) []string {
+	var out []string
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// resolveAdmin picks the first non-empty list from ADMIN_AUTH_SUBJECTS,
+// ADMIN_CLERK_USER_IDS, admin.auth-subjects and admin.clerk-user-ids, in that
+// order. fileAdmin contains the admin keys before the environment was merged.
+func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
+	if subjects := strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		return nil
+	}
+	if subjects := strings.Fields(os.Getenv(adminLegacyEnv)); len(subjects) > 0 {
+		c.Admin.AuthSubjects = subjects
+		c.Admin.DeprecatedSource = adminLegacyEnv
+		return nil
+	}
+
+	admin, err := decode[Admin](fileAdmin)
+	if err != nil {
+		return err
+	}
+	c.Admin.AuthSubjects = nonBlank(admin.AuthSubjects)
+	if len(c.Admin.AuthSubjects) == 0 {
+		c.Admin.AuthSubjects = nonBlank(admin.LegacyAuthSubjects)
+		if len(c.Admin.AuthSubjects) > 0 {
+			c.Admin.DeprecatedSource = adminLegacyTOML
+		}
+	}
+	return nil
 }
 
 // Ops is the operator-facing endpoints outside Clerk (ADR-058 Decision 4).
@@ -472,6 +525,10 @@ type Feedback struct {
 type Credits struct {
 	Trial    Trial    `mapstructure:"trial"`
 	Referral Referral `mapstructure:"referral"`
+	// LowBalanceThreshold is when /billing/me tells the client the balance
+	// is low (ADR-052 Decision 2a). 0 turns that notice off; must not be
+	// negative. Default 20.
+	LowBalanceThreshold int64 `mapstructure:"low-balance-threshold"`
 }
 
 // Referral is the invite-link credits (ADR-051 Decision 7). 0 switches the
@@ -565,15 +622,19 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	fileAdmin := k.Cut("admin")
 	if err := k.Load(confmap.Provider(envValues(), "."), nil); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
 
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg.File = file
+	if err := cfg.resolveAdmin(fileAdmin); err != nil {
+		return nil, fmt.Errorf("config: admin: %w", err)
+	}
 
 	if k.Exists("oidc.authorized-parties") && !slices.ContainsFunc(cfg.OIDC.AuthorizedParties, func(party string) bool {
 		return strings.TrimSpace(party) != ""
@@ -595,7 +656,7 @@ func Default() *Config {
 	if err := k.Load(confmap.Provider(defaults(), "."), nil); err != nil {
 		panic(fmt.Sprintf("config: defaults do not load: %v", err))
 	}
-	cfg, err := decode(k)
+	cfg, err := decode[Config](k)
 	if err != nil {
 		panic(fmt.Sprintf("config: defaults do not decode: %v", err))
 	}
@@ -674,11 +735,11 @@ func envValues() map[string]any {
 	return m
 }
 
-// decode fills a Config from k. Unknown keys are an error, so a typo in
+// decode fills a config struct from k. Unknown keys are an error, so a typo in
 // config.toml stops the process instead of being ignored. Input is weakly
 // typed because environment values are all strings ("9001" -> int).
-func decode(k *koanf.Koanf) (*Config, error) {
-	var cfg Config
+func decode[T any](k *koanf.Koanf) (*T, error) {
+	var cfg T
 	err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
 		Tag: "mapstructure",
 		DecoderConfig: &mapstructure.DecoderConfig{
@@ -805,6 +866,7 @@ func (c *Config) Validate() error {
 	notNegative("credits.trial.ttl-days", t.TTLDays >= 0)
 	notNegative("credits.trial.calls-per-minute", t.CallsPerMinute >= 0)
 	notNegative("credits.trial.calls-per-day", t.CallsPerDay >= 0)
+	notNegative("credits.low-balance-threshold", c.Credits.LowBalanceThreshold >= 0)
 
 	r := c.Credits.Referral
 	notNegative("credits.referral.invitee-bonus", r.InviteeBonus >= 0)
@@ -919,6 +981,9 @@ func defaults() map[string]any {
 	set("credits.trial.ttl-days", 7)
 	set("credits.trial.calls-per-minute", 5)
 	set("credits.trial.calls-per-day", 30)
+	// Popup / billing low-balance notice (ADR-052 Decision 2a). 0 turns
+	// that notice off; starting value, to be recalibrated with paid tiers.
+	set("credits.low-balance-threshold", 20)
 
 	// Referral credits (ADR-051 Decision 7): estimated values, to be
 	// calibrated after internal testing. 0 switches each grant off.
@@ -1010,8 +1075,10 @@ var envBindings = map[string]string{
 	"oidc.image-url-claim":            "OIDC_IMAGE_URL_CLAIM",
 	// ADR-062 Decision 3: the trial grant record's email HMAC key.
 	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
-	// Space-separated Clerk user ids allowed to call POST /api/admin/*.
-	// Empty => admin endpoints are effectively off.
+	// Space-separated external auth subjects allowed to call POST /api/admin/*.
+	// Empty => admin endpoints are effectively off. ADMIN_CLERK_USER_IDS is
+	// the deprecated name, still read while deployments transition.
+	"admin.auth-subjects":  "ADMIN_AUTH_SUBJECTS",
 	"admin.clerk-user-ids": "ADMIN_CLERK_USER_IDS",
 
 	// Sentence translation (TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md
@@ -1096,6 +1163,7 @@ var envBindings = map[string]string{
 	"credits.trial.ttl-days":         "CREDITS_TRIAL_TTL_DAYS",
 	"credits.trial.calls-per-minute": "CREDITS_TRIAL_CALLS_PER_MINUTE",
 	"credits.trial.calls-per-day":    "CREDITS_TRIAL_CALLS_PER_DAY",
+	"credits.low-balance-threshold":  "CREDITS_LOW_BALANCE_THRESHOLD",
 
 	"credits.referral.invitee-bonus":                 "CREDITS_REFERRAL_INVITEE_BONUS",
 	"credits.referral.invitee-ttl-days":              "CREDITS_REFERRAL_INVITEE_TTL_DAYS",

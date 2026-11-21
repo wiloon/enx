@@ -226,12 +226,12 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 		name, _ := claims[orDefault(cfg.NameClaim, "name")].(string)
 		imageURL, _ := claims[orDefault(cfg.ImageURLClaim, "image_url")].(string)
 
-		user, err := enx.GetOrCreateClerkUser(sub, enx.ClerkProfile{Email: email, Name: name, ImageURL: imageURL}, cfg.LastLoginUpdateInterval)
+		user, err := enx.GetOrCreateAuthSubjectUser(sub, enx.AuthProfile{Email: email, Name: name, ImageURL: imageURL}, cfg.LastLoginUpdateInterval)
 		if errors.Is(err, enx.ErrNoEmail) {
 			// ADR-015 2026-10-20 note §3: the email claim is missing or
 			// broken. 403, not 401: both clients read 401 as an expired
 			// session and would never show this message.
-			logger.Errorf("ClerkAuth: no email claim for new user clerk_user_id=%s; check the session token's email claim", sub)
+			logger.Errorf("ClerkAuth: no email claim for new user auth_subject=%s; check the session token's email claim", sub)
 			observe(authEmailRequired, start)
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
@@ -242,14 +242,14 @@ func ClerkAuth(cfg ClerkConfig, obs AuthObserver) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			logger.Errorf("ClerkAuth: provision user clerk_user_id=%s: %v", sub, err)
+			logger.Errorf("ClerkAuth: provision user auth_subject=%s: %v", sub, err)
 			observe(authProvisionError, start)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			c.Abort()
 			return
 		}
 
-		c.Set("clerk_user_id", sub)
+		c.Set("auth_subject", sub)
 		c.Set("user_id", user.Id)
 		// ADR-062 Decision 5: Clerk bans a disabled account, but a token
 		// minted before the ban (or a failed ban) still reaches us.

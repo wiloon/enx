@@ -12,7 +12,7 @@ import (
 type Service struct {
 	users       Users
 	grants      TrialGrants
-	clerk       Clerk
+	clerk       ExternalIdentity
 	subs        Subscriptions
 	deletion    DeletionChecker
 	coordinator DeletionCoordinator
@@ -23,7 +23,7 @@ type Service struct {
 
 // NewService builds the service. clerk is nil when CLERK_SECRET_KEY is not
 // set: every action then fails with ErrNotConfigured and changes nothing.
-func NewService(users Users, grants TrialGrants, clerk Clerk, subs Subscriptions, admins Admins,
+func NewService(users Users, grants TrialGrants, clerk ExternalIdentity, subs Subscriptions, admins Admins,
 	hasher Hasher, now Clock) *Service {
 	return &Service{users: users, grants: grants, clerk: clerk, subs: subs, admins: admins, hasher: hasher, now: now}
 }
@@ -69,7 +69,7 @@ func (s *Service) Delete(ctx context.Context, userID string, opts DeleteOptions)
 // failure leaves the local data as it was; a failed local delete is retried
 // by the admin, Clerk then answering "already gone".
 func (s *Service) delete(ctx context.Context, u User, opts DeleteOptions) error {
-	if s.admins.Contains(u.ClerkUserID) {
+	if s.admins.Contains(u.AuthSubject) {
 		return ErrProtectedAdmin
 	}
 	if s.coordinator != nil {
@@ -91,7 +91,7 @@ func (s *Service) delete(ctx context.Context, u User, opts DeleteOptions) error 
 		}
 	}
 
-	if err := s.clerk.DeleteUser(ctx, u.ClerkUserID); err != nil {
+	if err := s.clerk.DeleteUser(ctx, u.AuthSubject); err != nil {
 		return fmt.Errorf("account: delete the Clerk user: %w", err)
 	}
 	if err := s.users.DeleteData(ctx, u.ID); err != nil {
@@ -108,13 +108,13 @@ func (s *Service) Disable(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	if s.admins.Contains(u.ClerkUserID) {
+	if s.admins.Contains(u.AuthSubject) {
 		return ErrProtectedAdmin
 	}
 	if err := s.users.SetStatus(ctx, u.ID, StatusDisabled); err != nil {
 		return err
 	}
-	if err := s.clerk.BanUser(ctx, u.ClerkUserID); err != nil {
+	if err := s.clerk.DisableUser(ctx, u.AuthSubject); err != nil {
 		return fmt.Errorf("account: disabled locally, but the Clerk ban failed: %w", err)
 	}
 	return nil
@@ -126,7 +126,7 @@ func (s *Service) Enable(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.clerk.UnbanUser(ctx, u.ClerkUserID); err != nil {
+	if err := s.clerk.EnableUser(ctx, u.AuthSubject); err != nil {
 		return fmt.Errorf("account: Clerk unban: %w", err)
 	}
 	return s.users.SetStatus(ctx, u.ID, StatusActive)
@@ -139,7 +139,7 @@ func (s *Service) RevokeSessions(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.clerk.RevokeSessions(ctx, u.ClerkUserID); err != nil {
+	if err := s.clerk.RevokeSessions(ctx, u.AuthSubject); err != nil {
 		return fmt.Errorf("account: revoke sessions: %w", err)
 	}
 	return nil

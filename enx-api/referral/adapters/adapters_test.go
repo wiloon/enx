@@ -52,7 +52,7 @@ var ledger = Ledger{EmailHMAC: func(_ context.Context, userID string) (string, e
 
 func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 	newLedgerDB(t)
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", AuthSubject: "user_alice", Name: "alice"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.GrantReferrerReward(context.Background(), "alice", 300, "referral-reward:bob"); err != nil {
@@ -68,7 +68,7 @@ func TestLedgerGrantsTheReferrerRewardIntoTheTopupPool(t *testing.T) {
 func TestLedgerRemembersWhichRewardsItGranted(t *testing.T) {
 	newLedgerDB(t)
 	ctx := context.Background()
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", AuthSubject: "user_alice", Name: "alice"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.GrantReferrerReward(ctx, "alice", 300, "referral-reward:bob"); err != nil {
@@ -102,7 +102,7 @@ func TestLedgerReportsADeletedReferrerAsTheReferralSentinel(t *testing.T) {
 // forfeited: the error stays ordinary and the service retries.
 func TestLedgerReportsADeletionInProgressAsAnOrdinaryError(t *testing.T) {
 	newLedgerDB(t)
-	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", ClerkUserID: "user_alice", Name: "alice"}).Error; err != nil {
+	if err := sqlitex.DB.Create(&sqlitex.User{Id: "alice", AuthSubject: "user_alice", Name: "alice"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := sqlitex.DB.Exec("INSERT INTO account_deletion_gates (user_id, state, started_at, updated_at) VALUES ('alice', 'in_progress', 1, 1)").Error; err != nil {

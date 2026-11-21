@@ -53,7 +53,7 @@ func seedDueReward(t *testing.T) {
 	ctx := context.Background()
 	for _, id := range []string{"alice", "bob"} {
 		if err := sqlitex.DB.Create(&sqlitex.User{
-			Id: id, ClerkUserID: "user_" + id, Name: id, Status: "active", CreatedAt: settleAt.Add(-60 * 24 * time.Hour),
+			Id: id, AuthSubject: "user_" + id, Name: id, Status: "active", CreatedAt: settleAt.Add(-60 * 24 * time.Hour),
 		}).Error; err != nil {
 			t.Fatal(err)
 		}

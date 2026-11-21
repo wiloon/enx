@@ -1,8 +1,8 @@
 import { render, screen, within } from '@testing-library/react'
 import HelpLayout from '../layout'
 
-jest.mock('@clerk/nextjs', () => ({
-  useAuth: () => ({ isLoaded: true, isSignedIn: false }),
+jest.mock('@/auth/context', () => ({
+  useAuthContext: () => ({ isLoaded: true, isSignedIn: false }),
 }))
 
 it('keeps guides and the app reachable from the public help shell', async () => {

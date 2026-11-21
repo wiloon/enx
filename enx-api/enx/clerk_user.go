@@ -39,49 +39,50 @@ func SetNewUserHook(h NewUserHook) { newUserHook = h }
 // note §3).
 var ErrNoEmail = errors.New("enx: the session token carries no email")
 
-// GetUserByClerkUserID looks up a user by their Clerk user id (`sub` claim).
-func GetUserByClerkUserID(clerkUserID string) *User {
+// GetUserByAuthSubject looks up a user by their external auth subject (`sub`).
+func GetUserByAuthSubject(authSubject string) *User {
 	user := User{}
-	sqlitex.DB.Where("clerk_user_id = ?", clerkUserID).First(&user)
+	sqlitex.DB.Where("auth_subject = ?", authSubject).First(&user)
 	return &user
 }
 
-// ClerkProfile is what a session token's custom claims say about the user:
-// email, name and image_url (ADR-015, 2026-10-20 note).
-type ClerkProfile struct {
+// AuthProfile is what a session token's custom claims say about the user:
+// email, name and image URL (ADR-015, 2026-10-20 note).
+type AuthProfile struct {
 	Email    string
 	Name     string
 	ImageURL string
 }
 
-// GetOrCreateByClerkUserID finds or auto-provisions a local user for a Clerk
-// identity. An existing user's last_login_time is re-written only when it is
-// older than lastLoginUpdateInterval (user.last-login-update-interval), since
-// this runs on every authenticated request (docs/PERF_FIRST_QUERY_LATENCY.md).
-func GetOrCreateByClerkUserID(clerkUserID string, p ClerkProfile, lastLoginUpdateInterval time.Duration) (string, error) {
-	u, err := GetOrCreateClerkUser(clerkUserID, p, lastLoginUpdateInterval)
+// GetOrCreateByAuthSubject finds or auto-provisions a local user for an
+// external auth subject. An existing user's last_login_time is re-written
+// only when it is older than lastLoginUpdateInterval
+// (user.last-login-update-interval), since this runs on every authenticated
+// request (docs/PERF_FIRST_QUERY_LATENCY.md).
+func GetOrCreateByAuthSubject(authSubject string, p AuthProfile, lastLoginUpdateInterval time.Duration) (string, error) {
+	u, err := GetOrCreateAuthSubjectUser(authSubject, p, lastLoginUpdateInterval)
 	if err != nil {
 		return "", err
 	}
 	return u.Id, nil
 }
 
-// GetOrCreateClerkUser is GetOrCreateByClerkUserID returning the whole user,
-// so the caller can check its status without a second query. It keeps an
-// existing user's email, name and avatar in step with the token (ADR-015,
+// GetOrCreateAuthSubjectUser is GetOrCreateByAuthSubject returning the whole
+// user, so the caller can check its status without a second query. It keeps
+// an existing user's email, name and avatar in step with the token (ADR-015,
 // 2026-10-20 note §2) and refuses to create a user without an email
-// (ErrNoEmail). Users are told apart by Clerk user id only: an email another
+// (ErrNoEmail). Users are told apart by auth subject only: an email another
 // row already has is no conflict.
-func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInterval time.Duration) (*User, error) {
-	if clerkUserID == "" {
-		return nil, fmt.Errorf("empty clerk user id")
+func GetOrCreateAuthSubjectUser(authSubject string, p AuthProfile, lastLoginUpdateInterval time.Duration) (*User, error) {
+	if authSubject == "" {
+		return nil, fmt.Errorf("empty auth subject")
 	}
-	p = ClerkProfile{
+	p = AuthProfile{
 		Email:    strings.TrimSpace(p.Email),
 		Name:     strings.TrimSpace(p.Name),
 		ImageURL: strings.TrimSpace(p.ImageURL),
 	}
-	existing := GetUserByClerkUserID(clerkUserID)
+	existing := GetUserByAuthSubject(authSubject)
 	if existing.Id != "" {
 		signInExisting(existing, p, lastLoginUpdateInterval)
 		return existing, nil
@@ -101,7 +102,7 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 
 	u := &User{
 		Id:            uuid.New().String(),
-		ClerkUserID:   clerkUserID,
+		AuthSubject:   authSubject,
 		Name:          resolvedName,
 		Email:         p.Email,
 		AvatarUrl:     p.ImageURL,
@@ -115,11 +116,11 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 	var lost bool
 	var afterCommit func()
 	err := sqlitex.DB.Transaction(func(tx *gorm.DB) error {
-		// A concurrent first request may have provisioned the same Clerk user
-		// since the read above. Only a clash on clerk_user_id is skipped; any
+		// A concurrent first request may have provisioned the same subject
+		// since the read above. Only a clash on auth_subject is skipped; any
 		// other constraint failure still surfaces.
 		created := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "clerk_user_id"}},
+			Columns:   []clause.Column{{Name: "auth_subject"}},
 			DoNothing: true,
 		}).Create(u)
 		if created.Error != nil {
@@ -149,13 +150,13 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 	}
 	if lost {
 		winner := &User{}
-		if err := sqlitex.DB.Where("clerk_user_id = ?", clerkUserID).First(winner).Error; err != nil {
-			return nil, fmt.Errorf("re-read clerk user %s after a lost insert: %w", clerkUserID, err)
+		if err := sqlitex.DB.Where("auth_subject = ?", authSubject).First(winner).Error; err != nil {
+			return nil, fmt.Errorf("re-read auth subject %s after a lost insert: %w", authSubject, err)
 		}
 		signInExisting(winner, p, lastLoginUpdateInterval)
 		return winner, nil
 	}
-	logger.Infof("provisioned clerk user clerk_user_id=%s id=%s name=%s", clerkUserID, u.Id, resolvedName)
+	logger.Infof("provisioned user auth_subject=%s id=%s name=%s", authSubject, u.Id, resolvedName)
 	if afterCommit != nil {
 		afterCommit()
 	}
@@ -164,7 +165,7 @@ func GetOrCreateClerkUser(clerkUserID string, p ClerkProfile, lastLoginUpdateInt
 
 // signInExisting is what every request of an already provisioned user does:
 // sync the profile and, when it is stale, re-write last_login_time.
-func signInExisting(u *User, p ClerkProfile, lastLoginUpdateInterval time.Duration) {
+func signInExisting(u *User, p AuthProfile, lastLoginUpdateInterval time.Duration) {
 	syncProfile(u, p)
 	now := time.Now()
 	if now.Sub(u.LastLoginTime) >= lastLoginUpdateInterval {
@@ -179,7 +180,7 @@ func signInExisting(u *User, p ClerkProfile, lastLoginUpdateInterval time.Durati
 // updates u to match. An empty claim never clears a stored value, and nothing
 // is written when nothing differs. A failed write leaves u as stored: the
 // next request compares again.
-func syncProfile(u *User, p ClerkProfile) {
+func syncProfile(u *User, p AuthProfile) {
 	email, name, avatar := u.Email, u.Name, u.AvatarUrl
 	if p.Email != "" {
 		email = p.Email

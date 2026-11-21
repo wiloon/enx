@@ -135,7 +135,7 @@ func TestGrantReferralBonusIssuesAMissingTrialFirst(t *testing.T) {
 func seedUser(t *testing.T, userID string) {
 	t.Helper()
 	if err := sqlitex.DB.Create(&sqlitex.User{
-		Id: userID, ClerkUserID: "clerk_" + userID, Name: userID, Status: "active", CreatedAt: time.Now(),
+		Id: userID, AuthSubject: "clerk_" + userID, Name: userID, Status: "active", CreatedAt: time.Now(),
 	}).Error; err != nil {
 		t.Fatalf("seed users row: %v", err)
 	}

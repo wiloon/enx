@@ -62,5 +62,9 @@ ENV ENX_VERSION=$ENX_VERSION ENX_GIT_COMMIT=$ENX_GIT_COMMIT ENX_BUILD_TIME=$ENX_
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# The launcher validates AUTH_PROVIDER (ADR-036) with the shared resolver, then
+# loads server.js from the working directory. Node strips the resolver's types.
+COPY --from=builder /app/scripts/launch.mjs ./scripts/launch.mjs
+COPY --from=builder /app/src/lib/authProvider.ts ./src/lib/authProvider.ts
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "scripts/launch.mjs"]

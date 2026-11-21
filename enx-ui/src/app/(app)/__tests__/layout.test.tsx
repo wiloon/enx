@@ -1,11 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 
 // Regression guard (ADR-015 / ADR-016): a signed-out visit to any app-area
-// route must REDIRECT to the /sign-in route, never render Clerk's <SignIn>
-// inline (that breaks the /sso-callback derivation).
-jest.mock('@clerk/nextjs', () => ({
-  RedirectToSignIn: () => <div data-testid="redirect-to-sign-in" />,
-  SignIn: () => <div data-testid="inline-sign-in" />,
+// route must redirect to the dedicated /sign-in route.
+jest.mock('@/auth/RedirectToSignIn', () => ({
+  __esModule: true,
+  default: () => <div data-testid="redirect-to-sign-in" />,
 }))
 
 const mockAccountDisabled = jest.fn(() => false)
@@ -29,13 +28,12 @@ beforeEach(() => {
   jest.clearAllMocks()
 })
 
-it('redirects to /sign-in when signed out — never an inline <SignIn>', () => {
+it('redirects to /sign-in when signed out', () => {
   mockUseAuth.mockReturnValue({ isAuthenticated: false, isLoading: false })
 
   render(<AppLayout>page</AppLayout>)
 
   expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument()
-  expect(screen.queryByTestId('inline-sign-in')).not.toBeInTheDocument()
   expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument()
 })
 

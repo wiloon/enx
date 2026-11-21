@@ -83,7 +83,7 @@ func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient 
 // clerkBackend is the Clerk Backend API client (ADR-062 Decision 8); nil
 // without CLERK_SECRET_KEY, which leaves deletion, disabling and signing out
 // off (503) and everything else working.
-func clerkBackend(c config.Clerk) account.Clerk {
+func clerkBackend(c config.Clerk) account.ExternalIdentity {
 	if c.SecretKey == "" {
 		logger.Warnf("account deletion, disable and session revoke are off: CLERK_SECRET_KEY is not set")
 		return nil
@@ -93,11 +93,11 @@ func clerkBackend(c config.Clerk) account.Clerk {
 
 // setupRouterWithClients is setupRouterWithStripe with the Clerk Backend API
 // client given too (nil: not configured).
-func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk) *gin.Engine {
+func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity) *gin.Engine {
 	return setupRouterWithBilling(cfg, m, stripeClient, clerk, nil)
 }
 
-func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.Clerk, assembly *billingapp.Assembly) *gin.Engine {
+func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity, assembly *billingapp.Assembly) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -116,7 +116,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	router.GET("/version", handlers.GetVersion)
 	router.GET("/api/version", handlers.GetVersionSimple)
 
-	admins := middleware.NewAdminAllowlist(cfg.Admin.ClerkUserIDs)
+	admins := middleware.NewAdminAllowlist(cfg.Admin.AuthSubjects)
 	clerkAuth := middleware.ClerkAuth(middleware.ClerkConfigFrom(cfg.EffectiveOIDC(), cfg.User), m)
 
 	// Word lookup (ADR-018): the dictionary domain service over the words
@@ -246,7 +246,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// and summary endpoints sit behind clerkAuth, the offer is public.
 	referrals := NewReferralService(cfg, stripeClient, m)
 	referralHandler := handlers.NewReferralHandler(referrals, cfg.App.FrontendBaseURL)
-	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(stripeClient, "", "", nil)))
+	billingHandler := billing.NewHandler(stripeClient, cfg.App.FrontendBaseURL, cfg.Stripe.Price, repo.BillingSubscriptions{}, checkout.New(repo.PortalSessionOwners{}, billingstripe.NewPortalClient(stripeClient, "", "", nil)), cfg.Credits.LowBalanceThreshold)
 
 	// Authenticated APIs (Clerk session JWT). enx-chrome and enx-ui call only
 	// these /api routes; nothing is registered twice at the root.
@@ -369,7 +369,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.DELETE("/saved-pages/:id", savedpage.DeleteHandler)
 	apiGroup.DELETE("/saved-pages", savedpage.DeleteAllHandler)
 
-	// Admin routes, gated by RequireAdmin (ADMIN_CLERK_USER_IDS allowlist).
+	// Admin routes, gated by RequireAdmin (ADMIN_AUTH_SUBJECTS allowlist).
 	adminDict := apiGroup.Group("/admin")
 	adminDict.Use(admins.Require())
 	{
@@ -404,7 +404,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		adminDict.GET("/users/:id", adminUsers.Detail)
 		adminDict.GET("/users/:id/transactions", adminUsers.Transactions)
 		// ADR-062 Decision 4-7: the admin's account actions. An account in
-		// ADMIN_CLERK_USER_IDS can be neither disabled nor deleted.
+		// ADMIN_AUTH_SUBJECTS can be neither disabled nor deleted.
 		adminDict.POST("/users/:id/revoke-sessions", accountHandler.RevokeSessions)
 		adminDict.POST("/users/:id/disable", accountHandler.Disable)
 		adminDict.POST("/users/:id/enable", accountHandler.Enable)
@@ -424,6 +424,12 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// page (ADR-051 Decision 8). Not in apiGroup: no session yet. Config
 	// numbers only, nothing about any user.
 	router.GET("/api/referral/offer", referralHandler.Offer)
+
+	// Free-tier daily lookup ceiling for enx-ui's signed-out /pricing page
+	// (ADR-029). Not in apiGroup: visitors have no session. Config number
+	// only; the subscribed ceiling stays off the wire.
+	router.GET("/api/dictionary/free-daily-lookup-limit",
+		dictionaryhttp.FreeDailyLookupLimit(cfg.Stripe.Quota.DictionaryLookupDailyFree))
 
 	// Site-wide user numbers for Grafana's Infinity datasource (ADR-058
 	// Decision 4). Not in apiGroup: Grafana has no Clerk session and presents

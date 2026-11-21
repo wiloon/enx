@@ -30,7 +30,7 @@ func billingMeRoute(t *testing.T) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
-		"INSERT INTO users (id, clerk_user_id, email) VALUES ('billing_me', 'clerk_billing_me', 'billing@example.com')",
+		"INSERT INTO users (id, auth_subject, email) VALUES ('billing_me', 'clerk_billing_me', 'billing@example.com')",
 		"INSERT INTO credit_accounts (user_id, subscription_balance, topup_balance, trial_balance, trial_expires_at, updated_at) VALUES ('billing_me', 120, 340, 56, 4102444800, 1)",
 	} {
 		if err := sqlitex.DB.Exec(statement).Error; err != nil {
@@ -56,6 +56,7 @@ func assertBillingMe(t *testing.T, server *httptest.Server, token, status, plan 
 	wantCredits := map[string]any{
 		"subscriptionBalance": float64(120), "topupBalance": float64(340),
 		"trialBalance": float64(56), "trialExpiresAt": float64(4102444800),
+		"lowBalanceThreshold": float64(20),
 	}
 	if !reflect.DeepEqual(body["credits"], wantCredits) {
 		t.Errorf("credits = %v, want %v", body["credits"], wantCredits)

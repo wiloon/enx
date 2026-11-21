@@ -77,7 +77,7 @@ func (c *fakeClerk) DeleteUser(_ context.Context, id string) error {
 	return nil
 }
 
-func (c *fakeClerk) BanUser(_ context.Context, id string) error {
+func (c *fakeClerk) DisableUser(_ context.Context, id string) error {
 	if c.err != nil {
 		return c.err
 	}
@@ -85,7 +85,7 @@ func (c *fakeClerk) BanUser(_ context.Context, id string) error {
 	return nil
 }
 
-func (c *fakeClerk) UnbanUser(_ context.Context, id string) error {
+func (c *fakeClerk) EnableUser(_ context.Context, id string) error {
 	if c.err != nil {
 		return c.err
 	}

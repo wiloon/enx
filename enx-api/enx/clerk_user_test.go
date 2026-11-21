@@ -18,18 +18,18 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-func TestGetOrCreateByClerkUserID_EmptyID(t *testing.T) {
+func TestGetOrCreateByAuthSubject_EmptyID(t *testing.T) {
 	newUserTestDB(t)
 
-	if _, err := GetOrCreateByClerkUserID("", ClerkProfile{Email: "a@b.com", Name: "alice"}, time.Nanosecond); err == nil {
+	if _, err := GetOrCreateByAuthSubject("", AuthProfile{Email: "a@b.com", Name: "alice"}, time.Nanosecond); err == nil {
 		t.Fatal("expected an error for an empty clerk user id")
 	}
 }
 
-func TestGetOrCreateByClerkUserID_ProvisionsNewUser(t *testing.T) {
+func TestGetOrCreateByAuthSubject_ProvisionsNewUser(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_abc123", ClerkProfile{Email: "alice@example.com", Name: "Alice Doe"}, time.Nanosecond)
+	id, err := GetOrCreateByAuthSubject("user_abc123", AuthProfile{Email: "alice@example.com", Name: "Alice Doe"}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestGetOrCreateByClerkUserID_ProvisionsNewUser(t *testing.T) {
 		t.Fatal("expected a non-empty user id")
 	}
 
-	got := GetUserByClerkUserID("user_abc123")
+	got := GetUserByAuthSubject("user_abc123")
 	if got.Id != id {
 		t.Errorf("Id = %q, want %q", got.Id, id)
 	}
@@ -52,10 +52,10 @@ func TestGetOrCreateByClerkUserID_ProvisionsNewUser(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateByClerkUserID_NameFromEmailWhenNameEmpty(t *testing.T) {
+func TestGetOrCreateByAuthSubject_NameFromEmailWhenNameEmpty(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_noname", ClerkProfile{Email: "derived.name@example.com", Name: ""}, time.Nanosecond)
+	id, err := GetOrCreateByAuthSubject("user_noname", AuthProfile{Email: "derived.name@example.com", Name: ""}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,14 +64,14 @@ func TestGetOrCreateByClerkUserID_NameFromEmailWhenNameEmpty(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateByClerkUserID_NameIsTheWholeEmailWithoutALocalPart(t *testing.T) {
+func TestGetOrCreateByAuthSubject_NameIsTheWholeEmailWithoutALocalPart(t *testing.T) {
 	newUserTestDB(t)
 
 	for clerkUserID, email := range map[string]string{
 		"user_no_at":      "no-at-sign",
 		"user_leading_at": "@example.com",
 	} {
-		id, err := GetOrCreateByClerkUserID(clerkUserID, ClerkProfile{Email: email}, time.Nanosecond)
+		id, err := GetOrCreateByAuthSubject(clerkUserID, AuthProfile{Email: email}, time.Nanosecond)
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", email, err)
 		}
@@ -81,10 +81,10 @@ func TestGetOrCreateByClerkUserID_NameIsTheWholeEmailWithoutALocalPart(t *testin
 	}
 }
 
-func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
+func TestGetOrCreateByAuthSubject_Idempotent(t *testing.T) {
 	newUserTestDB(t)
 
-	first, err := GetOrCreateByClerkUserID("user_existing", ClerkProfile{Email: "alice@example.com", Name: "Alice"}, time.Nanosecond)
+	first, err := GetOrCreateByAuthSubject("user_existing", AuthProfile{Email: "alice@example.com", Name: "Alice"}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 	before := GetUserByID(first)
 	time.Sleep(2 * time.Millisecond)
 
-	second, err := GetOrCreateByClerkUserID("user_existing", ClerkProfile{Email: "alice@example.com", Name: "Alice"}, time.Nanosecond)
+	second, err := GetOrCreateByAuthSubject("user_existing", AuthProfile{Email: "alice@example.com", Name: "Alice"}, time.Nanosecond)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,17 +106,17 @@ func TestGetOrCreateByClerkUserID_Idempotent(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateByClerkUserID_SkipsLastLoginUpdateWithinInterval(t *testing.T) {
+func TestGetOrCreateByAuthSubject_SkipsLastLoginUpdateWithinInterval(t *testing.T) {
 	newUserTestDB(t)
 
-	id, err := GetOrCreateByClerkUserID("user_throttled", ClerkProfile{Email: "bob@example.com", Name: "Bob"}, time.Hour)
+	id, err := GetOrCreateByAuthSubject("user_throttled", AuthProfile{Email: "bob@example.com", Name: "Bob"}, time.Hour)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	before := GetUserByID(id)
 	time.Sleep(2 * time.Millisecond)
 
-	if _, err := GetOrCreateByClerkUserID("user_throttled", ClerkProfile{Email: "bob@example.com", Name: "Bob"}, time.Hour); err != nil {
+	if _, err := GetOrCreateByAuthSubject("user_throttled", AuthProfile{Email: "bob@example.com", Name: "Bob"}, time.Hour); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -128,17 +128,17 @@ func TestGetOrCreateByClerkUserID_SkipsLastLoginUpdateWithinInterval(t *testing.
 
 // The middleware reads the status from the same lookup to reject a disabled
 // account (ADR-062 Decision 5).
-func TestGetOrCreateClerkUser_ReturnsTheStatus(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_ReturnsTheStatus(t *testing.T) {
 	newUserTestDB(t)
 
-	u, err := GetOrCreateClerkUser("user_status", ClerkProfile{Email: "s@example.com", Name: "S"}, time.Nanosecond)
+	u, err := GetOrCreateAuthSubjectUser("user_status", AuthProfile{Email: "s@example.com", Name: "S"}, time.Nanosecond)
 	if err != nil || u.Status != "active" {
 		t.Fatalf("new user = %+v, %v; want status active", u, err)
 	}
 	if err := GetUserByID(u.Id).SetStatus("disabled"); err != nil {
 		t.Fatal(err)
 	}
-	again, err := GetOrCreateClerkUser("user_status", ClerkProfile{Email: "s@example.com", Name: "S"}, time.Nanosecond)
+	again, err := GetOrCreateAuthSubjectUser("user_status", AuthProfile{Email: "s@example.com", Name: "S"}, time.Nanosecond)
 	if err != nil || again.Id != u.Id || again.Status != "disabled" {
 		t.Fatalf("existing user = %+v, %v; want %s disabled", again, err, u.Id)
 	}
@@ -164,16 +164,16 @@ func withNewUserHook(t *testing.T, h NewUserHook) {
 
 // The new-user hook (ADR-048 Decision 3) fires once, when the account is
 // created, and not on later sign-ins.
-func TestGetOrCreateByClerkUserID_NewUserHookFiresOnlyOnCreate(t *testing.T) {
+func TestGetOrCreateByAuthSubject_NewUserHookFiresOnlyOnCreate(t *testing.T) {
 	newUserTestDB(t)
 	hook := &recordingHook{}
 	withNewUserHook(t, hook)
 
-	id, err := GetOrCreateByClerkUserID("user_hook1", ClerkProfile{Email: "h@example.com", Name: "H"}, time.Nanosecond)
+	id, err := GetOrCreateByAuthSubject("user_hook1", AuthProfile{Email: "h@example.com", Name: "H"}, time.Nanosecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := GetOrCreateByClerkUserID("user_hook1", ClerkProfile{Email: "h@example.com", Name: "H"}, time.Nanosecond); err != nil {
+	if _, err := GetOrCreateByAuthSubject("user_hook1", AuthProfile{Email: "h@example.com", Name: "H"}, time.Nanosecond); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,11 +186,11 @@ func TestGetOrCreateByClerkUserID_NewUserHookFiresOnlyOnCreate(t *testing.T) {
 }
 
 // A failing hook (e.g. the trial grant) must not fail the sign-in.
-func TestGetOrCreateByClerkUserID_FailingHookDoesNotFailSignIn(t *testing.T) {
+func TestGetOrCreateByAuthSubject_FailingHookDoesNotFailSignIn(t *testing.T) {
 	newUserTestDB(t)
 	withNewUserHook(t, &recordingHook{err: errors.New("ledger down")})
 
-	id, err := GetOrCreateByClerkUserID("user_hook2", ClerkProfile{Email: "hook2@example.com"}, time.Nanosecond)
+	id, err := GetOrCreateByAuthSubject("user_hook2", AuthProfile{Email: "hook2@example.com"}, time.Nanosecond)
 	if err != nil || id == "" {
 		t.Fatalf("got id=%q err=%v, want a provisioned user", id, err)
 	}
@@ -217,9 +217,9 @@ func countUserWrites(t *testing.T) func() int64 {
 	}
 }
 
-func provision(t *testing.T, clerkUserID string, p ClerkProfile) *User {
+func provision(t *testing.T, clerkUserID string, p AuthProfile) *User {
 	t.Helper()
-	u, err := GetOrCreateClerkUser(clerkUserID, p, time.Hour)
+	u, err := GetOrCreateAuthSubjectUser(clerkUserID, p, time.Hour)
 	if err != nil {
 		t.Fatalf("provision %s: %v", clerkUserID, err)
 	}
@@ -228,11 +228,11 @@ func provision(t *testing.T, clerkUserID string, p ClerkProfile) *User {
 
 // ADR-015 2026-10-20 note §2: a changed email, name or image URL in the token
 // is written on the next request, whatever the last-login throttle says.
-func TestGetOrCreateClerkUser_SyncsAChangedProfile(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_SyncsAChangedProfile(t *testing.T) {
 	newUserTestDB(t)
-	u := provision(t, "user_sync", ClerkProfile{Email: "old@example.com", Name: "Old", ImageURL: "https://img/old.png"})
+	u := provision(t, "user_sync", AuthProfile{Email: "old@example.com", Name: "Old", ImageURL: "https://img/old.png"})
 
-	got, err := GetOrCreateClerkUser("user_sync", ClerkProfile{Email: "New@Example.com", Name: "New Name", ImageURL: "https://img/new.png"}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_sync", AuthProfile{Email: "New@Example.com", Name: "New Name", ImageURL: "https://img/new.png"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,12 +246,12 @@ func TestGetOrCreateClerkUser_SyncsAChangedProfile(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateClerkUser_EmptyClaimsLeaveTheStoredProfile(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_EmptyClaimsLeaveTheStoredProfile(t *testing.T) {
 	newUserTestDB(t)
-	u := provision(t, "user_keep", ClerkProfile{Email: "keep@example.com", Name: "Keep", ImageURL: "https://img/keep.png"})
+	u := provision(t, "user_keep", AuthProfile{Email: "keep@example.com", Name: "Keep", ImageURL: "https://img/keep.png"})
 	writes := countUserWrites(t)
 
-	got, err := GetOrCreateClerkUser("user_keep", ClerkProfile{Email: "  ", Name: "", ImageURL: " "}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_keep", AuthProfile{Email: "  ", Name: "", ImageURL: " "}, time.Hour)
 	if err != nil {
 		t.Fatalf("existing user with empty claims: %v", err)
 	}
@@ -265,13 +265,13 @@ func TestGetOrCreateClerkUser_EmptyClaimsLeaveTheStoredProfile(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateClerkUser_UnchangedProfileCausesNoWrite(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_UnchangedProfileCausesNoWrite(t *testing.T) {
 	newUserTestDB(t)
-	p := ClerkProfile{Email: "same@example.com", Name: "Same", ImageURL: "https://img/same.png"}
+	p := AuthProfile{Email: "same@example.com", Name: "Same", ImageURL: "https://img/same.png"}
 	provision(t, "user_same", p)
 	writes := countUserWrites(t)
 
-	provision(t, "user_same", ClerkProfile{Email: " same@example.com ", Name: "Same", ImageURL: "https://img/same.png"})
+	provision(t, "user_same", AuthProfile{Email: " same@example.com ", Name: "Same", ImageURL: "https://img/same.png"})
 
 	if n := writes(); n != 0 {
 		t.Fatalf("%d writes for an unchanged profile, want none", n)
@@ -279,41 +279,41 @@ func TestGetOrCreateClerkUser_UnchangedProfileCausesNoWrite(t *testing.T) {
 }
 
 // Users are identified by Clerk User ID only (ADR-015 2026-10-20 note §4).
-func TestGetOrCreateClerkUser_SyncsAnEmailAnotherRowAlreadyHas(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_SyncsAnEmailAnotherRowAlreadyHas(t *testing.T) {
 	newUserTestDB(t)
-	provision(t, "user_stale", ClerkProfile{Email: "shared@example.com", Name: "Stale"})
-	u := provision(t, "user_mover", ClerkProfile{Email: "mover@example.com", Name: "Mover"})
+	provision(t, "user_stale", AuthProfile{Email: "shared@example.com", Name: "Stale"})
+	u := provision(t, "user_mover", AuthProfile{Email: "mover@example.com", Name: "Mover"})
 
-	provision(t, "user_mover", ClerkProfile{Email: "shared@example.com", Name: "Mover"})
+	provision(t, "user_mover", AuthProfile{Email: "shared@example.com", Name: "Mover"})
 
 	if got := GetUserByID(u.Id).Email; got != "shared@example.com" {
 		t.Fatalf("email = %q, want shared@example.com", got)
 	}
 }
 
-func TestGetOrCreateClerkUser_NewClerkIDWithAKnownEmailGetsANewUser(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_NewClerkIDWithAKnownEmailGetsANewUser(t *testing.T) {
 	newUserTestDB(t)
-	old := provision(t, "user_old", ClerkProfile{Email: "dup@example.com", Name: "Old", ImageURL: "https://img/old.png"})
+	old := provision(t, "user_old", AuthProfile{Email: "dup@example.com", Name: "Old", ImageURL: "https://img/old.png"})
 
-	fresh := provision(t, "user_new", ClerkProfile{Email: "dup@example.com", Name: "Fresh"})
+	fresh := provision(t, "user_new", AuthProfile{Email: "dup@example.com", Name: "Fresh"})
 
 	if fresh.Id == old.Id {
 		t.Fatal("a new Clerk user id reused the old row")
 	}
 	kept := GetUserByID(old.Id)
-	if kept.ClerkUserID != "user_old" || kept.Email != "dup@example.com" || kept.Name != "Old" || kept.AvatarUrl != "https://img/old.png" {
+	if kept.AuthSubject != "user_old" || kept.Email != "dup@example.com" || kept.Name != "Old" || kept.AvatarUrl != "https://img/old.png" {
 		t.Fatalf("old row = %+v, want it untouched", kept)
 	}
 }
 
 // ADR-015 2026-10-20 note §3: no user without an email.
-func TestGetOrCreateClerkUser_RefusesANewUserWithoutAnEmail(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_RefusesANewUserWithoutAnEmail(t *testing.T) {
 	newUserTestDB(t)
 	hook := &recordingHook{}
 	withNewUserHook(t, hook)
 
 	for _, email := range []string{"", "   "} {
-		if _, err := GetOrCreateClerkUser("user_noemail", ClerkProfile{Email: email, Name: "N"}, time.Hour); !errors.Is(err, ErrNoEmail) {
+		if _, err := GetOrCreateAuthSubjectUser("user_noemail", AuthProfile{Email: email, Name: "N"}, time.Hour); !errors.Is(err, ErrNoEmail) {
 			t.Fatalf("email %q: err = %v, want ErrNoEmail", email, err)
 		}
 	}
@@ -324,12 +324,12 @@ func TestGetOrCreateClerkUser_RefusesANewUserWithoutAnEmail(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateClerkUser_StoresANewUsersTrimmedEmailAndAvatar(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_StoresANewUsersTrimmedEmailAndAvatar(t *testing.T) {
 	newUserTestDB(t)
 	hook := &recordingHook{}
 	withNewUserHook(t, hook)
 
-	u := provision(t, "user_trim", ClerkProfile{Email: "  Trim.Me@Example.com\t", Name: "Trim", ImageURL: "https://img/trim.png"})
+	u := provision(t, "user_trim", AuthProfile{Email: "  Trim.Me@Example.com\t", Name: "Trim", ImageURL: "https://img/trim.png"})
 
 	stored := GetUserByID(u.Id)
 	if stored.Email != "Trim.Me@Example.com" || stored.AvatarUrl != "https://img/trim.png" {
@@ -340,11 +340,11 @@ func TestGetOrCreateClerkUser_StoresANewUsersTrimmedEmailAndAvatar(t *testing.T)
 	}
 }
 
-func TestGetOrCreateClerkUser_SyncStoresATrimmedEmail(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_SyncStoresATrimmedEmail(t *testing.T) {
 	newUserTestDB(t)
-	u := provision(t, "user_trim2", ClerkProfile{Email: "a@example.com", Name: "A"})
+	u := provision(t, "user_trim2", AuthProfile{Email: "a@example.com", Name: "A"})
 
-	provision(t, "user_trim2", ClerkProfile{Email: " b@example.com  ", Name: "A"})
+	provision(t, "user_trim2", AuthProfile{Email: " b@example.com  ", Name: "A"})
 
 	if got := GetUserByID(u.Id).Email; got != "b@example.com" {
 		t.Fatalf("email = %q, want b@example.com", got)
@@ -354,9 +354,9 @@ func TestGetOrCreateClerkUser_SyncStoresATrimmedEmail(t *testing.T) {
 // A failed sync write is logged and retried on the next request; the user
 // still gets in with the stored profile, and a disabled account stays
 // disabled.
-func TestGetOrCreateClerkUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T) {
+func TestGetOrCreateAuthSubjectUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T) {
 	newUserTestDB(t)
-	u := provision(t, "user_fail", ClerkProfile{Email: "stored@example.com", Name: "Stored"})
+	u := provision(t, "user_fail", AuthProfile{Email: "stored@example.com", Name: "Stored"})
 	if err := GetUserByID(u.Id).SetStatus("disabled"); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestGetOrCreateClerkUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T
 	sqlitex.DB = db.Session(&gorm.Session{Logger: gormlogger.New(log.New(&sqlLog, "", 0), gormlogger.Config{LogLevel: sqlitex.SQLLogLevel("warn")})})
 	t.Cleanup(func() { sqlitex.DB = db })
 
-	got, err := GetOrCreateClerkUser("user_fail", ClerkProfile{Email: "secret-new@example.com", Name: "Secret New", ImageURL: "https://img.example.com/secret.png"}, time.Hour)
+	got, err := GetOrCreateAuthSubjectUser("user_fail", AuthProfile{Email: "secret-new@example.com", Name: "Secret New", ImageURL: "https://img.example.com/secret.png"}, time.Hour)
 	if err != nil {
 		t.Fatalf("sync failure failed the sign-in: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestGetOrCreateClerkUser_SyncWriteFailureKeepsTheStoredProfile(t *testing.T
 	if err := sqlitex.DB.Exec(`DROP TRIGGER refuse_profile`).Error; err != nil {
 		t.Fatal(err)
 	}
-	provision(t, "user_fail", ClerkProfile{Email: "secret-new@example.com", Name: "Secret New"})
+	provision(t, "user_fail", AuthProfile{Email: "secret-new@example.com", Name: "Secret New"})
 	if stored := GetUserByID(u.Id); stored.Email != "secret-new@example.com" || stored.Name != "Secret New" {
 		t.Fatalf("retry stored %q %q, want the new profile", stored.Email, stored.Name)
 	}

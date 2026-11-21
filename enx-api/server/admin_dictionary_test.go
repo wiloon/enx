@@ -53,7 +53,7 @@ func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T,
 
 	env := clerktest.NewEnv(t)
 	cfg.Clerk = env.Config()
-	cfg.Admin.ClerkUserIDs = []string{adminSub}
+	cfg.Admin.AuthSubjects = []string{adminSub}
 
 	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
 	sqlitex.Init(dbPath)
@@ -61,7 +61,7 @@ func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T,
 		t.Fatal("sqlitex.DB is nil after Init")
 	}
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id IN (?, ?)", adminSub, nonAdminSub)
+		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject IN (?, ?)", adminSub, nonAdminSub)
 		sqlitex.DB.Exec("DELETE FROM words WHERE english IN (?, ?, ?)", "hello", "running", "serendipity")
 	})
 

@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@clerk/nextjs'
+import { useAuthContext } from '@/auth/context'
 import { SITE } from '@/lib/site'
 
 const noopSubscribe = () => () => {}
@@ -20,7 +20,7 @@ export default function HeaderAuthLinks() {
     () => true,
     () => false
   )
-  const { isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn } = useAuthContext()
 
   if (!mounted || !isLoaded) {
     return (

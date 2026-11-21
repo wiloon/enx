@@ -20,7 +20,7 @@ type AdminUsers struct {
 
 var _ adminuser.Store = AdminUsers{}
 
-const clerkUsersU = "u.clerk_user_id IS NOT NULL AND u.clerk_user_id != ''"
+const clerkUsersU = "u.auth_subject IS NOT NULL AND u.auth_subject != ''"
 
 func (s AdminUsers) ListAccounts(ctx context.Context, q adminuser.ListQuery) ([]adminuser.Account, int64, error) {
 	return (AcceptedAdminUsers{AdminUsers: s}).ListAccounts(ctx, q)

@@ -40,9 +40,9 @@ func TestClerkAuth_ValidTokenProvisionsUser(t *testing.T) {
 
 	sub := "user_integrationclerk001"
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 	})
-	sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+	sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 
 	token := env.SignSessionToken(t, jwt.MapClaims{
 		"sub":   sub,
@@ -54,8 +54,8 @@ func TestClerkAuth_ValidTokenProvisionsUser(t *testing.T) {
 	r := gin.New()
 	r.Use(ClerkAuth(clerkTestConfig(env), nil))
 	r.GET("/api/me", func(c *gin.Context) {
-		if got, _ := c.Get("clerk_user_id"); got != sub {
-			t.Fatalf("clerk_user_id = %v, want %s", got, sub)
+		if got, _ := c.Get("auth_subject"); got != sub {
+			t.Fatalf("auth_subject = %v, want %s", got, sub)
 		}
 		if _, ok := c.Get("user_id"); !ok {
 			t.Fatal("expected user_id in context")
@@ -83,9 +83,9 @@ func TestClerkAuth_ExpiredWithinLeewayAccepted(t *testing.T) {
 
 	sub := "user_integrationclerk_leeway"
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 	})
-	sqlitex.DB.Exec("DELETE FROM users WHERE clerk_user_id = ?", sub)
+	sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 
 	now := time.Now()
 	token := env.SignSessionToken(t, jwt.MapClaims{

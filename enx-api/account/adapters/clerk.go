@@ -14,8 +14,8 @@ import (
 	"enx-api/account"
 )
 
-// Clerk is account.Clerk over the Clerk Backend API (ADR-062 Decision 8),
-// authenticated with CLERK_SECRET_KEY.
+// Clerk is account.ExternalIdentity over the Clerk Backend API (ADR-062
+// Decision 8), authenticated with CLERK_SECRET_KEY.
 type Clerk struct {
 	secretKey string
 	// BaseURL and HTTP are the API's address and client; tests point them
@@ -24,7 +24,7 @@ type Clerk struct {
 	HTTP    *http.Client
 }
 
-var _ account.Clerk = (*Clerk)(nil)
+var _ account.ExternalIdentity = (*Clerk)(nil)
 
 func NewClerk(secretKey string) *Clerk {
 	return &Clerk{
@@ -37,21 +37,21 @@ func NewClerk(secretKey string) *Clerk {
 // DeleteUser deletes the Clerk user, which also ends their sessions. Clerk
 // answers 404 for a user it no longer has: that counts as deleted, so a
 // retried deletion gets past Clerk to the local data.
-func (c *Clerk) DeleteUser(ctx context.Context, clerkUserID string) error {
-	status, _, err := c.do(ctx, http.MethodDelete, "/users/"+url.PathEscape(clerkUserID), nil)
+func (c *Clerk) DeleteUser(ctx context.Context, authSubject string) error {
+	status, _, err := c.do(ctx, http.MethodDelete, "/users/"+url.PathEscape(authSubject), nil)
 	if status == http.StatusNotFound {
 		return nil
 	}
 	return err
 }
 
-func (c *Clerk) BanUser(ctx context.Context, clerkUserID string) error {
-	_, _, err := c.do(ctx, http.MethodPost, "/users/"+url.PathEscape(clerkUserID)+"/ban", nil)
+func (c *Clerk) DisableUser(ctx context.Context, authSubject string) error {
+	_, _, err := c.do(ctx, http.MethodPost, "/users/"+url.PathEscape(authSubject)+"/ban", nil)
 	return err
 }
 
-func (c *Clerk) UnbanUser(ctx context.Context, clerkUserID string) error {
-	_, _, err := c.do(ctx, http.MethodPost, "/users/"+url.PathEscape(clerkUserID)+"/unban", nil)
+func (c *Clerk) EnableUser(ctx context.Context, authSubject string) error {
+	_, _, err := c.do(ctx, http.MethodPost, "/users/"+url.PathEscape(authSubject)+"/unban", nil)
 	return err
 }
 
@@ -60,8 +60,8 @@ const maxSessions = 500
 
 // RevokeSessions revokes each of the user's active sessions; Clerk has no
 // single "sign out everywhere" call.
-func (c *Clerk) RevokeSessions(ctx context.Context, clerkUserID string) error {
-	q := url.Values{"user_id": {clerkUserID}, "status": {"active"}, "limit": {fmt.Sprint(maxSessions)}}
+func (c *Clerk) RevokeSessions(ctx context.Context, authSubject string) error {
+	q := url.Values{"user_id": {authSubject}, "status": {"active"}, "limit": {fmt.Sprint(maxSessions)}}
 	_, body, err := c.do(ctx, http.MethodGet, "/sessions?"+q.Encode(), nil)
 	if err != nil {
 		return err

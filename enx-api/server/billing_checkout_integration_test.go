@@ -41,7 +41,7 @@ func checkoutRoute(t *testing.T) *checkoutFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	checkoutSQL(t, "INSERT INTO users (id, clerk_user_id, email) VALUES ('buyer', 'clerk_buyer', 'buyer@example.com')")
+	checkoutSQL(t, "INSERT INTO users (id, auth_subject, email) VALUES ('buyer', 'clerk_buyer', 'buyer@example.com')")
 	f := &checkoutFixture{live: map[string]string{}}
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
