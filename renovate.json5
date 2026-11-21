@@ -10,10 +10,13 @@
   prConcurrentLimit: 5,
   labels: ['dependencies'],
   ignorePaths: ['**/node_modules/**'],
-  // Same supply-chain guard as minimumReleaseAge in the pnpm-workspace.yaml
-  // files: pnpm refuses a version less than a day old, so Renovate must not
-  // propose one.
-  minimumReleaseAge: '1 day',
+  // Supply-chain guard, deliberately longer than minimumReleaseAge (1 day) in
+  // the pnpm-workspace.yaml files. Renovate reads npmjs.org, but image builds
+  // install through the homelab Nexus, which proxies npmmirror and caches
+  // metadata and 404s. With equal ages, a version Renovate saw as a day old
+  // could still be missing there: on 2026-11-20 a Sentry 11.15.0 bump failed
+  // every enx-ui homelab build for ~17h. The extra two days cover that lag.
+  minimumReleaseAge: '3 days',
   // The committed .npmrc files point at the homelab Nexus, which Renovate's
   // runners can't reach. With npmrcMerge left false this replaces them.
   npmrc: 'registry=https://registry.npmjs.org/',
