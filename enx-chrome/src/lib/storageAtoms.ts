@@ -33,5 +33,5 @@ export const createUserAtom = () => {
   return userAtom
 }
 
-// ADR-015: session tokens are owned by Clerk (@clerk/chrome-extension), not
-// stored by the extension. `createSessionAtom` / `sessionAtom` are gone.
+// ADR-015 / ADR-036: session tokens are owned by the selected auth adapter,
+// not stored by the extension. `createSessionAtom` / `sessionAtom` are gone.

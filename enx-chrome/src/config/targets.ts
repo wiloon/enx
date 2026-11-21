@@ -9,6 +9,10 @@
 // Keep this file free of `import.meta` / `process` so it stays loadable from
 // the Vite config (Node) and from Jest (CommonJS) as well as the browser.
 
+import type { AuthConfig, AuthProviderId } from '../lib/auth/config.ts'
+
+export type { AuthConfig, AuthProviderId }
+
 export type TargetName =
   'development' | 'homelab' | 'homelab-test' | 'production' | 'test'
 
@@ -16,15 +20,11 @@ export interface Target {
   name: TargetName
   apiBaseUrl: string
   frontendBaseUrl: string
-  clerkPublishableKey: string
   /**
-   * Origin whose Clerk session the extension mirrors (@clerk/chrome-extension
-   * ClerkProvider `syncHost`): the website for a development instance (the
-   * `__clerk_db_jwt` cookie lives there), the Clerk Frontend API host for a
-   * production instance (`__client` lives there). Not where the sign-in tab
-   * goes -- that is frontendBaseUrl.
+   * Per-provider auth config (ADR-036). Selected at build time with the
+   * target; today every target is `clerk`.
    */
-  clerkSyncHost: string
+  auth: AuthConfig
   /**
    * enx-ui origins that get the content script AND the externally_connectable
    * channel (ADR-019). Kept in one list so the two can't drift apart.
@@ -55,14 +55,22 @@ export const DEV_CLERK_PUBLISHABLE_KEY =
 
 const LOCAL_UI_ORIGIN = 'http://localhost:3000'
 
+const clerkAuth = (
+  publishableKey: string,
+  syncHost: string
+): AuthConfig => ({
+  provider: 'clerk',
+  publishableKey,
+  syncHost,
+})
+
 export const TARGETS: Record<TargetName, Target> = {
   development: {
     name: 'development',
     // enx-api's dev server (`port` in enx-api/config.toml).
     apiBaseUrl: 'http://localhost:8091',
     frontendBaseUrl: LOCAL_UI_ORIGIN,
-    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: LOCAL_UI_ORIGIN,
+    auth: clerkAuth(DEV_CLERK_PUBLISHABLE_KEY, LOCAL_UI_ORIGIN),
     uiOrigins: [LOCAL_UI_ORIGIN],
     rssxOrigins: [RSSX_LAB_ORIGIN],
     contentScriptOrigins: [],
@@ -71,8 +79,7 @@ export const TARGETS: Record<TargetName, Target> = {
     name: 'homelab',
     apiBaseUrl: 'https://enx-api.wiloon.lab',
     frontendBaseUrl: 'https://enx.wiloon.lab',
-    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: 'https://enx.wiloon.lab',
+    auth: clerkAuth(DEV_CLERK_PUBLISHABLE_KEY, 'https://enx.wiloon.lab'),
     // The homelab build doubles as the day-to-day dev build, so it keeps the
     // localhost origin; the production build deliberately does not.
     uiOrigins: [LOCAL_UI_ORIGIN, 'https://enx.wiloon.lab'],
@@ -86,8 +93,7 @@ export const TARGETS: Record<TargetName, Target> = {
     name: 'homelab-test',
     apiBaseUrl: 'https://enx-api-test.wiloon.lab',
     frontendBaseUrl: 'https://enx-test.wiloon.lab',
-    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: 'https://enx-test.wiloon.lab',
+    auth: clerkAuth(DEV_CLERK_PUBLISHABLE_KEY, 'https://enx-test.wiloon.lab'),
     uiOrigins: [LOCAL_UI_ORIGIN, 'https://enx-test.wiloon.lab'],
     rssxOrigins: [RSSX_LAB_ORIGIN],
     contentScriptOrigins: [],
@@ -101,12 +107,11 @@ export const TARGETS: Record<TargetName, Target> = {
     // boots -- it must never ship, which .env.production prevents.
     apiBaseUrl: 'https://api.catglish.com',
     frontendBaseUrl: 'https://catglish.com',
-    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
     // Not the website: a production Clerk instance sets the `__client` cookie
     // on its Frontend API host (Domain=clerk.catglish.com), and
     // @clerk/chrome-extension reads that cookie at syncHost. With
     // https://catglish.com here the extension never sees the session.
-    clerkSyncHost: 'https://clerk.catglish.com',
+    auth: clerkAuth(DEV_CLERK_PUBLISHABLE_KEY, 'https://clerk.catglish.com'),
     uiOrigins: ['https://catglish.com'],
     rssxOrigins: [],
     contentScriptOrigins: [],
@@ -115,8 +120,7 @@ export const TARGETS: Record<TargetName, Target> = {
     name: 'test',
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: LOCAL_UI_ORIGIN,
-    clerkPublishableKey: DEV_CLERK_PUBLISHABLE_KEY,
-    clerkSyncHost: LOCAL_UI_ORIGIN,
+    auth: clerkAuth(DEV_CLERK_PUBLISHABLE_KEY, LOCAL_UI_ORIGIN),
     uiOrigins: [LOCAL_UI_ORIGIN],
     rssxOrigins: [],
     contentScriptOrigins: [],
@@ -146,8 +150,7 @@ export function resolveTargetName(
 }
 
 /**
- * Per-URL escape hatch: any target value can be overridden without editing this
- * file, e.g. `VITE_API_BASE_URL=http://192.168.50.71:8090 task build`.
+ * Override URLs and Clerk settings without changing the target's provider.
  */
 export function applyOverrides(
   target: Target,
@@ -157,9 +160,12 @@ export function applyOverrides(
     ...target,
     apiBaseUrl: env.VITE_API_BASE_URL || target.apiBaseUrl,
     frontendBaseUrl: env.VITE_FRONTEND_BASE_URL || target.frontendBaseUrl,
-    clerkPublishableKey:
-      env.VITE_CLERK_PUBLISHABLE_KEY || target.clerkPublishableKey,
-    clerkSyncHost: env.VITE_CLERK_SYNC_HOST || target.clerkSyncHost,
+    auth: {
+      ...target.auth,
+      publishableKey:
+        env.VITE_CLERK_PUBLISHABLE_KEY || target.auth.publishableKey,
+      syncHost: env.VITE_CLERK_SYNC_HOST || target.auth.syncHost,
+    },
     uiOrigins: originList(env.VITE_ENX_UI_ORIGINS) ?? target.uiOrigins,
     contentScriptOrigins:
       originList(env.VITE_CONTENT_SCRIPT_ORIGINS) ??
@@ -199,8 +205,9 @@ export function stampedEnv(target: Target): Record<string, string> {
     VITE_ENV: target.name,
     VITE_API_BASE_URL: target.apiBaseUrl,
     VITE_FRONTEND_BASE_URL: target.frontendBaseUrl,
-    VITE_CLERK_PUBLISHABLE_KEY: target.clerkPublishableKey,
-    VITE_CLERK_SYNC_HOST: target.clerkSyncHost,
+    VITE_AUTH_PROVIDER: target.auth.provider,
+    VITE_CLERK_PUBLISHABLE_KEY: target.auth.publishableKey,
+    VITE_CLERK_SYNC_HOST: target.auth.syncHost,
     VITE_ENX_UI_ORIGINS: target.uiOrigins.join(','),
     VITE_RSSX_ORIGINS: target.rssxOrigins.join(','),
   }

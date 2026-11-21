@@ -54,6 +54,11 @@ test.describe('Account-owned review lists', () => {
         ).toBeVisible()
       } else {
         await clerk.signOut({ page: website })
+        // Live popup sync (ADR-036): the already-open control popup must show
+        // the signed-out card without reopening or reloading that page.
+        await expect(
+          control.getByRole('button', { name: 'Sign in on the website' })
+        ).toBeVisible({ timeout: 30_000 })
       }
       // A website sign-out reaches the worker as a cookie burst: it waits for
       // the burst to settle, then retries the empty Clerk load with backoff
@@ -73,6 +78,12 @@ test.describe('Account-owned review lists', () => {
         expect(current?.success).toBe(true)
         expect(current?.data?.email).toBe(otherAccount.email)
       }).toPass({ timeout: 30_000 })
+      if (signOutFrom === 'website') {
+        // Same open popup: signed-in control returns without a reload.
+        await expect(
+          control.getByRole('button', { name: 'Sign out' })
+        ).toBeVisible({ timeout: 30_000 })
+      }
 
       // Sign-in must leave both pages off. The new account has no review words.
       for (const article of [page, stoppedPage]) {

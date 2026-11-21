@@ -6,18 +6,21 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'https://clerk.test',
+    auth: {
+      provider: 'clerk' as const,
+      publishableKey: 'pk_test_x',
+      syncHost: 'https://clerk.test',
+    },
     uiOrigins: [],
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: async () => ({
-    session: { getToken: async () => 'token' },
-    user: { id: 'cache-user' },
-  }),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
+
+createClient.mockResolvedValue(fakeSession('cache-user', async () => 'token'))
 import { __resetClerkClientCacheForTests } from '../background'
 
 const listener = (chrome.runtime.onMessage.addListener as jest.Mock).mock

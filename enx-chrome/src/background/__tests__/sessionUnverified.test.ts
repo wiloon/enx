@@ -5,17 +5,20 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk' as const,
+      publishableKey: 'pk_test_x',
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: ['http://localhost:3000'],
     environment: 'test',
   },
 }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
 import { makeApiRequest, __resetClerkClientCacheForTests } from '../background'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 
@@ -32,7 +35,7 @@ const OWNER_KEY = 'enx-account-session-owner'
 const CACHED_TOKEN = 'cached-token-aaaaaaaa'
 const FRESH_TOKEN = 'fresh-token-f7e3c1d9'
 
-type GetTokenOptions = { skipCache?: boolean } | undefined
+type GetTokenOptions = { forceRefresh?: boolean } | undefined
 const getToken = jest.fn<Promise<string | null>, [GetTokenOptions?]>()
 let clerkSession: { getToken: typeof getToken } | null
 let sessionStorage: Record<string, unknown>
@@ -71,17 +74,15 @@ beforeEach(async () => {
   jest.clearAllMocks()
   __resetClerkClientCacheForTests()
   getToken.mockImplementation(async options =>
-    options?.skipCache ? FRESH_TOKEN : CACHED_TOKEN
+    options?.forceRefresh ? FRESH_TOKEN : CACHED_TOKEN
   )
   clerkSession = { getToken }
   sessionStorage = {}
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    get session() {
-      return clerkSession
-    },
-    get user() {
-      return clerkSession ? { id: 'user-a' } : null
-    },
+  createClient.mockImplementation(async () => ({
+    hasSession: () => Boolean(clerkSession),
+    subject: () => (clerkSession ? 'user-a' : null),
+    getToken: async options => (await clerkSession?.getToken(options)) ?? null,
+    classifySession: async () => (clerkSession ? 'present' : 'unconfirmed'),
   }))
   ;(chrome.storage.session.get as jest.Mock).mockImplementation(
     async (key: string) => ({ [key]: sessionStorage[key] })
@@ -213,10 +214,7 @@ describe('the side panel freshness check', () => {
     answer(() => 401)
     const response = await send({ type: 'getOneWord', word: 'fox' })
 
-    ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-      session: { getToken },
-      user: { id: 'user-b' },
-    }))
+    createClient.mockImplementation(async () => fakeSession('user-b', getToken))
     await changeSessionCookie()
 
     const now = await freshness()

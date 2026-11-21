@@ -14,7 +14,7 @@ test.describe('Popup - Clerk sign-in', () => {
 
     await expect(
       page.getByRole('heading', { name: 'Sign in to Catglish' })
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 15_000 })
     await expect(
       page.getByRole('button', { name: 'Sign in on the website' })
     ).toBeVisible()

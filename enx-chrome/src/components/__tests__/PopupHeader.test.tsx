@@ -13,8 +13,8 @@ jest.mock('@/config/env', () => ({
 }))
 
 const mockAuth = { isLoaded: true, isSignedIn: false }
-jest.mock('@clerk/chrome-extension', () => ({
-  useAuth: () => mockAuth,
+jest.mock('@/lib/auth', () => ({
+  useAuthSession: () => mockAuth,
 }))
 
 import PopupHeader from '../PopupHeader'
