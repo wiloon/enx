@@ -45,7 +45,11 @@ const DARK_UNDERLINE_COLORS: readonly string[] = [
 // readable (ADR-086).
 const WASH_COLORS: Record<
   PageTone,
-  { activeSentenceWash: string; clickedWordWash: string }
+  {
+    activeSentenceWash: string
+    clickedWordWash: string
+    hoverSentenceWash: string
+  }
 > = {
   light: {
     // ADR-025, the sentence a word click opened the panel for. The one warm
@@ -56,10 +60,14 @@ const WASH_COLORS: Record<
     // ADR-085, the clicked word inside that sentence: the same warm hue, more
     // opaque, painted over the sentence wash.
     clickedWordWash: 'hsl(45 95% 55% / 60%)',
+    // ADR-068 / ADR-054: preview wash for the hover translate button's sentence.
+    // Lower opacity than the active-sentence wash.
+    hoverSentenceWash: 'hsl(45 95% 55% / 20%)',
   },
   dark: {
     activeSentenceWash: 'hsl(45 95% 45% / 20%)',
     clickedWordWash: 'hsl(45 95% 45% / 35%)',
+    hoverSentenceWash: 'hsl(45 95% 45% / 12%)',
   },
 }
 
@@ -70,7 +78,14 @@ export const underlineColorsForTone = (
 
 export const washColorsForTone = (
   tone: PageTone
-): { activeSentenceWash: string; clickedWordWash: string } => WASH_COLORS[tone]
+): {
+  activeSentenceWash: string
+  clickedWordWash: string
+  hoverSentenceWash: string
+} => WASH_COLORS[tone]
+
+// Hover sentence wash (ADR-068). Outside enx-hl-* so review paints never clear it.
+export const HOVER_SENTENCE_HIGHLIGHT_NAME = 'enx-hover-sentence'
 
 // Relative luminance of a channel in 0..1 after sRGB linearisation (WCAG 2).
 const linearizeSrgb = (channel: number): number => {
@@ -167,7 +182,9 @@ export const hostPageHighlightCss = (tone: PageTone): string => {
     `\n::highlight(enx-active-sentence) {` +
     ` background-color: ${washes.activeSentenceWash}; }` +
     `\n::highlight(enx-clicked-word) {` +
-    ` background-color: ${washes.clickedWordWash}; }`
+    ` background-color: ${washes.clickedWordWash}; }` +
+    `\n::highlight(${HOVER_SENTENCE_HIGHLIGHT_NAME}) {` +
+    ` background-color: ${washes.hoverSentenceWash}; }`
   )
 }
 
