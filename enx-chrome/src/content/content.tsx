@@ -1311,6 +1311,7 @@ const clearArticleRoots = () => {
 // rejected for being too long, or chrome.sidePanel.open() couldn't be
 // triggered and the panel needs to be opened manually.
 const showSelectionHint = (hint: string, reference: Range) => {
+  hoverSession.invalidatePendingFeedback()
   hideCurrentOverlay()
 
   const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
@@ -1489,6 +1490,7 @@ const showSelectionTranslateButton = (
   isBackward: boolean,
   onTrigger: () => void
 ) => {
+  hoverSession.invalidatePendingFeedback()
   hideSelectionTranslateButton()
 
   // Shared mount with hover (ADR-068 Decision 1). Selection keeps its own
@@ -1502,6 +1504,7 @@ const showSelectionTranslateButton = (
     placement: isBackward ? 'top-start' : 'bottom-end',
     mountShadowRoot: host => mountShadowRoot(host),
     onTrigger: () => {
+      hoverSession.invalidatePendingFeedback()
       hideSelectionTranslateButton()
       onTrigger()
     },

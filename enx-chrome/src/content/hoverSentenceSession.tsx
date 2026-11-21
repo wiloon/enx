@@ -156,7 +156,7 @@ export const createHoverSentenceSession = (
       ariaLabel: 'Translate sentence',
       reference: target.range,
       anchor: 'end',
-      placement: 'bottom-end',
+      placement: 'right',
       mountShadowRoot: deps.mountShadowRoot,
       onTrigger: () => {
         void onButtonClick(target)
@@ -380,6 +380,7 @@ export const createHoverSentenceSession = (
   // page gesture handlers).
   const onDocumentMouseDown = (event: MouseEvent): boolean => {
     if (containsOverlay(event.target as Node)) return true
+    cancelQueuedPointer()
     rules.setPressed(true, deps.now())
     afterRules()
     return false

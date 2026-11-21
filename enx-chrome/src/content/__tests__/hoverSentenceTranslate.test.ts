@@ -5,6 +5,7 @@
 import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import { HOVER_SENTENCE_HIGHLIGHT_NAME } from '@/lib/wordHighlight'
 import { LOOKUP_FAILED_MESSAGE } from '@/lib/extensionContext'
+import { WordProcessor } from '@/lib/wordProcessor'
 
 jest.mock('@/config/env')
 
@@ -69,8 +70,12 @@ const settle = async () => {
   for (let i = 0; i < 20; i++) await jest.advanceTimersByTimeAsync(1)
 }
 
-const loadContentScript = async () => {
+const loadContentScript = async (spa = false) => {
   await jest.isolateModulesAsync(async () => {
+    if (spa) {
+      const { config } = await import('@/config/env')
+      config.rssxOrigins = ['http://localhost']
+    }
     await import('../content')
   })
   const calls = (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls
@@ -165,14 +170,16 @@ afterEach(() => {
   ;(chrome.runtime as { id?: string }).id = undefined
   document.dispatchEvent(new Event(STAND_DOWN_EVENT))
   ;(chrome.runtime as { id?: string }).id = LIVE_ID
+  delete (window as { navigation?: unknown }).navigation
   CSS.highlights.clear()
   jest.useRealTimers()
   jest.restoreAllMocks()
 })
 
-const enable = async () => {
-  const send = await loadContentScript()
+const enable = async (spa = false) => {
+  const send = await loadContentScript(spa)
   const done = send({ action: 'enxRun' })
+  if (spa) await jest.advanceTimersByTimeAsync(150)
   await settle()
   expect(await done).toMatchObject({ success: true })
   await settle()
@@ -284,6 +291,51 @@ describe('hover sentence translate target resolution', () => {
     expect(hoverButton()).toBeNull()
   })
 
+  it('shows no hover button for a word with no sentence container', async () => {
+    document.querySelector('article')!.insertAdjacentHTML(
+      'afterbegin',
+      '<span id="byline">Dashwood</span>'
+    )
+    await enable()
+    await moveToWord('#byline', 'Dashwood')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
+
+  it.each([
+    ['empty', []],
+    ['zero-size', [new DOMRect()]],
+  ])('rejects %s geometry for the sentence Range', async (_name, rects) => {
+    jest.spyOn(Range.prototype, 'getClientRects').mockImplementation(function (this: Range) {
+      return (this.toString() === 'residence' ? [BOX] : rects) as unknown as DOMRectList
+    })
+    await enable()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
+
+  it('anchors to the whole paragraph when sentence segmentation fails', async () => {
+    await enable()
+    jest.spyOn(Intl, 'Segmenter').mockImplementation(() => {
+      throw new Error('Sentence segmentation failed')
+    })
+    jest.spyOn(console, 'warn').mockImplementation(() => {})
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+    const text = textHolding('#one', 'residence')
+    expect(washRange()).toMatchObject({
+      startContainer: text,
+      startOffset: 0,
+      endContainer: text,
+      endOffset: text.length,
+    })
+    expect(washRange()?.toString()).toBe(text.data)
+  })
+
   it('anchors a heading to the whole heading text and Range', async () => {
     await enable()
     await moveToWord('#heading', 'Sense')
@@ -301,36 +353,36 @@ describe('hover sentence translate target resolution', () => {
     await moveToWord('#long', 'Word')
     await advancePastDwell()
     expect(hoverButton()).not.toBeNull()
-    const wash = washRange()?.toString() ?? ''
+    const range = washRange()
+    const wash = range?.toString() ?? ''
+    const text = textHolding('#long', 'Word')
+    expect(range).toMatchObject({
+      startContainer: text,
+      startOffset: 0,
+      endContainer: text,
+      endOffset: WordProcessor.SEGMENT_WINDOW_RADIUS - 1,
+    })
     expect(wash.length).toBeGreaterThan(0)
-    expect(wash.length).toBeLessThanOrEqual(LONG_PARAGRAPH.length)
-    expect(wash).toContain('Word')
-  })
-
-  it('replaces a cached target when article roots are swapped at the same point', async () => {
-    const send = await enable()
-    await moveToWord('#one', 'residence')
-    await advancePastDwell()
-    expect(washRange()?.toString()).toContain('Their estate')
-    await send({ action: 'enxStop' })
-    await settle()
-    document.body.innerHTML = `
-      <article>
-        <p id="one">Replacement sentence occupies the prior coordinates.</p>
-      </article>`
-    await send({ action: 'enxRun' })
-    await settle()
-    await moveToWord('#one', 'Replacement')
-    await advancePastDwell()
-    expect(washRange()?.toString()).toBe(
-      'Replacement sentence occupies the prior coordinates.'
-    )
+    expect(wash.length).toBeLessThan(LONG_PARAGRAPH.length)
+    expect(wash.length).toBeLessThanOrEqual(WordProcessor.SEGMENT_WINDOW_RADIUS)
   })
 })
 
 describe('hover sentence translate gestures', () => {
   const leaveArticle = () =>
     document.querySelector('article')!.dispatchEvent(new MouseEvent('mouseleave'))
+
+  it('cancels a queued pointer sample when the reader presses before the frame', async () => {
+    await enable()
+    queueMove('#one', 'residence')
+    document.querySelector('#one')!.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, clientX: 5, clientY: 5, buttons: 1 })
+    )
+    jest.advanceTimersToNextFrame()
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
 
   it('resumes hover after releasing a word popover control', async () => {
     await enable()
@@ -638,7 +690,15 @@ describe('hover sentence translate send and highlight', () => {
     expect(hintText()).toContain(LOOKUP_FAILED_MESSAGE)
   })
 
-  it.each(['word click', 'account change', 'article teardown'])(
+  it.each([
+    'word click',
+    'selection button',
+    'selection hint',
+    'sentence translation',
+    'phrase lookup',
+    'account change',
+    'article teardown',
+  ])(
     'ignores a delayed panel reply after a newer %s',
     async cause => {
       let finish: (response: unknown) => void = () => {}
@@ -650,6 +710,7 @@ describe('hover sentence translate send and highlight', () => {
       await advancePastDwell()
       await clickHoverButton()
 
+      let newerButton: Element | null = null
       if (cause === 'word click') {
         const word = pointAtWord('#two', 'Another')
         word.dispatchEvent(
@@ -664,9 +725,42 @@ describe('hover sentence translate send and highlight', () => {
       } else if (cause === 'account change') {
         await send({ action: 'sessionExpired', cause: 'signed-out' })
         await settle()
-      } else {
+      } else if (cause === 'article teardown') {
         await send({ action: 'enxStop' })
         await settle()
+      } else {
+        const paragraph = document.querySelector(cause === 'selection hint' ? '#long' : '#two')!
+        const range = document.createRange()
+        if (cause === 'phrase lookup') {
+          const text = textHolding('#two', 'Another')
+          range.setStart(text, 0)
+          range.setEnd(text, 'Another sentence'.length)
+        } else {
+          range.selectNodeContents(paragraph)
+        }
+        const selection = window.getSelection()!
+        selection.removeAllRanges()
+        selection.addRange(range)
+        paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+        await settle()
+        if (cause === 'selection hint') {
+          expect(hintText()).toMatch(/Selection is too long/i)
+        } else {
+          newerButton = selectionButton()
+          expect(newerButton).not.toBeNull()
+          if (cause === 'sentence translation' || cause === 'phrase lookup') {
+            openSentencePanel = callback => callback({ success: true, panelOpened: true })
+            newerButton!.shadowRoot!.querySelector('button')!.click()
+            await settle()
+            const requests = sent.filter(message => message.type === 'openSentencePanel')
+            expect(requests).toHaveLength(2)
+            expect(requests[1]).toMatchObject(
+              cause === 'phrase lookup'
+                ? { phrase: 'Another sentence' }
+                : { sentence: paragraph.textContent }
+            )
+          }
+        }
       }
 
       finish({ success: false })
@@ -678,8 +772,11 @@ describe('hover sentence translate send and highlight', () => {
             .querySelector('.enx-anchored-overlay')
             ?.shadowRoot?.textContent
         ).toMatch(/Another/i)
+      } else if (cause === 'selection hint') {
+        expect(hintText()).toMatch(/Selection is too long/i)
       } else {
         expect(hintText()).toBeNull()
+        if (cause === 'selection button') expect(selectionButton()).toBe(newerButton)
       }
     }
   )
@@ -724,30 +821,65 @@ describe('hover sentence translate preferences and cleanup', () => {
     expect(washRange()?.toString()).toContain('residence')
   })
 
-  it.each(['disable', 'stand-down', 'root replacement'])(
-    'clears a pending frame or dwell on %s',
-    async mode => {
-      const send = await enable()
-      queueMove('#one', 'residence')
-      // Frame queued, dwell not finished.
-      if (mode === 'disable') {
-        changePreference('translate', false)
-      } else if (mode === 'stand-down') {
-        ;(chrome.runtime as { id?: string }).id = undefined
-        document.dispatchEvent(new Event(STAND_DOWN_EVENT))
-        ;(chrome.runtime as { id?: string }).id = LIVE_ID
-      } else {
-        await send({ action: 'enxStop' })
-        document.body.innerHTML = '<article><p id="one">Fresh root.</p></article>'
-        await send({ action: 'enxRun' })
-        await settle()
-      }
-      await advancePastDwell()
-      await jest.runOnlyPendingTimersAsync()
-      expect(hoverButton()).toBeNull()
-      expect(CSS.highlights.has(HOVER_SENTENCE_HIGHLIGHT_NAME)).toBe(false)
-    }
-  )
+  it('cancels a pending pointer frame when learning mode is disabled', async () => {
+    const send = await enable()
+    queueMove('#one', 'residence')
+    await send({ action: 'enxStop' })
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+  })
+
+  const enableSpa = async () => {
+    const navigation = new EventTarget()
+    ;(window as { navigation?: unknown }).navigation = navigation
+    await enable(true)
+    return (url: string) =>
+      navigation.dispatchEvent(Object.assign(new Event('navigate'), {
+        destination: { url },
+        navigationType: 'push',
+        hashChange: false,
+        downloadRequest: null,
+      }))
+  }
+
+  it('cancels a running dwell when SPA navigation tears down the article', async () => {
+    const navigate = await enableSpa()
+    await moveToWord('#one', 'residence')
+    expect(hoverButton()).toBeNull()
+
+    navigate('https://x.com/home')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+  })
+
+  it('discards the old dwell when SPA navigation replaces the article roots', async () => {
+    const navigate = await enableSpa()
+    await moveToWord('#one', 'residence')
+    expect(hoverButton()).toBeNull()
+
+    navigate('http://localhost/?article=2')
+    document.body.innerHTML = `
+      <article>
+        <p id="one">Replacement sentence occupies the prior coordinates.</p>
+      </article>`
+    await jest.advanceTimersByTimeAsync(150)
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+    expect(washRange()).toBeUndefined()
+
+    await moveToWord('#one', 'Replacement')
+    await advancePastDwell()
+    expect(hoverButton()).not.toBeNull()
+    expect(washRange()?.toString()).toBe(
+      'Replacement sentence occupies the prior coordinates.'
+    )
+  })
 
   it('stand-down leaves no stale button or wash after timers and rAF', async () => {
     await enable()

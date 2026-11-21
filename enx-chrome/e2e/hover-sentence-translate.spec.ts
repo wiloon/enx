@@ -70,8 +70,11 @@ test.describe('Hover sentence translate button', () => {
       const range = document.createRange()
       range.selectNodeContents(p)
       const rects = [...range.getClientRects()]
+      const next = document.createRange()
+      next.selectNodeContents(document.querySelector('#next')!)
       return {
         wraps: rects.length >= 2,
+        nextLines: [...next.getClientRects()].map(rect => rect.toJSON()),
         last: (() => {
           const last = rects[rects.length - 1]
           return {
@@ -92,6 +95,14 @@ test.describe('Hover sentence translate button', () => {
     expect(buttonBox!.y).toBeLessThanOrEqual(geometry.last.bottom + 40)
     expect(buttonBox!.x).toBeGreaterThanOrEqual(geometry.last.left - 24)
     expect(Math.abs(buttonBox!.x - geometry.last.right)).toBeLessThan(80)
+    for (const line of geometry.nextLines) {
+      const overlaps =
+        buttonBox!.x < line.right &&
+        buttonBox!.x + buttonBox!.width > line.left &&
+        buttonBox!.y < line.bottom &&
+        buttonBox!.y + buttonBox!.height > line.top
+      expect(overlaps).toBe(false)
+    }
 
     expect(
       await page.evaluate(() => CSS.highlights.has('enx-hover-sentence'))

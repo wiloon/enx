@@ -21,7 +21,7 @@ export type SentenceTranslateButtonOptions = {
   // Which client rect anchors the button: selection may use the start for a
   // backward drag; hover always uses the sentence's last line.
   anchor: 'start' | 'end'
-  placement: 'top-start' | 'bottom-end'
+  placement: 'top-start' | 'bottom-end' | 'right'
   mountShadowRoot: (host: HTMLElement) => Root
   onTrigger: () => void
   onMouseEnter?: () => void

@@ -90,9 +90,8 @@ export const positionAnchoredOverlay = async (
   return placement
 }
 
-// Drag-select hint button: same hide-when-clipped rule as the word card, with
-// a fixed gap and a caller-chosen placement (forward = bottom-end, backward =
-// top-start).
+// Sentence translate button: same hide-when-clipped rule as the word card.
+// Selections follow the drag direction. Hover sits beside the last line.
 export const positionSelectionHint = async (
   reference: VirtualElement,
   overlay: HTMLElement,
