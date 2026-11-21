@@ -44,6 +44,7 @@ jest.mock('@/components/CatglishLogo', () => {
 jest.mock('@/components/ArticleChoiceControl', () => () => null)
 jest.mock('@/components/LearningModeCard', () => () => null)
 jest.mock('@/components/DebugPanel', () => () => null)
+jest.mock('@/components/PopupStatsSection', () => () => null)
 jest.mock('@/components/PageReportPrompt', () => () => null)
 jest.mock('@/components/SendFeedback', () => ({
   __esModule: true,
