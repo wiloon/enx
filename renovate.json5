@@ -61,6 +61,25 @@
       matchUpdateTypes: ['minor'],
       dependencyDashboardApproval: true,
     },
+    // Docker digest updates get no release timestamp from Renovate, so with the
+    // default `timestamp-required` minimumReleaseAge holds them forever: the
+    // golang:1.27.4 digest PR (#985) sat on renovate/stability-days for days
+    // while the digest was a week old, and the run-static digest held back
+    // the whole enx-api group with it. Let them through when there is no
+    // timestamp; the 3-day guard above is for the npm Nexus lag, which images
+    // pulled by digest don't have.
+    {
+      matchDatasources: ['docker'],
+      matchUpdateTypes: ['digest'],
+      minimumReleaseAgeBehaviour: 'timestamp-optional',
+    },
+    // enx-fake-ai's base image comes through the homelab registry, which
+    // Renovate's runners can't reach. Its image is rebuilt and pinned by hand
+    // in w10n-config (k8s/enx-test/deployment-fake-ai.yaml).
+    {
+      matchPackageNames: ['docker-registry.wiloon.com/**'],
+      enabled: false,
+    },
   ],
   customManagers: [
     // Build images pinned by digest, with the tag in the comment above
