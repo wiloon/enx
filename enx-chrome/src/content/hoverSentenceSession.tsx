@@ -122,6 +122,7 @@ export const createHoverSentenceSession = (
   let unsubTranslate: (() => void) | null = null
   let unsubShade: (() => void) | null = null
   let started = false
+  let preferenceGeneration = 0
   let tickTimer: ReturnType<typeof setTimeout> | undefined
 
   const clearWash = () => {
@@ -157,6 +158,7 @@ export const createHoverSentenceSession = (
       reference: target.range,
       anchor: 'end',
       placement: 'right',
+      sentenceContainer: WordProcessor.findSentenceContainer(target.range.startContainer),
       mountShadowRoot: deps.mountShadowRoot,
       onTrigger: () => {
         void onButtonClick(target)
@@ -228,14 +230,15 @@ export const createHoverSentenceSession = (
     const caret = deps.caretFromPoint(x, y)
     const exclusions = deps.getLookupExclusions()
     if (
-      caret &&
-      (!root.contains(caret.node) ||
-        WordProcessor.isInExcludedSubtree(caret.node, undefined, exclusions))
+      WordProcessor.isInExcludedSubtree(node, undefined, exclusions) ||
+      (caret &&
+        (!root.contains(caret.node) ||
+          WordProcessor.isInExcludedSubtree(caret.node, undefined, exclusions)))
     ) {
       return null
     }
-    // Cache shortcut uses live range geometry and still honors exclusions
-    // via the caret check above. Skip it when the release must land on a word.
+    // Use live range geometry. A release must land on a word, even when its
+    // coordinates are within the cached sentence.
     if (!requireWord) {
       for (const target of [cached, shown]) {
         if (
@@ -411,7 +414,13 @@ export const createHoverSentenceSession = (
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return
+    if (event.key !== 'Escape' || disposed || !translateEnabled) return
+    syncLiveGestures()
+    if (rules.isSuppressed()) {
+      cancelQueuedPointer()
+      afterRules()
+      return
+    }
     // Resolve a queued sample before dismiss so Escape targets the latest
     // pointer sentence (ADR-068 Decision 12), then drop the frame.
     if (pendingPoint) {
@@ -459,19 +468,40 @@ export const createHoverSentenceSession = (
     disposed = false
     if (started) return
     started = true
-    void getHoverSentenceTranslateEnabled().then(v => {
-      if (!disposed) setTranslateEnabled(v)
-    })
-    void getHoverSentenceShadeEnabled().then(v => {
-      if (!disposed) setShadeEnabled(v)
-    })
-    unsubTranslate = onHoverSentenceTranslateEnabledChange(setTranslateEnabled)
-    unsubShade = onHoverSentenceShadeEnabledChange(setShadeEnabled)
+    const generation = preferenceGeneration
+    const watchPreference = (
+      read: () => Promise<boolean>,
+      subscribe: (handler: (value: boolean) => void) => () => void,
+      apply: (value: boolean) => void
+    ) => {
+      let receivedChange = false
+      const unsubscribe = subscribe(value => {
+        if (generation !== preferenceGeneration) return
+        receivedChange = true
+        apply(value)
+      })
+      void read().then(value => {
+        if (generation === preferenceGeneration && !receivedChange) apply(value)
+      })
+      return unsubscribe
+    }
+
+    unsubTranslate = watchPreference(
+      getHoverSentenceTranslateEnabled,
+      onHoverSentenceTranslateEnabledChange,
+      setTranslateEnabled
+    )
+    unsubShade = watchPreference(
+      getHoverSentenceShadeEnabled,
+      onHoverSentenceShadeEnabledChange,
+      setShadeEnabled
+    )
   }
 
   const dispose = () => {
     disposed = true
     started = false
+    preferenceGeneration++
     unsubTranslate?.()
     unsubShade?.()
     unsubTranslate = null

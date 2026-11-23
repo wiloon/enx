@@ -98,12 +98,19 @@ export const positionSelectionHint = async (
   placement: Placement,
   platform?: Platform
 ): Promise<void> => {
+  // Keep hover aligned with the sentence end even when the right edge is tight.
+  const fallbackPlacements: Placement[] | undefined =
+    placement === 'right'
+      ? ['top-end', 'bottom-end']
+      : placement === 'top-end'
+        ? ['bottom-end']
+        : undefined
   const { x, y, middlewareData } = await computePosition(reference, overlay, {
     strategy: 'fixed',
     placement,
     middleware: [
       offset(6),
-      flip(),
+      flip({ fallbackPlacements }),
       shift({ padding: OVERLAY_EDGE_PADDING }),
       hide({ padding: OVERLAY_EDGE_PADDING }),
     ],

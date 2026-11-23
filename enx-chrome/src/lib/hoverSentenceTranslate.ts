@@ -40,11 +40,25 @@ export const pointInSentenceRects = (
     if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true
   }
   if (rects.length < 2) return false
-  const ordered = [...rects].sort((a, b) => a.top - b.top || a.left - b.left)
-  for (let i = 0; i < ordered.length - 1; i++) {
-    const a = ordered[i]
-    const b = ordered[i + 1]
-    if (b.top <= a.bottom) continue
+  const lines: RectLike[] = []
+  for (const rect of [...rects].sort((a, b) => a.top - b.top)) {
+    const line = lines[lines.length - 1]
+    if (line && rect.top <= line.bottom) {
+      line.left = Math.min(line.left, rect.left)
+      line.right = Math.max(line.right, rect.right)
+      line.bottom = Math.max(line.bottom, rect.bottom)
+    } else {
+      lines.push({
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      })
+    }
+  }
+  for (let i = 0; i < lines.length - 1; i++) {
+    const a = lines[i]
+    const b = lines[i + 1]
     const left = Math.min(a.left, b.left)
     const right = Math.max(a.right, b.right)
     if (x >= left && x <= right && y > a.bottom && y < b.top) return true
@@ -54,6 +68,7 @@ export const pointInSentenceRects = (
 
 export type HoverSentenceRules = {
   visible: () => SentenceIdentity | null
+  isSuppressed: () => boolean
   nextDeadline: () => number | null
   pointerAt: (target: SentenceIdentity | null, now: number) => void
   enterButton: (now: number) => void
@@ -207,7 +222,7 @@ export const createHoverSentenceRules = (): HoverSentenceRules => {
     overButton = false
     if (suppressed()) return
     // Fresh grace when leaving the button for space outside the sentence.
-    if (!pointer || (visible && !sameSentence(pointer, visible))) {
+    if (visible && (!pointer || !sameSentence(pointer, visible))) {
       startGrace(now)
     }
     tick(now)
@@ -232,6 +247,7 @@ export const createHoverSentenceRules = (): HoverSentenceRules => {
   }
 
   const dismiss = (kind: 'escape' | 'click', _now: number) => {
+    if (suppressed()) return
     if (kind === 'click') {
       if (visible) dismissed = visible
     } else {
@@ -255,6 +271,7 @@ export const createHoverSentenceRules = (): HoverSentenceRules => {
 
   return {
     visible: () => visible,
+    isSuppressed: suppressed,
     // A switch holds the old sentence until the new dwell finishes. Keep the
     // original grace deadline so abandoning the dwell can still expire it.
     nextDeadline: () => dwell?.readyAt ?? graceUntil,

@@ -39,6 +39,17 @@ describe('pointInSentenceRects', () => {
     expect(pointInSentenceRects([line1, line2], 5, 27)).toBe(false)
     expect(pointInSentenceRects([line1], 50, 15)).toBe(true)
   })
+
+  it('keeps the full wrap gap when an inline fragment sits lower on its line', () => {
+    const rects = [
+      { left: 10, right: 150, top: 10, bottom: 24 },
+      { left: 180, right: 350, top: 10, bottom: 24 },
+      { left: 150, right: 180, top: 11, bottom: 24 },
+      { left: 10, right: 140, top: 30, bottom: 44 },
+    ]
+    expect(pointInSentenceRects(rects, 300, 27)).toBe(true)
+    expect(pointInSentenceRects(rects, 351, 27)).toBe(false)
+  })
 })
 
 describe('createHoverSentenceRules', () => {
@@ -105,6 +116,19 @@ describe('createHoverSentenceRules', () => {
     expect(sameSentence(rules.visible()!, A)).toBe(true)
     rules.tick(DWELL_MS + 100 + GRACE_MS)
     expect(rules.visible()).toBeNull()
+  })
+
+  it('does not schedule grace when the button has already disappeared', () => {
+    const rules = createHoverSentenceRules()
+    rules.pointerAt(A, 0)
+    rules.tick(DWELL_MS)
+    rules.pointerAt(null, DWELL_MS + 1)
+    rules.enterButton(DWELL_MS + 2)
+    rules.dismiss('click', DWELL_MS + 3)
+    rules.leaveButton(DWELL_MS + 4)
+
+    expect(rules.visible()).toBeNull()
+    expect(rules.nextDeadline()).toBeNull()
   })
 
   it('keeps the old button until a second sentence finishes its dwell', () => {

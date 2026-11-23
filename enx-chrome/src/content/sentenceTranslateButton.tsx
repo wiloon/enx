@@ -22,6 +22,7 @@ export type SentenceTranslateButtonOptions = {
   // backward drag; hover always uses the sentence's last line.
   anchor: 'start' | 'end'
   placement: 'top-start' | 'bottom-end' | 'right'
+  sentenceContainer?: Element | null
   mountShadowRoot: (host: HTMLElement) => Root
   onTrigger: () => void
   onMouseEnter?: () => void
@@ -33,6 +34,30 @@ export type SentenceTranslateButtonOptions = {
 export type SentenceTranslateButtonHandle = {
   overlay: OverlayElement
   cleanup: () => void
+}
+
+// Look at the first visible text after the sentence, including inline siblings.
+const followingTextRect = (
+  sentence: Range,
+  container: Element
+): DOMRect | null => {
+  const end = sentence.endContainer
+  if (!(end instanceof Text) || !container.contains(end)) return null
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  walker.currentNode = end
+  const probe = document.createRange()
+  for (let node: Node | null = end; node; node = walker.nextNode()) {
+    const text = node as Text
+    const start = node === end ? sentence.endOffset : 0
+    const offset = text.data.slice(start).search(/[^\s\x85]/)
+    if (offset < 0) continue
+    probe.setStart(text, start + offset)
+    probe.setEnd(text, start + offset + 1)
+    const rect = probe.getClientRects()[0]
+    if (rect?.width && rect.height) return rect
+  }
+  return null
 }
 
 export const mountSentenceTranslateButton = (
@@ -58,7 +83,7 @@ export const mountSentenceTranslateButton = (
       onClick={options.onTrigger}
       onMouseEnter={options.onMouseEnter}
       onMouseLeave={options.onMouseLeave}
-      className="flex items-center justify-center h-7 w-7 rounded-full bg-brand hover:bg-brand/90 text-brand-foreground shadow-md"
+      className="flex items-center justify-center h-7 w-7 rounded-full cursor-pointer bg-brand text-brand-foreground shadow-md hover:bg-brand/90 active:scale-[0.97] active:brightness-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       title={options.title}
       aria-label={options.ariaLabel}
     >
@@ -73,17 +98,28 @@ export const mountSentenceTranslateButton = (
   const virtualReference = {
     getBoundingClientRect: () => {
       const rects = reference.getClientRects()
-      if (rects.length === 0) return reference.getBoundingClientRect()
-      return options.anchor === 'start' ? rects[0] : rects[rects.length - 1]
+      const usableRects = Array.from(rects).filter(
+        rect => rect.width > 0 || rect.height > 0
+      )
+      const anchor =
+        options.anchor === 'start' ? usableRects[0] : usableRects.at(-1)
+      return anchor ?? reference.getBoundingClientRect()
     },
     getClientRects: () => reference.getClientRects(),
     contextElement: nearestElement(reference.startContainer) ?? undefined,
   }
   const update = () => {
-    void positionSelectionHint(virtualReference, host, options.placement)
+    let placement: typeof options.placement | 'top-end' = options.placement
+    if (placement === 'right' && options.sentenceContainer) {
+      const last = virtualReference.getBoundingClientRect()
+      const next = followingTextRect(reference, options.sentenceContainer)
+      if (next && next.top < last.bottom && next.bottom > last.top) {
+        placement = 'top-end'
+      }
+    }
+    void positionSelectionHint(virtualReference, host, placement)
   }
   const stopPositioning = autoUpdate(virtualReference, host, update)
-  update()
 
   const handleKeydown = options.onEscape
     ? (e: KeyboardEvent) => {

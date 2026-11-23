@@ -6,6 +6,10 @@ import { STAND_DOWN_EVENT } from '@/lib/orphanStandDown'
 import { HOVER_SENTENCE_HIGHLIGHT_NAME } from '@/lib/wordHighlight'
 import { LOOKUP_FAILED_MESSAGE } from '@/lib/extensionContext'
 import { WordProcessor } from '@/lib/wordProcessor'
+import {
+  HOVER_SENTENCE_SHADE_KEY,
+  HOVER_SENTENCE_TRANSLATE_KEY,
+} from '@/config/preferences'
 
 jest.mock('@/config/env')
 
@@ -263,6 +267,30 @@ describe('hover sentence translate target resolution', () => {
     }
   )
 
+  it.each(['element', 'missing'])(
+    'leaves the cached sentence on excluded padding when the caret is %s',
+    async caret => {
+      document.querySelector('#one')!.innerHTML =
+        'Start with <code>Link</code> and finish here.'
+      await enable()
+      await moveToWord('#one', 'Start')
+      await advancePastDwell()
+      expect(hoverButton()).not.toBeNull()
+
+      const code = document.querySelector('#one code')!
+      Object.assign(document, {
+        caretPositionFromPoint: () =>
+          caret === 'element' ? { offsetNode: code, offset: 0 } : null,
+      })
+      code.dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+      )
+      await jest.advanceTimersByTimeAsync(16 + 700)
+      expect(hoverButton()).toBeNull()
+      expect(washRange()).toBeUndefined()
+    }
+  )
+
   it('shows no button when a caret exists but expands to no word', async () => {
     document.querySelector('#one')!.textContent = '   …   '
     const text = textHolding('#one', '…')
@@ -431,6 +459,27 @@ describe('hover sentence translate gestures', () => {
     await advancePastDwell()
     expect(hoverButton()).toBeNull()
     expect(washRange()).toBeUndefined()
+  })
+
+  it('lets the selected sentence dwell after Escape closes the selection button', async () => {
+    await enable()
+    const paragraph = pointAtWord('#one', 'residence')
+    const range = document.createRange()
+    range.selectNodeContents(paragraph)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    await settle()
+    expect(selectionButton()).not.toBeNull()
+
+    queueMove('#one', 'residence')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(selectionButton()).toBeNull()
+    selection.removeAllRanges()
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(washRange()?.toString()).toContain('residence')
   })
 
   it('shows at the original dwell deadline after moving within the sentence at 390 ms', async () => {
@@ -819,6 +868,53 @@ describe('hover sentence translate preferences and cleanup', () => {
     changePreference('shade', true)
     expect(hoverButton()).toBe(button)
     expect(washRange()?.toString()).toContain('residence')
+  })
+
+  it('keeps a live translate change when the initial read resolves late', async () => {
+    let finishRead!: Callback
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(key =>
+      key === HOVER_SENTENCE_TRANSLATE_KEY
+        ? new Promise(resolve => {
+            finishRead = resolve
+          })
+        : Promise.resolve({})
+    )
+    await enable()
+    changePreference('translate', false)
+    finishRead({ [HOVER_SENTENCE_TRANSLATE_KEY]: true })
+    await settle()
+
+    await moveToWord('#one', 'residence')
+    await advancePastDwell()
+    expect(hoverButton()).toBeNull()
+  })
+
+  it('ignores a shade read from an article that has been replaced', async () => {
+    let finishOldRead!: Callback
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(key => {
+      if (key !== HOVER_SENTENCE_SHADE_KEY) return Promise.resolve({})
+      if (finishOldRead) return Promise.resolve({ [HOVER_SENTENCE_SHADE_KEY]: true })
+      return new Promise(resolve => {
+        finishOldRead = resolve
+      })
+    })
+    const navigate = await enableSpa()
+
+    navigate('http://localhost/?article=2')
+    document.body.innerHTML =
+      '<article><p id="one">Replacement sentence occupies the prior coordinates.</p></article>'
+    await jest.advanceTimersByTimeAsync(150)
+    await settle()
+    await moveToWord('#one', 'Replacement')
+    await advancePastDwell()
+    const button = hoverButton()
+    expect(button).not.toBeNull()
+    expect(washRange()?.toString()).toContain('Replacement')
+
+    finishOldRead({ [HOVER_SENTENCE_SHADE_KEY]: false })
+    await settle()
+    expect(hoverButton()).toBe(button)
+    expect(washRange()?.toString()).toContain('Replacement')
   })
 
   it('cancels a pending pointer frame when learning mode is disabled', async () => {

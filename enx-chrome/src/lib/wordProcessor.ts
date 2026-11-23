@@ -146,7 +146,8 @@ export class WordProcessor {
     root?: Node,
     adapterExclusions: readonly string[] = []
   ): boolean {
-    let current: HTMLElement | null = node.parentElement
+    const element = node instanceof Element ? node : node.parentElement
+    let current = element
     while (current && current !== root) {
       if (
         this.LOOKUP_EXCLUDED_TAGS.includes(current.tagName.toLowerCase()) ||
@@ -160,7 +161,7 @@ export class WordProcessor {
     }
     return (
       adapterExclusions.length > 0 &&
-      node.parentElement?.closest(adapterExclusions.join(', ')) != null
+      element?.closest(adapterExclusions.join(', ')) != null
     )
   }
 
@@ -458,7 +459,7 @@ export class WordProcessor {
   // between them -- textContent has no line break there.
   private static readonly HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6'
 
-  private static findSentenceContainer(startNode: Node): Element | null {
+  static findSentenceContainer(startNode: Node): Element | null {
     const heading = nearestElement(startNode)?.closest(this.HEADING_SELECTOR)
     if (heading) return heading
 

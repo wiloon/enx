@@ -13,6 +13,9 @@
       line-height: 1.5;
       font-size: 18px;
     }
+    body.inline { max-width: 800px; }
+    body.narrow { margin: 0; padding: 0; }
+    body.narrow #narrow { text-align: right; }
     body.dark {
       background: #111;
       color: #eee;
@@ -29,6 +32,8 @@
       The early morning light settled across the quiet harbor while small boats
       waited near the weathered pier for the tide to turn again.
     </p>
+    <p id="inline" hidden>Early sailors waited for the wind. <span id="continuation">Another sentence follows the first one on this line.</span></p>
+    <p id="narrow" hidden>Early sailors waited for a favorable wind.</p>
     <p id="next">
       Later the crew gathered on the deck and spoke about the weather forecast.
     </p>

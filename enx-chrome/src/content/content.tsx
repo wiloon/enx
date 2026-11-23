@@ -1543,10 +1543,7 @@ const handleTextSelection = (event: MouseEvent) => {
   // node that was already replaced, and onTrigger never fires.
   const target = event.target as Node
   if (selectionButtonOverlay && selectionButtonOverlay.contains(target)) return
-  if (hoverSession.containsOverlay(target)) {
-    hoverSession.onDocumentMouseUp(event)
-    return
-  }
+  if (hoverSession.containsOverlay(target)) return
   // Same for a click inside the word overlay (its speaker, Mark Known, ...):
   // when the overlay was opened from a selection (double-click, drag over one
   // word), that selection is still live, so this handler would re-run the

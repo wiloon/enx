@@ -126,6 +126,52 @@ test.describe('Hover sentence translate button', () => {
     ).toBe(false)
   })
 
+  for (const scenario of ['inline', 'narrow'] as const) {
+    test(`keeps the button near the sentence end in a ${scenario} layout`, async ({
+      page,
+      extensionId,
+    }) => {
+      await page.setViewportSize({
+        width: scenario === 'narrow' ? 280 : 1200,
+        height: 740,
+      })
+      await page.goto('/hover-sentence.html', { waitUntil: 'domcontentloaded' })
+      await page.evaluate(scenario => {
+        document.body.classList.add(scenario)
+        document.querySelector<HTMLElement>(`#${scenario}`)!.hidden = false
+      }, scenario)
+      await enableLearningMode(page, extensionId)
+      await waitForContentScript(page, { emptyReviewList: true })
+      await hoverWord(page, 'Early', `#${scenario}`)
+
+      const button = page.locator('.enx-hover-sentence-translate-button')
+      await expect(button).toBeVisible({ timeout: 2000 })
+      const geometry = await page.evaluate(() => {
+        const [sentence] = CSS.highlights.get('enx-hover-sentence')!
+        const rects = [...(sentence as Range).getClientRects()]
+        const anchor = rects[rects.length - 1]
+        const continuation = document.querySelector('#continuation')!
+        return {
+          anchor: anchor.toJSON(),
+          continuation: [...continuation.getClientRects()].map(rect =>
+            rect.toJSON()
+          ),
+        }
+      })
+      const box = (await button.boundingBox())!
+      expect(
+        Math.abs(box.x + box.width - geometry.anchor.right)
+      ).toBeLessThanOrEqual(8)
+      if (scenario === 'inline') {
+        const [next] = geometry.continuation
+        expect(next.top).toBe(geometry.anchor.top)
+        expect(box.y + box.height).toBeLessThanOrEqual(next.top)
+      } else {
+        expect(geometry.anchor.right).toBe(280)
+      }
+    })
+  }
+
   test('uses the light host-page wash on a light article', async ({
     page,
     extensionId,
