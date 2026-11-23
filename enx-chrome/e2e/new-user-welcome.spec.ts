@@ -52,12 +52,10 @@ test.describe('New user onboarding', () => {
     await pin.getByRole('button', { name: 'Skip', exact: true }).click()
     await expect(pin.getByLabel('Skipped')).toBeVisible()
 
-    const enable = steps.filter({
-      hasText:
-        'Click the Catglish icon in your toolbar, then Read with Catglish',
-    })
+    // Find steps by title: only the current step shows its instructions.
+    const enable = steps.filter({ hasText: 'Turn on Catglish' })
     const lookup = steps.filter({ hasText: 'Click any word in the article' })
-    await expect(enable.getByLabel('To do')).toBeVisible()
+    await expect(enable.getByLabel('Current step')).toBeVisible()
     await expect(lookup.getByLabel('To do')).toBeVisible()
     await expect(
       page.getByRole('heading', { name: "You're all set" })
@@ -68,7 +66,7 @@ test.describe('New user onboarding', () => {
     await enableLearningMode(page, extensionId)
     await page.bringToFront()
     await expect(enable.getByLabel('Done')).toBeVisible()
-    await expect(lookup.getByLabel('To do')).toBeVisible()
+    await expect(lookup.getByLabel('Current step')).toBeVisible()
 
     // New users have no review highlights yet. Click an ordinary word in the
     // real sample article, using a DOM Range solely to locate its screen box.
