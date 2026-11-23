@@ -208,6 +208,7 @@ describe('highlight palette by page tone (ADR-086)', () => {
   const LIGHT_WASHES = {
     activeSentenceWash: 'hsl(45 95% 55% / 35%)',
     clickedWordWash: 'hsl(45 95% 55% / 60%)',
+    hoverSentenceWash: 'hsl(45 95% 55% / 20%)',
   }
 
   it('keeps the light palette equal to today so light pages are unchanged', () => {
@@ -246,6 +247,8 @@ describe('highlight palette by page tone (ADR-086)', () => {
       expect(css).toContain(washes.activeSentenceWash)
       expect(css).toContain('::highlight(enx-clicked-word)')
       expect(css).toContain(washes.clickedWordWash)
+      expect(css).toContain('::highlight(enx-hover-sentence)')
+      expect(css).toContain(washes.hoverSentenceWash)
     }
   )
 })

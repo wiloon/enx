@@ -90,21 +90,27 @@ export const positionAnchoredOverlay = async (
   return placement
 }
 
-// Drag-select hint button: same hide-when-clipped rule as the word card, with
-// a fixed gap and a caller-chosen placement (forward = bottom-end, backward =
-// top-start).
+// Sentence translate button: same hide-when-clipped rule as the word card.
+// Selections follow the drag direction. Hover sits beside the last line.
 export const positionSelectionHint = async (
   reference: VirtualElement,
   overlay: HTMLElement,
   placement: Placement,
   platform?: Platform
 ): Promise<void> => {
+  // Keep hover aligned with the sentence end even when the right edge is tight.
+  const fallbackPlacements: Placement[] | undefined =
+    placement === 'right'
+      ? ['top-end', 'bottom-end']
+      : placement === 'top-end'
+        ? ['bottom-end']
+        : undefined
   const { x, y, middlewareData } = await computePosition(reference, overlay, {
     strategy: 'fixed',
     placement,
     middleware: [
       offset(6),
-      flip(),
+      flip({ fallbackPlacements }),
       shift({ padding: OVERLAY_EDGE_PADDING }),
       hide({ padding: OVERLAY_EDGE_PADDING }),
     ],

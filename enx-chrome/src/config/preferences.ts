@@ -66,3 +66,68 @@ export const onWordHighlightEnabledChange = (
   chrome.storage.onChanged.addListener(listener)
   return () => chrome.storage.onChanged.removeListener(listener)
 }
+
+// Hover sentence-translate button (ADR-068). Both default on; local only.
+export const HOVER_SENTENCE_TRANSLATE_KEY = 'enx-hover-sentence-translate-enabled'
+export const HOVER_SENTENCE_SHADE_KEY = 'enx-hover-sentence-shade-enabled'
+
+const readLocalBool = async (
+  key: string,
+  fallback: boolean
+): Promise<boolean> => {
+  try {
+    const result = await chrome.storage.local.get<{ [k: string]: boolean }>(key)
+    return result[key] ?? fallback
+  } catch (error) {
+    console.warn(`[ENX Config] failed to read ${key}:`, error)
+    return fallback
+  }
+}
+
+const writeLocalBool = async (key: string, value: boolean): Promise<void> => {
+  try {
+    await chrome.storage.local.set({ [key]: value })
+  } catch (error) {
+    console.error(`[ENX Config] failed to save ${key}:`, error)
+  }
+}
+
+const onLocalBoolChange = (
+  key: string,
+  handler: (enabled: boolean) => void,
+  fallback = true
+): (() => void) => {
+  const listener = (
+    changes: { [key: string]: chrome.storage.StorageChange },
+    areaName: string
+  ) => {
+    if (areaName === 'local' && key in changes) {
+      handler((changes[key].newValue as boolean | undefined) ?? fallback)
+    }
+  }
+  chrome.storage.onChanged.addListener(listener)
+  return () => chrome.storage.onChanged.removeListener(listener)
+}
+
+export const getHoverSentenceTranslateEnabled = (): Promise<boolean> =>
+  readLocalBool(HOVER_SENTENCE_TRANSLATE_KEY, true)
+
+export const setHoverSentenceTranslateEnabled = (
+  enabled: boolean
+): Promise<void> => writeLocalBool(HOVER_SENTENCE_TRANSLATE_KEY, enabled)
+
+export const onHoverSentenceTranslateEnabledChange = (
+  handler: (enabled: boolean) => void
+): (() => void) =>
+  onLocalBoolChange(HOVER_SENTENCE_TRANSLATE_KEY, handler)
+
+export const getHoverSentenceShadeEnabled = (): Promise<boolean> =>
+  readLocalBool(HOVER_SENTENCE_SHADE_KEY, true)
+
+export const setHoverSentenceShadeEnabled = (
+  enabled: boolean
+): Promise<void> => writeLocalBool(HOVER_SENTENCE_SHADE_KEY, enabled)
+
+export const onHoverSentenceShadeEnabledChange = (
+  handler: (enabled: boolean) => void
+): (() => void) => onLocalBoolChange(HOVER_SENTENCE_SHADE_KEY, handler)

@@ -425,6 +425,47 @@ describe('an orphan nobody told to stand down', () => {
   })
 })
 
+describe('hover sentence translate after stand-down (ADR-068)', () => {
+  it('does not show a hover button or wash once stood down', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] })
+    const tick = async () => {
+      for (let i = 0; i < 20; i++) await jest.advanceTimersByTimeAsync(1)
+    }
+    try {
+      const send = await loadContentScript()
+      const run = send({ action: 'enxRun' })
+      await tick()
+      await run
+      await tick()
+
+      const text = paragraph().firstChild!
+      const offset = text.textContent!.indexOf('fox') + 1
+      ;(
+        document as unknown as {
+          caretPositionFromPoint: () => unknown
+        }
+      ).caretPositionFromPoint = () => ({ offsetNode: text, offset })
+      paragraph().dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+      )
+      await jest.advanceTimersByTimeAsync(16)
+      await jest.advanceTimersByTimeAsync(400)
+      expect(
+        document.querySelector('.enx-hover-sentence-translate-button')
+      ).not.toBeNull()
+
+      orphanAndAnnounce()
+      await jest.advanceTimersByTimeAsync(1000)
+      expect(
+        document.querySelector('.enx-hover-sentence-translate-button')
+      ).toBeNull()
+      expect(CSS.highlights.has('enx-hover-sentence')).toBe(false)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+})
+
 describe('stopping learning mode on an SPA site', () => {
   const startPendingSpaRun = async () => {
     ;(window as { navigation?: unknown }).navigation = new FakeNavigation()

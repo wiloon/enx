@@ -1,8 +1,16 @@
 import {
   WORD_HIGHLIGHT_KEY,
+  HOVER_SENTENCE_TRANSLATE_KEY,
+  HOVER_SENTENCE_SHADE_KEY,
   getWordHighlightEnabled,
   setWordHighlightEnabled,
   onWordHighlightEnabledChange,
+  getHoverSentenceTranslateEnabled,
+  setHoverSentenceTranslateEnabled,
+  onHoverSentenceTranslateEnabledChange,
+  getHoverSentenceShadeEnabled,
+  setHoverSentenceShadeEnabled,
+  onHoverSentenceShadeEnabledChange,
 } from '@/config/preferences'
 
 const storage = chrome.storage.local as unknown as {
@@ -81,5 +89,50 @@ describe('onWordHighlightEnabledChange', () => {
     const listener = onChanged.addListener.mock.calls[0][0]
     unsubscribe()
     expect(onChanged.removeListener).toHaveBeenCalledWith(listener)
+  })
+})
+
+describe('hover sentence translate preferences (ADR-068)', () => {
+  it('defaults both switches on when absent', async () => {
+    storage.get.mockResolvedValue({})
+    await expect(getHoverSentenceTranslateEnabled()).resolves.toBe(true)
+    await expect(getHoverSentenceShadeEnabled()).resolves.toBe(true)
+  })
+
+  it('reads and writes the translate switch', async () => {
+    storage.get.mockResolvedValue({ [HOVER_SENTENCE_TRANSLATE_KEY]: false })
+    await expect(getHoverSentenceTranslateEnabled()).resolves.toBe(false)
+    storage.set.mockResolvedValue(undefined)
+    await setHoverSentenceTranslateEnabled(true)
+    expect(storage.set).toHaveBeenCalledWith({
+      [HOVER_SENTENCE_TRANSLATE_KEY]: true,
+    })
+  })
+
+  it('reads and writes the shade switch', async () => {
+    storage.get.mockResolvedValue({ [HOVER_SENTENCE_SHADE_KEY]: false })
+    await expect(getHoverSentenceShadeEnabled()).resolves.toBe(false)
+    storage.set.mockResolvedValue(undefined)
+    await setHoverSentenceShadeEnabled(false)
+    expect(storage.set).toHaveBeenCalledWith({
+      [HOVER_SENTENCE_SHADE_KEY]: false,
+    })
+  })
+
+  it('notifies local storage changes for both keys', () => {
+    const onTranslate = jest.fn()
+    const onShade = jest.fn()
+    onHoverSentenceTranslateEnabledChange(onTranslate)
+    onHoverSentenceShadeEnabledChange(onShade)
+    const translateListener = onChanged.addListener.mock.calls[0][0]
+    const shadeListener = onChanged.addListener.mock.calls[1][0]
+
+    translateListener(
+      { [HOVER_SENTENCE_TRANSLATE_KEY]: { newValue: false } },
+      'local'
+    )
+    shadeListener({ [HOVER_SENTENCE_SHADE_KEY]: { newValue: false } }, 'local')
+    expect(onTranslate).toHaveBeenCalledWith(false)
+    expect(onShade).toHaveBeenCalledWith(false)
   })
 })
