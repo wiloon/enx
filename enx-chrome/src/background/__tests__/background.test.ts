@@ -4,11 +4,14 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    // Deliberately not the website origin: in production the sync host is
-    // Clerk's Frontend API (clerk.catglish.com), and the sign-in tab must still
-    // go to the website.
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk',
+      publishableKey: 'pk_test_x',
+      // Deliberately not the website origin: in production the sync host is
+      // Clerk's Frontend API (clerk.catglish.com), and the sign-in tab must still
+      // go to the website.
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: [
       'http://localhost:3000',
       'https://enx.wiloon.lab',
@@ -18,57 +21,32 @@ jest.mock('@/config/env', () => ({
   },
 }))
 
-// Fake Clerk client (ADR-015): the background mints a session JWT via
-// clerk.session.getToken(). `setClerkSession` controls what it returns.
-const getToken = jest.fn<Promise<string | null>, [{ skipCache?: boolean }?]>()
+// `setClerkSession` controls the session reported by the fake adapter.
+const getToken = jest.fn<Promise<string | null>, [{ forceRefresh?: boolean }?]>()
 let clerkUserId = 'user-a'
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
 // Re-installed on every setClerkSession() call because it runs after each
 // describe block's jest.resetAllMocks(), which wipes mockImplementation --
 // see the "Captured at import time" comment below for the same gotcha.
-function installCreateClerkClientMock() {
-  ;(createClerkClient as jest.Mock).mockImplementation(async () =>
-    fakeClerkClient()
-  )
+function installCreateClientMock() {
+  createClient.mockImplementation(async () => fakeSessionClient())
 }
 
-// With no session, a read of the client gets Clerk's Frontend API answer: a
-// signed-out client, which confirms the session is gone (#688).
-type AfterResponse = (
-  request: { method: string; path: string },
-  response: { ok: boolean; payload: unknown }
-) => void
-function fakeClerkClient(
-  session: () => typeof clerkSession = () => clerkSession
-) {
-  const afterResponse: AfterResponse[] = []
+function fakeSessionClient(
+  session: () => typeof clerkSession = () => clerkSession,
+  subject: () => string | null = () => clerkUserId
+): AuthClient {
   return {
-    get session() {
-      return session()
-    },
-    get user() {
-      return session() ? { id: clerkUserId } : null
-    },
-    client: {
-      reload: async () => {
-        if (session()) return
-        afterResponse.forEach(callback =>
-          callback(
-            { method: 'GET', path: '/client' },
-            { ok: true, payload: { response: null } }
-          )
-        )
-      },
-    },
-    __internal_onAfterResponse: (callback: AfterResponse) => {
-      afterResponse.push(callback)
-    },
+    hasSession: () => Boolean(session()),
+    subject: () => (session() ? subject() : null),
+    getToken: async options => (await session()?.getToken(options)) ?? null,
+    classifySession: async () => (session() ? 'present' : 'absent'),
   }
 }
 
 function setClerkSession(token: string | null) {
-  installCreateClerkClientMock()
+  installCreateClientMock()
   if (token === null) {
     clerkSession = null
   } else {
@@ -83,17 +61,35 @@ function setClerkSession(token: string | null) {
 // sessionUnverified.test.ts).
 function expireOnForcedMint() {
   getToken.mockImplementation(async options => {
-    if (!options?.skipCache) return 'clerk-session-jwt'
+    if (!options?.forceRefresh) return 'clerk-session-jwt'
     clerkSession = null
     return null
   })
 }
 
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () => {
+  const fake = jest.requireActual(
+    '@/test/fakeWorkerAuth'
+  ) as typeof import('@/test/fakeWorkerAuth')
+  return {
+    selectWorkerAuth: (config: Parameters<typeof fake.selectWorkerAuth>[0]) => {
+      const adapter = fake.selectWorkerAuth(config)
+      return {
+        ...adapter,
+        registerSessionChangeListener: (
+          ...args: Parameters<typeof adapter.registerSessionChangeListener>
+        ) => {
+          mockRegisteredSessionListener = true
+          adapter.registerSessionChangeListener(...args)
+        },
+      }
+    },
+  }
+})
+let mockRegisteredSessionListener = false
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession, selectWorkerAuth } from '@/test/fakeWorkerAuth'
+import type { AuthClient } from '@/lib/auth'
 import { TOGGLE_LEARNING_MODE_COMMAND } from '@/lib/learningModeCommand'
 import { sanitizePageUrl } from '@/lib/pageReport'
 import {
@@ -126,6 +122,43 @@ const onMessageListener = (chrome.runtime.onMessage.addListener as jest.Mock)
 
 const onCookieChanged = (chrome.cookies.onChanged.addListener as jest.Mock).mock
   .calls[0]?.[0]
+
+// Snapshot at import time: registration is a module-load side effect.
+const registeredAtLoad = mockRegisteredSessionListener
+
+it('registers the cookie listener at module load through the selected adapter', () => {
+  expect(selectWorkerAuth).toHaveBeenCalledWith(
+    expect.objectContaining({
+      provider: 'clerk',
+      syncHost: 'https://clerk.localhost.test',
+    })
+  )
+  // Registered synchronously by the adapter the selector returned (before any
+  // await), so a matching cookie change can wake an evicted MV3 worker.
+  expect(registeredAtLoad).toBe(true)
+  expect(onCookieChanged).toEqual(expect.any(Function))
+})
+
+describe('worker session calls reach the selected adapter', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    setClerkSession('clerk-session-jwt')
+    ;(chrome.storage.local.remove as jest.Mock).mockResolvedValue(undefined)
+    ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+    ;(global.fetch as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(200, {}))
+  })
+
+  it('creates the client and reads the subject through the adapter', async () => {
+    const subject = jest.fn(() => 'user-a')
+    createClient.mockResolvedValue({ ...fakeSession('user-a'), subject })
+    await makeApiRequest('/api/me')
+    expect(createClient).toHaveBeenCalled()
+    expect(subject).toHaveBeenCalled()
+  })
+})
 
 // ADR-019: the one web -> extension channel. enx-ui (an externally_connectable
 // origin) is the only caller.
@@ -204,7 +237,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     // Only the cached token went out: the forced mint got none, and the
     // recheck found Clerk signed out.
     expect(global.fetch).toHaveBeenCalledTimes(1)
-    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
+    expect(getToken).toHaveBeenNthCalledWith(2, { forceRefresh: true })
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ action: 'sessionExpired' })
@@ -351,7 +384,7 @@ describe('background makeApiRequest / Clerk session token', () => {
         },
         ...removal,
       })
-    const loads = () => (createClerkClient as jest.Mock).mock.calls.length
+    const loads = () => createClient.mock.calls.length
     const holdNextFetch = () => {
       let finish: (response: unknown) => void = () => {}
       let started: () => void = () => {}
@@ -367,14 +400,14 @@ describe('background makeApiRequest / Clerk session token', () => {
       return { fetching, finish: (response: unknown) => finish(response) }
     }
     const holdNextLoad = () => {
-      let release: (client: unknown) => void = () => {}
-      ;(createClerkClient as jest.Mock).mockImplementationOnce(
+      let release: (client: AuthClient) => void = () => {}
+      createClient.mockImplementationOnce(
         () =>
           new Promise(resolve => {
             release = resolve
           })
       )
-      return (client: unknown) => release(client)
+      return (client: AuthClient) => release(client)
     }
 
     beforeEach(() => {
@@ -414,7 +447,7 @@ describe('background makeApiRequest / Clerk session token', () => {
       async (domain, name, removed, cause) => {
         await onCookieChanged({ cookie: { domain, name }, removed, cause })
         await jest.advanceTimersByTimeAsync(2000)
-        expect(createClerkClient).not.toHaveBeenCalled()
+        expect(createClient).not.toHaveBeenCalled()
         expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
       }
     )
@@ -467,7 +500,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     it('settles the listener and a waiting request when the burst sync fails', async () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
-      ;(createClerkClient as jest.Mock).mockRejectedValue(
+      createClient.mockRejectedValue(
         new Error('load failed')
       )
       const check = changeSessionCookie()
@@ -554,7 +587,7 @@ describe('background makeApiRequest / Clerk session token', () => {
       ]
       await jest.advanceTimersByTimeAsync(2000)
       expect(loads()).toBe(1)
-      releaseFirst(fakeClerkClient())
+      releaseFirst(fakeSessionClient())
       await Promise.all([first, ...later])
 
       const cycle = 1 + SESSION_SYNC_RETRY_DELAYS_MS.length
@@ -573,10 +606,9 @@ describe('background makeApiRequest / Clerk session token', () => {
       ;(global.fetch as jest.Mock).mockClear()
       const loadsBefore = loads()
       clerkUserId = 'user-b'
-      ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-        user: { id: 'user-b' },
-        session: { getToken: async () => 'user-b-jwt' },
-      }))
+      createClient.mockImplementation(async () =>
+        fakeSession('user-b', async () => 'user-b-jwt')
+      )
 
       const check = changeSessionCookie()
       const request = makeApiRequest('/api/me')
@@ -595,10 +627,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     it('loads once more after changes during a load, and keeps the newest website identity', async () => {
       await makeApiRequest('/api/me')
       const releaseFirst = holdNextLoad()
-      ;(createClerkClient as jest.Mock).mockResolvedValue({
-        user: { id: 'user-c' },
-        session: { getToken },
-      })
+      createClient.mockResolvedValue(fakeSession('user-c', getToken))
       const loadsBefore = loads()
       const first = changeSessionCookie()
       await jest.advanceTimersByTimeAsync(1000)
@@ -606,7 +635,7 @@ describe('background makeApiRequest / Clerk session token', () => {
       await jest.advanceTimersByTimeAsync(2000)
       expect(loads()).toBe(loadsBefore + 1)
 
-      releaseFirst({ user: { id: 'user-b' }, session: { getToken } })
+      releaseFirst(fakeSession('user-b', getToken))
       await Promise.all([first, ...later])
 
       expect(loads()).toBe(loadsBefore + 2)
@@ -620,9 +649,9 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     it('keeps a waiting API request alive when changes during a load resolve to the same account', async () => {
       await makeApiRequest('/api/me')
-      const client = { user: { id: 'user-a' }, session: { getToken } }
+      const client = fakeSession('user-a', getToken)
       const releaseFirst = holdNextLoad()
-      ;(createClerkClient as jest.Mock).mockResolvedValue(client)
+      createClient.mockResolvedValue(client)
       const loadsBefore = loads()
       const first = changeSessionCookie()
       await jest.advanceTimersByTimeAsync(1000)
@@ -728,7 +757,7 @@ describe('background makeApiRequest / Clerk session token', () => {
 
     expect(result).toEqual({ success: true, data: { English: 'ok' } })
     expect(global.fetch).toHaveBeenCalledTimes(2)
-    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true })
+    expect(getToken).toHaveBeenNthCalledWith(2, { forceRefresh: true })
     expect(chrome.tabs.sendMessage).not.toHaveBeenCalled()
   })
 
@@ -993,10 +1022,10 @@ describe('background makeApiRequest / Clerk session token', () => {
     // relay (ADR-015): the cached client's session reads empty, but a fresh
     // client -- the mitigation's retry -- picks up the now-synced session.
     setClerkSession(null)
-    const callsBefore = (createClerkClient as jest.Mock).mock.calls.length
-    ;(createClerkClient as jest.Mock).mockImplementationOnce(async () => ({
-      session: { getToken: jest.fn(async () => 'recovered-jwt') },
-    }))
+    const callsBefore = createClient.mock.calls.length
+    createClient.mockImplementationOnce(async () =>
+      fakeSession(null, async () => 'recovered-jwt')
+    )
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(
       jsonResponse(200, { English: 'test' })
     )
@@ -1006,7 +1035,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     expect(result).toEqual({ success: true, data: { English: 'test' } })
     const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0]
     expect(requestInit.headers.Authorization).toBe('Bearer recovered-jwt')
-    expect((createClerkClient as jest.Mock).mock.calls.length).toBe(
+    expect(createClient.mock.calls.length).toBe(
       callsBefore + 1
     )
   })
@@ -1017,14 +1046,11 @@ describe('background makeApiRequest / Clerk session token', () => {
     // rebuild instead of each nulling and rebuilding the client.
     __resetClerkClientCacheForTests()
     let created = 0
-    ;(createClerkClient as jest.Mock).mockImplementation(async () => {
+    createClient.mockImplementation(async () => {
       created++
-      return {
-        session:
-          created === 1
-            ? null
-            : { getToken: jest.fn(async () => 'recovered-jwt') },
-      }
+      return created === 1
+        ? fakeSessionClient(() => null)
+        : fakeSession(null, async () => 'recovered-jwt')
     })
     ;(global.fetch as jest.Mock).mockImplementation(async () =>
       jsonResponse(200, { English: 'test' })
@@ -1050,9 +1076,9 @@ describe('background makeApiRequest / Clerk session token', () => {
     let signedIn = false
     const laterSession = { getToken: jest.fn(async () => 'later-jwt') }
     // No user id either way, so the sign-in is not an account switch.
-    ;(createClerkClient as jest.Mock).mockImplementation(async () => {
+    createClient.mockImplementation(async () => {
       const session = signedIn ? laterSession : null
-      return { ...fakeClerkClient(() => session), user: null }
+      return fakeSessionClient(() => session, () => null)
     })
     ;(global.fetch as jest.Mock).mockImplementation(async () =>
       jsonResponse(200, {})

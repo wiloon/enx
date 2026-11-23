@@ -31,11 +31,11 @@ export function buildManifest(
   const uiPatterns = target.uiOrigins.map(origin => `${origin}/*`)
   const rssxPatterns = target.rssxOrigins.map(origin => `${origin}/*`)
   const sitePatterns = target.contentScriptOrigins.map(origin => `${origin}/*`)
-  const clerkHost = clerkFrontendApiHost(target.clerkPublishableKey)
+  const clerkHost = clerkFrontendApiHost(target.auth.publishableKey)
   // Cookie events are checked against the cookie's host, without the web
   // server's port. Port-specific access lets Clerk read a cookie by URL but
   // misses onChanged notifications on a development host such as localhost.
-  const cookieHost = new URL(target.clerkSyncHost)
+  const cookieHost = new URL(target.auth.syncHost)
   cookieHost.port = ''
 
   // So a non-production build is recognisable in chrome://extensions and in the

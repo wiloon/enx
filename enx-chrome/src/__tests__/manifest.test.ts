@@ -79,12 +79,14 @@ describe('manifest stamping (ADR-019)', () => {
   // at catglish.com makes the extension look signed out forever.
   it('syncs the production Clerk session from the Frontend API host', () => {
     const key = 'pk_live_Y2xlcmsuY2F0Z2xpc2guY29tJA' // .env.production
-    expect(TARGETS.production.clerkSyncHost).toBe(
+    expect(TARGETS.production.auth.syncHost).toBe(
       `https://${clerkFrontendApiHost(key)}`
     )
     expect(
-      stamp({ ...TARGETS.production, clerkPublishableKey: key })
-        .host_permissions
+      stamp({
+        ...TARGETS.production,
+        auth: { ...TARGETS.production.auth, publishableKey: key },
+      }).host_permissions
     ).toContain('https://clerk.catglish.com/*')
   })
 
@@ -93,6 +95,30 @@ describe('manifest stamping (ADR-019)', () => {
     expect(manifest.host_permissions).toContain(
       'https://rational-deer-4450.clerk.accounts.dev/*'
     )
+  })
+
+  it('flows the Clerk overrides into the manifest permissions', () => {
+    const key = 'pk_live_Y2xlcmsuY2F0Z2xpc2guY29tJA'
+    const manifest = stamp(
+      resolveBuildTarget('production', {
+        VITE_CLERK_PUBLISHABLE_KEY: key,
+        VITE_CLERK_SYNC_HOST: 'https://sync.override.example:8443',
+      })
+    )
+    expect(manifest.host_permissions).toContain(
+      `https://${clerkFrontendApiHost(key)}/*`
+    )
+    expect(manifest.permissions).toContain('cookies')
+    // Cookie events ignore the port, so the permission is portless.
+    expect(manifest.host_permissions).toContain(
+      'https://sync.override.example/*'
+    )
+  })
+
+  it('grants a portless cookie-host permission for a port-bearing sync host', () => {
+    expect(TARGETS.development.auth.syncHost).toBe('http://localhost:3000')
+    const manifest = stamp(TARGETS.development)
+    expect(manifest.host_permissions).toContain('http://localhost/*')
   })
 
   it('marks non-production builds in the extension name', () => {

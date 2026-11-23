@@ -1,26 +1,24 @@
+import { useAuthSignOut } from '@/lib/auth'
 import { sendRuntimeMessage } from '@/lib/extensionContext'
 import { signingOutAtom } from '@/store/atoms'
-import { useClerk } from '@clerk/chrome-extension'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useSetAtom } from 'jotai'
 
 /**
  * The popup's sign-out button.
  *
- * Clerk's <SignOutButton> navigates to its redirectUrl after signing out,
- * which reloads popup.html and makes Clerk start over: reload clerk-js, then
- * fetch the environment and client from the Frontend API again before the
- * sign-in card can show. Passing signOut() a callback skips that navigation;
- * Clerk updates the session in place and <Login> re-renders signed out.
+ * Passing signOut() a callback skips navigation that would reload popup.html
+ * and force the auth SDK to start over. The session updates in place and
+ * <Login> re-renders signed out.
  */
 export default function SignOutButton() {
-  const clerk = useClerk()
+  const signOut = useAuthSignOut()
   const setSigningOut = useSetAtom(signingOutAtom)
 
   const handleClick = async () => {
     setSigningOut(true)
     try {
-      await clerk.signOut(() => {})
+      await signOut(() => {})
       await sendRuntimeMessage({ type: 'accountSignedOut' })
     } finally {
       setSigningOut(false)

@@ -15,19 +15,22 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk' as const,
+      publishableKey: 'pk_test_x',
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: ['http://localhost:3000'],
     environment: 'test',
   },
 }))
 jest.mock('@/lib/sentry', () => ({ initSentry: jest.fn() }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 jest.mock('@/services/api', () => ({ sendMessageToBackground: jest.fn() }))
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient } from '@/test/fakeWorkerAuth'
 import { sendMessageToBackground } from '@/services/api'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 import { pendingSentenceKey } from '@/lib/sidePanel'
@@ -54,7 +57,7 @@ const SIGNED_OUT = "You've been signed out. Sign in to keep looking up words."
 const SIGN_IN_CHANGED =
   'Your sign-in changed while this was loading. Please try again.'
 
-const getToken = jest.fn<Promise<string | null>, [{ skipCache?: boolean }?]>()
+const getToken = jest.fn<Promise<string | null>, [{ forceRefresh?: boolean }?]>()
 let clerkUserId = 'user-a'
 let clerkSession: { getToken: typeof getToken } | null = { getToken }
 
@@ -99,7 +102,7 @@ const hold = (matches: (request: string) => boolean) => {
 const answer401 = (matches: (request: string) => boolean) =>
   route(matches, async () => {
     getToken.mockImplementation(async options => {
-      if (!options?.skipCache) return 'clerk-session-jwt'
+      if (!options?.forceRefresh) return 'clerk-session-jwt'
       clerkSession = null
       return null
     })
@@ -304,35 +307,12 @@ beforeEach(() => {
   clerkUserId = 'user-a'
   getToken.mockImplementation(async () => 'clerk-session-jwt')
   clerkSession = { getToken }
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => {
-    const afterResponse: Array<(request: unknown, response: unknown) => void> =
-      []
-    return {
-      get session() {
-        return clerkSession
-      },
-      get user() {
-        return clerkSession ? { id: clerkUserId } : null
-      },
-      // With no session, Clerk's Frontend API confirms a signed-out client.
-      client: {
-        reload: async () => {
-          if (clerkSession) return
-          afterResponse.forEach(callback =>
-            callback(
-              { method: 'GET', path: '/client' },
-              { ok: true, payload: { response: null } }
-            )
-          )
-        },
-      },
-      __internal_onAfterResponse: (
-        callback: (request: unknown, response: unknown) => void
-      ) => {
-        afterResponse.push(callback)
-      },
-    }
-  })
+  createClient.mockImplementation(async () => ({
+    hasSession: () => Boolean(clerkSession),
+    subject: () => (clerkSession ? clerkUserId : null),
+    getToken: async options => (await clerkSession?.getToken(options)) ?? null,
+    classifySession: async () => (clerkSession ? 'present' : 'absent'),
+  }))
   global.fetch = fetchMock as unknown as typeof fetch
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])

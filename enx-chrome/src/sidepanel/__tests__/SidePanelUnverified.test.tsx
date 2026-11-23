@@ -15,19 +15,22 @@ jest.mock('@/config/env', () => ({
   config: {
     apiBaseUrl: 'http://localhost:8090',
     frontendBaseUrl: 'http://localhost:3000',
-    clerkPublishableKey: 'pk_test_x',
-    clerkSyncHost: 'https://clerk.localhost.test',
+    auth: {
+      provider: 'clerk' as const,
+      publishableKey: 'pk_test_x',
+      syncHost: 'https://clerk.localhost.test',
+    },
     uiOrigins: ['http://localhost:3000'],
     environment: 'test',
   },
 }))
 jest.mock('@/lib/sentry', () => ({ initSentry: jest.fn() }))
-jest.mock('@clerk/chrome-extension/client', () => ({
-  createClerkClient: jest.fn(),
-}))
+jest.mock('@/lib/auth/selectWorkerAuth', () =>
+  jest.requireActual('@/test/fakeWorkerAuth')
+)
 jest.mock('@/services/api', () => ({ sendMessageToBackground: jest.fn() }))
 
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import { createClient, fakeSession } from '@/test/fakeWorkerAuth'
 import { sendMessageToBackground } from '@/services/api'
 import { __resetClerkClientCacheForTests } from '@/background/background'
 import { pendingSentenceKey } from '@/lib/sidePanel'
@@ -295,10 +298,7 @@ beforeEach(() => {
     },
   })
   clerkUserId = 'user-a'
-  ;(createClerkClient as jest.Mock).mockImplementation(async () => ({
-    session: { getToken },
-    user: { id: clerkUserId },
-  }))
+  createClient.mockImplementation(async () => fakeSession(clerkUserId, getToken))
   global.fetch = fetchMock as unknown as typeof fetch
   ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({})
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([])

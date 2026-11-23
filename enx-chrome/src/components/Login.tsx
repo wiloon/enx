@@ -1,4 +1,4 @@
-import { useUser } from '@clerk/chrome-extension'
+import { useAuthSession } from '@/lib/auth'
 import { errorAtom, signingOutAtom } from '@/store/atoms'
 import { useAtom, useAtomValue } from 'jotai'
 import { useEffect, type ReactNode } from 'react'
@@ -16,7 +16,7 @@ interface LoginProps {
  * sign-in card (signed out) or `children` (signed in).
  */
 export default function Login({ onLoginSuccess, children }: LoginProps) {
-  const { isLoaded, isSignedIn } = useUser()
+  const { isLoaded, isSignedIn } = useAuthSession()
   const [error] = useAtom(errorAtom)
   const signingOut = useAtomValue(signingOutAtom)
 
@@ -42,7 +42,7 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
   // OAuth (Google/GitHub) can't complete inside the extension popup -- the
   // popup is destroyed the moment it loses focus. Sign in on the website
   // instead (full-page Clerk UI, OAuth works there); the extension then picks
-  // up the session automatically via ClerkProvider `syncHost`.
+  // up the session automatically via the selected auth adapter's sync host.
   //
   // ADR-020: the background service worker opens the tab (the popup is already
   // gone by the time chrome.tabs.create resolves), records the tab the user

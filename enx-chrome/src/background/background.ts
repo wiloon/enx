@@ -29,8 +29,8 @@ import {
   type SessionSync,
 } from '@/lib/sessionSync'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
-import { classifyLoadedClerk } from './clerkSessionSync'
-import { createClerkClient } from '@clerk/chrome-extension/client'
+import type { AuthClient } from '@/lib/auth'
+import { selectWorkerAuth } from '@/lib/auth/selectWorkerAuth'
 import { config } from '@/config/env'
 import {
   LatestPageWordLookup,
@@ -102,20 +102,15 @@ void recordWorkerBoot()
 const sleep = (ms: number): Promise<void> =>
   ms <= 0 ? Promise.resolve() : new Promise(resolve => setTimeout(resolve, ms))
 
-// ADR-015: Clerk owns the session. The service worker holds a single Clerk
-// client (synced from the website via `syncHost`) and mints a fresh, short-
-// lived session JWT for every API call via `session.getToken()`.
-type ClerkClient = Awaited<ReturnType<typeof createClerkClient>>
+// ADR-015 / ADR-036: the build target selects the auth adapter; the worker
+// holds one client and mints a fresh, short-lived session JWT per API call.
+const authAdapter = selectWorkerAuth(config.auth)
 let clerkGeneration = 0
-let clerkClientPromise: Promise<ClerkClient> | null = null
+let clerkClientPromise: Promise<AuthClient> | null = null
 
-const getClerk = (): Promise<ClerkClient> => {
+const getClerk = (): Promise<AuthClient> => {
   if (!clerkClientPromise) {
-    clerkClientPromise = createClerkClient({
-      publishableKey: config.clerkPublishableKey,
-      syncHost: config.clerkSyncHost,
-      background: true,
-    })
+    clerkClientPromise = authAdapter.createClient()
   }
   return clerkClientPromise
 }
@@ -138,11 +133,11 @@ export const __restartReadingPositionWriterForTests = (): void => {
 
 // Mitigation for a false "session expired": homelab still runs Clerk's
 // *development* instance (see TASK-SPEC-enx-clerk-production-cutover.md).
-// On a dev instance @clerk/chrome-extension syncs the session by reading the
+// On a dev instance the Clerk adapter syncs the session by reading the
 // website's `__clerk_db_jwt` dev-browser cookie and replaying it to Clerk's
 // Frontend API; production instead shares a first-party cookie the worker can
 // read synchronously. MV3 evicts an idle service worker, wiping
-// `clerkClientPromise`; when a new event wakes it, `createClerkClient()` runs
+// `clerkClientPromise`; when a new event wakes it, `createClient()` runs
 // `clerk.load()`, and if that Frontend API round-trip (authed with the synced
 // dev-browser JWT) is slow, transiently fails, or the cookie hasn't propagated
 // yet, the client resolves with *no session* and throws no error -- even though
@@ -164,7 +159,7 @@ export const SESSION_SYNC_RETRY_DELAYS_MS =
 // round, enough to trip dev-instance rate limiting. Concurrent callers now
 // share one sync; it is cleared once settled, so a later call (e.g. after the
 // user signs in) gets a fresh attempt instead of a pinned "signed out".
-let syncedClerkInFlight: Promise<ClerkClient> | null = null
+let syncedClerkInFlight: Promise<AuthClient> | null = null
 
 // Supersedes the syncs in flight; their callers join the next one.
 const supersedeClerkSync = () => {
@@ -194,14 +189,14 @@ class SessionChanged extends Error {
   }
 }
 
-const syncAndObserveClerk = async (): Promise<ClerkClient> => {
+const syncAndObserveClerk = async (): Promise<AuthClient> => {
   const requested = clerkGeneration
   const clerk = await syncClerk()
   if (requested !== clerkGeneration) throw new SessionChanged()
-  const sync = await classifyLoadedClerk(clerk)
+  const sync = await clerk.classifySession()
   if (requested !== clerkGeneration) throw new SessionChanged()
   if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
-  await accountSession.observe(clerk.user?.id ?? null)
+  await accountSession.observe(clerk.subject())
   if (requested !== clerkGeneration) throw new SessionChanged()
   return clerk
 }
@@ -209,12 +204,12 @@ const syncAndObserveClerk = async (): Promise<ClerkClient> => {
 // Cookie refreshes can supersede a check without changing accounts. Join the
 // latest check; the request's account scope decides whether its eventual
 // identity is still safe for the original caller.
-const joinLatestCheck = (error: unknown): Promise<ClerkClient> => {
+const joinLatestCheck = (error: unknown): Promise<AuthClient> => {
   if (error instanceof SessionChanged) return getSyncedClerk()
   throw error
 }
 
-const getSyncedClerk = (): Promise<ClerkClient> => {
+const getSyncedClerk = (): Promise<AuthClient> => {
   const cookieSync = clerkCookieSync.pending()
   if (cookieSync) return cookieSync.catch(joinLatestCheck)
   if (!syncedClerkInFlight) {
@@ -256,11 +251,11 @@ const makeClerkCookieSync = () =>
   })
 let clerkCookieSync = makeClerkCookieSync()
 
-const syncClerk = async (): Promise<ClerkClient> => {
+const syncClerk = async (): Promise<AuthClient> => {
   const requested = clerkGeneration
   let clerk = await getClerk()
   if (requested !== clerkGeneration) throw new SessionChanged()
-  if (clerk.session) return clerk
+  if (clerk.hasSession()) return clerk
 
   for (
     let attempt = 1;
@@ -272,7 +267,7 @@ const syncClerk = async (): Promise<ClerkClient> => {
     clerkClientPromise = null
     clerk = await getClerk()
     if (requested !== clerkGeneration) throw new SessionChanged()
-    if (clerk.session) {
+    if (clerk.hasSession()) {
       swlog(
         `clerk session recovered on retry ${attempt} ` +
           `(+${Date.now() - WORKER_BOOTED_AT}ms since worker boot)`
@@ -317,7 +312,7 @@ const recheckSession = () => {
   if (!sessionRecheckInFlight) {
     const current = (async () => {
       resetClerkSession()
-      let clerk: ClerkClient
+      let clerk: AuthClient
       try {
         clerk = await getSyncedClerk()
       } catch (error) {
@@ -325,10 +320,9 @@ const recheckSession = () => {
         swlog(`session recheck failed: ${String(error)}`, 'warn')
         return { sync: 'unconfirmed' as const, token: null }
       }
-      if (!clerk.session) return { sync: 'absent' as const, token: null }
+      if (!clerk.hasSession()) return { sync: 'absent' as const, token: null }
       try {
-        const token =
-          (await clerk.session.getToken({ skipCache: true })) ?? null
+        const token = await clerk.getToken({ forceRefresh: true })
         return { sync: 'present' as const, token }
       } catch (error) {
         swlog(`fresh getToken() after recheck threw: ${String(error)}`, 'warn')
@@ -342,16 +336,13 @@ const recheckSession = () => {
   return sessionRecheckInFlight
 }
 
-// `forceRefresh` bypasses clerk-js's in-memory token cache (getToken({
-// skipCache: true })). Needed after a 401: clerk-js refreshes the ~60s session
-// JWT on a setTimeout that does NOT fire while an MV3 worker is suspended, so a
-// warm-looking worker can hand out a token minted 15 min ago -- long expired --
-// without re-minting. Forcing a fresh mint (or surfacing that the mint itself
-// fails) is the only way to tell a stale cache from a real logout.
+// A 401 can mean the worker was suspended while its cached token expired.
+// A forced refresh asks the provider for a fresh token before deciding
+// whether the session has ended.
 // `synced` is a client a cookie-change sync already settled on; its caller
 // waited for it, so it is not synced again.
 const getSessionToken = async (
-  opts: { forceRefresh?: boolean; synced?: ClerkClient } = {}
+  opts: { forceRefresh?: boolean; synced?: AuthClient } = {}
 ): Promise<SessionToken> => {
   const noToken = {
     token: null,
@@ -359,7 +350,7 @@ const getSessionToken = async (
     lastMintError: null,
     recheck: null,
   }
-  let clerk: ClerkClient
+  let clerk: AuthClient
   try {
     clerk = opts.synced ?? (await getSyncedClerk())
   } catch (error) {
@@ -373,9 +364,9 @@ const getSessionToken = async (
   }
 
   const isCurrent = accountSession.capture()
-  if (!clerk.session) return { ...noToken, isCurrent, sync: 'absent' }
+  if (!clerk.hasSession()) return { ...noToken, isCurrent, sync: 'absent' }
 
-  const getTokenOpts = opts.forceRefresh ? { skipCache: true } : undefined
+  const getTokenOpts = opts.forceRefresh ? { forceRefresh: true } : undefined
   let failedMints = 0
   let lastMintError: string | null = null
 
@@ -385,7 +376,7 @@ const getSessionToken = async (
     attempt++
   ) {
     try {
-      const token = (await clerk.session.getToken(getTokenOpts)) ?? null
+      const token = await clerk.getToken(getTokenOpts)
       if (token) {
         return {
           token,
@@ -424,7 +415,7 @@ const getSessionToken = async (
 
 const isSignedIn = async (): Promise<boolean> => {
   try {
-    return Boolean((await getSyncedClerk()).session)
+    return (await getSyncedClerk()).hasSession()
   } catch (error) {
     console.error('Clerk session check failed:', error)
     return false
@@ -433,8 +424,7 @@ const isSignedIn = async (): Promise<boolean> => {
 
 const signedInUserId = async (): Promise<string | null> => {
   try {
-    const clerk = await getSyncedClerk()
-    return clerk.session ? (clerk.user?.id ?? null) : null
+    return (await getSyncedClerk()).subject()
   } catch {
     return null
   }
@@ -508,34 +498,33 @@ const handleSessionExpiry = async () => {
   await accountSession.clear('expired')
 }
 
-// Register synchronously so cookie changes wake an evicted MV3 worker too.
-// Rebuild the client: an already-loaded client's cached session can still be
-// the old account. JWT refreshes for the same user do not invalidate pages.
-// The promise settles with the sync that covers this change (#743).
-chrome.cookies.onChanged.addListener(change => {
-  const host = new URL(config.clerkSyncHost).hostname
-  const domain = change.cookie.domain.replace(/^\./, '')
-  if (host !== domain && !host.endsWith(`.${domain}`)) return
-  if (!/^__(client|client_uat|clerk_db_jwt)(_|$)/.test(change.cookie.name))
-    return
-  if (change.removed && change.cause === 'overwrite') return
-  sessionCookies.record(change)
-  // A rewrite that leaves the cookies as the cached client saw them changes
-  // nothing: end the open burst now so requests do not wait for its timers.
-  if (
-    clerkClientPromise &&
-    sessionCookies.snapshot() === cookiesSynced &&
-    clerkCookieSync.settleNow(clerkClientPromise)
-  )
-    return Promise.resolve()
-  supersedeClerkSync()
-  return clerkCookieSync
-    .change()
-    .then(() => {})
-    .catch(error => {
-      console.error('Could not check changed account session:', error)
-    })
-})
+// Register synchronously through the adapter so cookie changes wake an
+// evicted MV3 worker too. Rebuild the client: an already-loaded client's
+// cached session can still be the old account. JWT refreshes for the same
+// user do not invalidate pages. The promise settles with the sync that
+// covers this change (#743). Clerk cookie name/host matching stays inside
+// the adapter (ADR-036).
+authAdapter.registerSessionChangeListener(
+  chrome.cookies,
+  change => {
+    sessionCookies.record(change)
+    // A rewrite that leaves the cookies as the cached client saw them changes
+    // nothing: end the open burst now so requests do not wait for its timers.
+    if (
+      clerkClientPromise &&
+      sessionCookies.snapshot() === cookiesSynced &&
+      clerkCookieSync.settleNow(clerkClientPromise)
+    )
+      return Promise.resolve()
+    supersedeClerkSync()
+    return clerkCookieSync
+      .change()
+      .then(() => {})
+      .catch(error => {
+        console.error('Could not check changed account session:', error)
+      })
+  }
+)
 
 export type ApiRequestResult = {
   success: boolean
