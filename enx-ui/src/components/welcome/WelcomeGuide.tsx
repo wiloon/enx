@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useSyncExternalStore,
+  type MouseEvent,
   type ReactNode,
 } from 'react'
 import Link from 'next/link'
@@ -37,6 +38,7 @@ import { SITE } from '@/lib/site'
 import { ENHANCED_PROTECTION_NOTE } from '@/lib/help'
 import SampleArticle from '@/components/reader/SampleArticle'
 import BrandMark from '@/components/site/BrandMark'
+import HomeLink from '@/components/site/HomeLink'
 import { Button } from '@/components/ui/button'
 import { unwrap } from '@/lib/apiResult'
 
@@ -200,15 +202,9 @@ export default function WelcomeGuide({
     if (landing === 'app') router.replace('/app')
   }, [landing, router])
 
-  // A visitor goes home, not to /app: /app would send them to sign in and
-  // back here (ADR-047 #872). Unknown sign-in status counts as signed out.
-  const skipSetup = async () => {
-    if (signedIn !== true) {
-      router.push('/')
-      return
-    }
-    // A failed write still leaves: the guide showing once more is the
-    // cheap mistake (Decision 1a).
+  // A failed write still leaves: the guide showing once more is the cheap
+  // mistake (Decision 1a).
+  const recordSkipped = async () => {
     const response = await apiService.updatePreferences({
       onboardingCompleted: true,
     })
@@ -218,7 +214,26 @@ export default function WelcomeGuide({
       queryClient.setQueryData(['preferences'], response.data)
     }
     void refreshPreferences()
+  }
+
+  // A visitor goes home, not to /app: /app would send them to sign in and
+  // back here (ADR-047 #872). Unknown sign-in status counts as signed out.
+  const skipSetup = async () => {
+    if (signedIn !== true) {
+      router.push('/')
+      return
+    }
+    await recordSkipped()
     router.push('/app')
+  }
+
+  // The brand mark counts as Skip setup but always lands home (ADR-047
+  // #1100). A visitor, or a modified click, is left to the plain link.
+  const leaveByBrandMark = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (signedIn !== true || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+      return
+    e.preventDefault()
+    void recordSkipped().then(() => router.push('/'))
   }
 
   const returnTo = fromInstall ? '/welcome?src=install' : '/welcome'
@@ -265,9 +280,13 @@ export default function WelcomeGuide({
 
   return (
     <>
-      {/* Not a link: the guide should not invite leaving (ADR-047 #872). */}
-      <header className="mx-auto flex w-full max-w-6xl items-center gap-2 px-6 pt-6 font-semibold md:px-10">
-        <BrandMark />
+      <header className="mx-auto flex w-full max-w-6xl items-center px-6 pt-6 font-semibold md:px-10">
+        <HomeLink
+          className="flex items-center gap-2 rounded-sm transition-opacity hover:opacity-80 active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+          onClick={leaveByBrandMark}
+        >
+          <BrandMark />
+        </HomeLink>
       </header>
       <div
         className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle || showIllustration ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}

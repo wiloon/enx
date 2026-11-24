@@ -25,6 +25,7 @@ const replace = jest.fn()
 const push = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push }),
+  usePathname: () => '/welcome',
 }))
 
 jest.mock('@/hooks/useExtensionStatus', () => ({
@@ -268,36 +269,118 @@ describe('word-lookup illustration', () => {
 })
 
 describe('brand mark', () => {
-  const expectBrandMarkWithoutLink = () => {
-    const banner = screen.getByRole('banner')
-    expect(within(banner).getByTestId('logo-mark')).toBeInTheDocument()
-    expect(banner).toHaveTextContent('Catglish')
-    expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
-    expect(banner.closest('a')).toBeNull()
+  const brandLink = () =>
+    within(screen.getByRole('banner')).getByRole('link', { name: /^Catglish/ })
+
+  const expectBrandMarkLinksHome = () => {
+    const link = brandLink()
+    expect(within(link).getByTestId('logo-mark')).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/')
   }
 
-  it('shows the logo and name, not as a link, to a signed-out visitor', async () => {
+  it('links the logo and name home for a signed-out visitor', async () => {
     renderGuide()
     await screen.findByText('Add Catglish to Chrome')
-    expectBrandMarkWithoutLink()
+    expectBrandMarkLinksHome()
   })
 
-  it('shows the logo and name, not as a link, on the signed-in steps', async () => {
+  it('links the logo and name home on the signed-in steps', async () => {
     signedIn()
     installExtension()
     renderGuide()
     await screen.findByRole('region', { name: 'Sample article' })
-    expectBrandMarkWithoutLink()
+    expectBrandMarkLinksHome()
   })
 
-  it('shows the logo and name, not as a link, once finished', async () => {
+  it('links the logo and name home once finished', async () => {
     signedIn()
     installExtension({ isOnToolbar: true })
     mockOverview.mockResolvedValue(overview(12))
     renderGuide()
     await screen.findByRole('heading', { name: "You're all set" })
-    expectBrandMarkWithoutLink()
+    expectBrandMarkLinksHome()
   })
+
+  it.each(['preferences', 'stats'])(
+    'counts a click as Skip setup but lands home when signed in, even while %s is loading',
+    async (pending) => {
+      signedIn()
+      installExtension()
+      const request = pending === 'preferences' ? mockPreferences : mockOverview
+      request.mockReturnValue(new Promise(() => {}))
+      renderGuide()
+      await screen.findByText('Loading…')
+
+      expect(fireEvent.click(brandLink())).toBe(false)
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/'))
+      expect(push).not.toHaveBeenCalledWith('/app')
+      expect(mockUpdatePreferences).toHaveBeenCalledWith({
+        onboardingCompleted: true,
+      })
+    }
+  )
+
+  it('opens Home, not /welcome, on /app after leaving by the brand mark', async () => {
+    signedIn()
+    installExtension()
+    // Like the server: once written, the flag reads back as set.
+    mockUpdatePreferences.mockImplementation(async () => {
+      mockPreferences.mockResolvedValue(preferences(true))
+      return preferences(true)
+    })
+    const client = newClient()
+    const first = renderGuide(false, client)
+    await screen.findByRole('region', { name: 'Sample article' })
+
+    fireEvent.click(brandLink())
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/'))
+    first.unmount()
+    render(
+      <QueryClientProvider client={client}>
+        <AppHome />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText('Dashboard setup')).toBeInTheDocument()
+    expect(replace).not.toHaveBeenCalledWith('/welcome')
+  })
+
+  it.each([
+    ['signed out', { isLoading: false, isAuthenticated: false }],
+    [
+      'authentication is unresolved',
+      { isLoading: true, isAuthenticated: false },
+    ],
+  ])(
+    'follows the link home without writing anything when %s',
+    async (_state, auth) => {
+      mockAuth.mockReturnValue(auth)
+      await act(async () => {
+        renderGuide()
+      })
+
+      expect(fireEvent.click(brandLink())).toBe(true)
+
+      expect(push).not.toHaveBeenCalled()
+      expect(mockUpdatePreferences).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['metaKey', 'ctrlKey', 'shiftKey', 'altKey'])(
+    'leaves a %s click to the browser and writes nothing',
+    async (modifier) => {
+      signedIn()
+      installExtension()
+      renderGuide()
+      await screen.findByRole('region', { name: 'Sample article' })
+
+      expect(fireEvent.click(brandLink(), { [modifier]: true })).toBe(true)
+
+      expect(push).not.toHaveBeenCalled()
+      expect(mockUpdatePreferences).not.toHaveBeenCalled()
+    }
+  )
 })
 
 it('expands only installation for a signed-out visitor without the extension', async () => {
