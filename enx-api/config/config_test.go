@@ -206,7 +206,6 @@ var envVars = map[string]string{
 	"OIDC_IMAGE_URL_CLAIM":                            "oidc.image-url-claim",
 	"ACCOUNT_EMAIL_HMAC_KEY":                          "account.email-hmac-key",
 	"ADMIN_AUTH_SUBJECTS":                             "admin.auth-subjects",
-	"ADMIN_CLERK_USER_IDS":                            "admin.clerk-user-ids",
 	"SENTENCE_TRANSLATE_PROVIDER":                     "sentence-translate.provider",
 	"SENTENCE_TRANSLATE_REQUEST_TIMEOUT":              "sentence-translate.request-timeout",
 	"KIMI_API_KEY":                                    "sentence-translate.kimi.api-key",
@@ -395,14 +394,14 @@ func TestEveryFieldHasAnEnvVar(t *testing.T) {
 func TestListEnvVarsSplitOnWhitespace(t *testing.T) {
 	isolate(t)
 	t.Setenv("CLERK_AUTHORIZED_PARTIES", "https://enx.wiloon.lab  chrome-extension://abc")
-	t.Setenv("ADMIN_CLERK_USER_IDS", "user_1 user_2")
+	t.Setenv("ADMIN_AUTH_SUBJECTS", "user_1 user_2")
 
 	cfg := loadDefaults(t)
 	if got, want := cfg.Clerk.AuthorizedParties, []string{"https://enx.wiloon.lab", "chrome-extension://abc"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("clerk.authorized-parties = %q, want %q", got, want)
 	}
 	if got, want := cfg.Admin.AuthSubjects, []string{"user_1", "user_2"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("admin.clerk-user-ids = %q, want %q", got, want)
+		t.Errorf("admin.auth-subjects = %q, want %q", got, want)
 	}
 }
 

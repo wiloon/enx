@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -19,32 +20,19 @@ func adminFrom(t *testing.T, toml string) Admin {
 }
 
 func TestAdminListSelection(t *testing.T) {
-	const (
-		legacyVar  = "ADMIN_CLERK_USER_IDS"
-		legacyTOML = "admin.clerk-user-ids"
-	)
 	cases := []struct {
-		name   string
-		vars   map[string]string
-		toml   string
-		want   []string
-		source string
+		name string
+		vars map[string]string
+		toml string
+		want []string
 	}{
-		{"new only", map[string]string{"ADMIN_AUTH_SUBJECTS": "a b"}, "", []string{"a", "b"}, ""},
-		{"old only", map[string]string{"ADMIN_CLERK_USER_IDS": "c d"}, "", []string{"c", "d"}, legacyVar},
-		{"both, new wins", map[string]string{"ADMIN_AUTH_SUBJECTS": "a", "ADMIN_CLERK_USER_IDS": "c"}, "", []string{"a"}, ""},
-		{"blank new, populated old", map[string]string{"ADMIN_AUTH_SUBJECTS": "  ", "ADMIN_CLERK_USER_IDS": "c"}, "", []string{"c"}, legacyVar},
-		{"empty new, populated old", map[string]string{"ADMIN_AUTH_SUBJECTS": "", "ADMIN_CLERK_USER_IDS": "c"}, "", []string{"c"}, legacyVar},
-		{"var overrides same-name toml", map[string]string{"ADMIN_AUTH_SUBJECTS": "a"}, "[admin]\nauth-subjects = [\"t\"]\n", []string{"a"}, ""},
-		{"legacy var overrides same-name legacy toml", map[string]string{"ADMIN_CLERK_USER_IDS": "c"}, "[admin]\nclerk-user-ids = [\"t\"]\n", []string{"c"}, legacyVar},
-		{"legacy var beats new toml", map[string]string{"ADMIN_CLERK_USER_IDS": "c"}, "[admin]\nauth-subjects = [\"t\"]\n", []string{"c"}, legacyVar},
-		{"blank new var falls to new toml", map[string]string{"ADMIN_AUTH_SUBJECTS": " "}, "[admin]\nauth-subjects = [\"t\"]\nclerk-user-ids = [\"u\"]\n", []string{"t"}, ""},
-		{"both toml keys, new wins", nil, "[admin]\nauth-subjects = [\"t\"]\nclerk-user-ids = [\"u\"]\n", []string{"t"}, ""},
-		{"legacy toml fallback", nil, "[admin]\nauth-subjects = []\nclerk-user-ids = [\"u\"]\n", []string{"u"}, legacyTOML},
-		{"legacy toml only", nil, "[admin]\nclerk-user-ids = [\"u\"]\n", []string{"u"}, legacyTOML},
-		{"legacy toml scalar", nil, "[admin]\nclerk-user-ids = \"user_a user_b\"\n", []string{"user_a", "user_b"}, legacyTOML},
-		{"unused legacy input", map[string]string{"ADMIN_AUTH_SUBJECTS": "a"}, "[admin]\nclerk-user-ids = [\"u\"]\n", []string{"a"}, ""},
-		{"nothing set", nil, "", nil, ""},
+		{"env only", map[string]string{"ADMIN_AUTH_SUBJECTS": "a b"}, "", []string{"a", "b"}},
+		{"env overrides toml", map[string]string{"ADMIN_AUTH_SUBJECTS": "a"}, "[admin]\nauth-subjects = [\"t\"]\n", []string{"a"}},
+		{"blank env falls to toml", map[string]string{"ADMIN_AUTH_SUBJECTS": " "}, "[admin]\nauth-subjects = [\"t\"]\n", []string{"t"}},
+		{"toml only", nil, "[admin]\nauth-subjects = [\"t\", \" \"]\n", []string{"t"}},
+		{"nothing set", nil, "", nil},
+		// The deprecated name (ADR-036, #1027) is no longer read.
+		{"removed env name is ignored", map[string]string{"ADMIN_CLERK_USER_IDS": "c d"}, "", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,9 +44,16 @@ func TestAdminListSelection(t *testing.T) {
 			if !reflect.DeepEqual(got.AuthSubjects, tc.want) {
 				t.Errorf("AuthSubjects = %q, want %q", got.AuthSubjects, tc.want)
 			}
-			if got.DeprecatedSource != tc.source {
-				t.Errorf("DeprecatedSource = %q, want %q", got.DeprecatedSource, tc.source)
-			}
 		})
+	}
+}
+
+// A config file still carrying the removed admin.clerk-user-ids key fails to
+// load instead of silently turning the admin endpoints off.
+func TestAdminRemovedTOMLKeyIsRejected(t *testing.T) {
+	isolate(t)
+	_, err := Load(writeTOML(t, "[admin]\nclerk-user-ids = [\"u\"]\n"))
+	if err == nil || !strings.Contains(err.Error(), "clerk-user-ids") {
+		t.Fatalf("Load error = %v, want one naming clerk-user-ids", err)
 	}
 }
