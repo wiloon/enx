@@ -165,6 +165,37 @@ export type WelcomeLanding =
   /** A returning user who arrived from an install: straight to /app. */
   | 'app'
 
+export type WelcomePanel =
+  /** One column: nothing beside the steps. */
+  | 'none'
+  /** Two columns, right one empty until the extension first answers. */
+  | 'pending'
+  | 'install-walkthrough'
+  | 'sample-article'
+  | 'word-lookup-illustration'
+
+// What sits beside the steps on /welcome (#1101). Without the extension the
+// article cannot work, so everyone who still has to install sees how to.
+// `installed` is the last answer seen on this visit, undefined before any.
+export function welcomePanel(input: {
+  signedIn: boolean | undefined
+  landing: WelcomeLanding
+  fromInstall: boolean
+  installed: boolean | undefined
+}): WelcomePanel {
+  const { signedIn, landing } = input
+  // Possibly a returning user about to leave for /app: show no part of the
+  // guide yet.
+  if (input.fromInstall && (landing === 'loading' || landing === 'app'))
+    return 'none'
+  if (landing === 'app') return 'none'
+  // The article waits for the account history (#846).
+  if (signedIn === true && landing === 'loading') return 'none'
+  if (input.installed === undefined) return 'pending'
+  if (!input.installed) return 'install-walkthrough'
+  return signedIn === true ? 'sample-article' : 'word-lookup-illustration'
+}
+
 // Decision 1a: a returning user (finished or skipped onboarding before, or
 // has looked up a word) never sees the steps. Arriving from an install they
 // go to /app; opening /welcome themselves they see the finished page.

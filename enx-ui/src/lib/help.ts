@@ -24,5 +24,7 @@ export const HELP_GUIDES = [
   },
 ] as const
 
-// Temporary installation note; remove this and its uses when #560 is verified.
+// Temporary installation note; remove this and its uses when #560 is verified,
+// together with the Proceed with caution slide in InstallWalkthrough.tsx
+// (#1101) and public/onboarding/install-proceed-with-caution.svg.
 export const ENHANCED_PROTECTION_NOTE = `With Enhanced protection enabled, Chrome may show “Proceed with caution” because ${SITE.name} is not yet trusted by Enhanced Safe Browsing. To proceed, select “Continue to install”.`

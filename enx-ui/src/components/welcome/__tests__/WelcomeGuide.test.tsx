@@ -222,24 +222,20 @@ describe('word-lookup illustration', () => {
     ).not.toBeInTheDocument()
   }
 
-  it.each([true, false])(
-    'shows a signed-out visitor the illustration instead of the article (installed: %s)',
-    async (installed) => {
-      if (installed) installExtension()
-      renderGuide()
-      await screen.findByText(
-        installed ? 'Catglish extension installed' : 'Add Catglish to Chrome'
-      )
-      expectIllustration()
-    }
-  )
+  it('shows a signed-out visitor with the extension the illustration instead of the article', async () => {
+    installExtension()
+    renderGuide()
+    await screen.findByText('Catglish extension installed')
+    expectIllustration()
+  })
 
-  it('shows the illustration while authentication is unresolved', async () => {
+  it('shows the illustration while authentication is unresolved and the extension is in', async () => {
     mockAuth.mockReturnValue({ isLoading: true, isAuthenticated: false })
+    installExtension()
     await act(async () => {
       renderGuide()
     })
-    expectIllustration()
+    await waitFor(() => expectIllustration())
   })
 
   it.each(['preferences', 'stats'])(
@@ -381,6 +377,72 @@ describe('brand mark', () => {
       expect(mockUpdatePreferences).not.toHaveBeenCalled()
     }
   )
+})
+
+describe('install walkthrough (#1101)', () => {
+  const walkthrough = () =>
+    screen.queryByRole('region', { name: 'How to install' })
+  const article = () => screen.queryByRole('region', { name: 'Sample article' })
+
+  it.each([
+    ['a signed-out visitor', { isLoading: false, isAuthenticated: false }],
+    [
+      'a visitor whose sign-in is unresolved',
+      { isLoading: true, isAuthenticated: false },
+    ],
+    ['a signed-in new user', { isLoading: false, isAuthenticated: true }],
+  ])('shows %s without the extension how to install', async (_, auth) => {
+    mockAuth.mockReturnValue(auth)
+    renderGuide()
+    expect(
+      await screen.findByRole('region', { name: 'How to install' })
+    ).toBeInTheDocument()
+    expect(article()).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: /Add to Chrome/ })
+    ).toBeInTheDocument()
+  })
+
+  it('shows the finished view how to reinstall a missing extension', async () => {
+    signedIn()
+    mockOverview.mockResolvedValue(overview(12))
+    renderGuide(false)
+    await screen.findByRole('heading', { name: "You're all set" })
+    expect(
+      await screen.findByRole('region', { name: 'How to install' })
+    ).toBeInTheDocument()
+    expect(article()).not.toBeInTheDocument()
+  })
+
+  it('keeps the right column empty until the extension first answers', async () => {
+    signedIn()
+    // An extension that never answers: detection is still running.
+    ;(global as unknown as { chrome?: unknown }).chrome = {
+      runtime: { sendMessage: jest.fn() },
+    }
+    renderGuide()
+    await screen.findByText('Checking extension…')
+    expect(screen.getByTestId('welcome-panel-pending')).toBeInTheDocument()
+    expect(walkthrough()).not.toBeInTheDocument()
+    expect(article()).not.toBeInTheDocument()
+  })
+
+  it('keeps the same sample article mounted when the first lookup finishes the guide', async () => {
+    signedIn()
+    installExtension()
+    mockOverview
+      .mockResolvedValueOnce(overview(0))
+      .mockResolvedValue(overview(1))
+    renderGuide(true)
+    const before = await screen.findByRole('region', {
+      name: 'Sample article',
+    })
+    document.documentElement.setAttribute('data-enx-learning', 'on')
+    await screen.findByRole('heading', { name: "You're all set" })
+    // Past the live status flip the finished view triggers.
+    await act(() => new Promise((r) => setTimeout(r, POLL_MS * 3)))
+    expect(screen.getByRole('region', { name: 'Sample article' })).toBe(before)
+  })
 })
 
 it('expands only installation for a signed-out visitor without the extension', async () => {

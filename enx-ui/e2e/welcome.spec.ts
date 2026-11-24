@@ -5,7 +5,7 @@ import { SITE } from '../src/lib/site'
 // installs from the Chrome Web Store usually has no account yet.
 
 test.describe('/welcome (signed out)', () => {
-  test('shows the steps beside the word-lookup illustration under the brand mark', async ({
+  test('shows a visitor without the extension the steps beside the install walkthrough', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
@@ -19,29 +19,40 @@ test.describe('/welcome (signed out)', () => {
     const brand = page.getByRole('banner')
     await expect(brand.getByTestId('logo-mark')).toBeVisible()
     await expect(brand).toContainText('Catglish')
-    await expect(brand.getByRole('link')).toHaveCount(0)
+    await expect(brand.getByRole('link')).toHaveAttribute('href', '/')
     const brandBox = (await brand.getByTestId('logo-mark').boundingBox())!
     const headingBox = (await heading.boundingBox())!
     expect(brandBox.y + brandBox.height).toBeLessThanOrEqual(headingBox.y)
     expect(brandBox.x).toBeLessThanOrEqual(headingBox.x)
 
-    const illustration = page.getByRole('img', {
-      name: 'An English article: click a word and Catglish shows its meaning in a small card',
-    })
-    await expect(illustration).toBeVisible()
-    await expect(illustration).toHaveAttribute(
-      'src',
-      '/onboarding/word-lookup.svg'
-    )
-    expect(
-      await illustration.evaluate((el) => (el as HTMLImageElement).naturalWidth)
-    ).toBeGreaterThan(0)
-    const caption = page.getByText(
+    // #1101: no extension, so the right column shows how to install.
+    const walkthrough = page.getByRole('region', { name: 'How to install' })
+    await expect(walkthrough).toBeVisible()
+    const slide = walkthrough.getByRole('img')
+    const slides = [
+      ['/onboarding/install-store-listing.svg', /Add to Chrome/],
+      ['/onboarding/install-proceed-with-caution.svg', /Continue to install/],
+      ['/onboarding/install-add-extension.svg', /Add extension/],
+      ['/onboarding/word-lookup.svg', /click a word/],
+    ] as const
+    for (const [i, [src, name]] of slides.entries()) {
+      await walkthrough
+        .getByRole('button', { name: `Show slide ${i + 1}` })
+        .click()
+      await expect(slide).toHaveAttribute('src', src)
+      await expect(slide).toHaveAccessibleName(name)
+      await expect
+        .poll(() =>
+          slide.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+        )
+        .toBeGreaterThan(0)
+    }
+    const caption = walkthrough.getByText(
       'Click any word while you read — see its meaning in context.'
     )
     await expect(caption).toBeVisible()
     const guideBox = (await heading.locator('..').boundingBox())!
-    const imageBox = (await illustration.boundingBox())!
+    const imageBox = (await slide.boundingBox())!
     expect(imageBox.x).toBeGreaterThan(guideBox.x + guideBox.width)
     expect(imageBox.y).toBeLessThan(guideBox.y + guideBox.height)
 
@@ -81,7 +92,7 @@ test.describe('/welcome (signed out)', () => {
         colorScheme === 'dark'
       )
       await page.screenshot({
-        path: `test-results/welcome-signed-out-illustration-${colorScheme}.png`,
+        path: `test-results/welcome-signed-out-walkthrough-${colorScheme}.png`,
         animations: 'disabled',
       })
     }
@@ -113,6 +124,17 @@ test.describe('/welcome (signed out)', () => {
     await expect(current.locator('p').first()).toHaveText(
       'Create your free account'
     )
+    // Installed: the lone word-lookup illustration, not the walkthrough.
+    const illustration = page.getByRole('img', {
+      name: 'An English article: click a word and Catglish shows its meaning in a small card',
+    })
+    await expect(illustration).toBeVisible()
+    expect(
+      await illustration.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+    ).toBeGreaterThan(0)
+    await expect(
+      page.getByRole('region', { name: 'How to install' })
+    ).toHaveCount(0)
     await expect(
       current.getByText('Look up words and translate sentences as you read.')
     ).toBeVisible()
@@ -399,7 +421,10 @@ test.describe('/welcome (signed in)', () => {
     await expect(
       page.getByRole('banner').getByTestId('logo-mark')
     ).toBeVisible()
-    await expect(page.getByRole('banner').getByRole('link')).toHaveCount(0)
+    await expect(page.getByRole('banner').getByRole('link')).toHaveAttribute(
+      'href',
+      '/'
+    )
     await expect(
       page.getByText('You can finish it later from your dashboard.')
     ).toBeVisible()

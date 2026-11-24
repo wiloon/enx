@@ -30,6 +30,7 @@ import {
   onboardingComplete,
   onboardingSteps,
   welcomeLanding,
+  welcomePanel,
   type OnboardingStep,
   type WelcomeLanding,
 } from '@/lib/onboarding'
@@ -37,6 +38,8 @@ import { RECOMMENDED_SITES } from '@/lib/recommendedSites'
 import { SITE } from '@/lib/site'
 import { ENHANCED_PROTECTION_NOTE } from '@/lib/help'
 import SampleArticle from '@/components/reader/SampleArticle'
+import InstallWalkthrough from './InstallWalkthrough'
+import WordLookupIllustration from './WordLookupIllustration'
 import BrandMark from '@/components/site/BrandMark'
 import HomeLink from '@/components/site/HomeLink'
 import { Button } from '@/components/ui/button'
@@ -269,14 +272,18 @@ export default function WelcomeGuide({
     }
   }
 
-  const showArticle = landing === 'steps' || finished
+  // The status goes unknown again whenever `live` flips (steps -> finished);
+  // keep the last answer so the article is not remounted mid-lookup (#1101).
+  const [lastInstalled, setLastInstalled] = useState<boolean>()
+  if (extension !== undefined && extension.installed !== lastInstalled)
+    setLastInstalled(extension.installed)
+  const installed = extension?.installed ?? lastInstalled
+
   // An install arrival may be a returning user who reinstalled and is about
   // to leave for /app: until the account says otherwise, show no part of
   // the guide, so nothing flashes before the redirect.
   const holding = fromInstall && (landing === 'loading' || landing === 'app')
-  // Signed in but still loading keeps one column: the article waits for the
-  // account history (#846), and the illustration is for visitors only.
-  const showIllustration = !showArticle && !holding && signedIn !== true
+  const panel = welcomePanel({ signedIn, landing, fromInstall, installed })
 
   return (
     <>
@@ -289,7 +296,7 @@ export default function WelcomeGuide({
         </HomeLink>
       </header>
       <div
-        className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${showArticle || showIllustration ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
+        className={`mx-auto grid w-full gap-10 p-6 md:p-10 ${panel !== 'none' ? 'max-w-6xl md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]' : 'max-w-xl'}`}
       >
         <section className="space-y-6">
           {holding ? (
@@ -320,12 +327,16 @@ export default function WelcomeGuide({
           )}
         </section>
 
-        {showArticle && (
+        {panel === 'pending' && (
+          <div aria-hidden="true" data-testid="welcome-panel-pending" />
+        )}
+        {panel === 'install-walkthrough' && <InstallWalkthrough />}
+        {panel === 'sample-article' && (
           <section className="space-y-4" aria-label="Sample article">
             <SampleArticle titleAs="h2" />
           </section>
         )}
-        {showIllustration && <WordLookupIllustration />}
+        {panel === 'word-lookup-illustration' && <WordLookupIllustration />}
       </div>
     </>
   )
@@ -580,27 +591,6 @@ function InstallButton() {
         </p>
       )}
     </div>
-  )
-}
-
-// What setup buys a visitor, shown instead of the interactive article until
-// they sign in (ADR-047 #872). Not a link: Continue keeps the attention.
-function WordLookupIllustration() {
-  return (
-    <figure className="space-y-3">
-      {/* eslint-disable-next-line @next/next/no-img-element -- a static
-          illustration from public/, nothing to optimize */}
-      <img
-        src="/onboarding/word-lookup.svg"
-        alt={`An English article: click a word and ${SITE.name} shows its meaning in a small card`}
-        width={480}
-        height={360}
-        className="h-auto w-full max-w-xl"
-      />
-      <figcaption className="text-sm text-muted-foreground">
-        Click any word while you read — see its meaning in context.
-      </figcaption>
-    </figure>
   )
 }
 

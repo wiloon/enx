@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360" role="img" aria-labelledby="t">
+  <title id="t">The Catglish page in the Chrome Web Store: click the blue Add to Chrome button at the top right</title>
+  <!-- browser window -->
+  <rect x="0" y="0" width="480" height="360" rx="12" fill="#f1f3f4"/>
+  <circle cx="20" cy="18" r="5" fill="#dadce0"/>
+  <circle cx="36" cy="18" r="5" fill="#dadce0"/>
+  <circle cx="52" cy="18" r="5" fill="#dadce0"/>
+  <rect x="72" y="8" width="396" height="20" rx="10" fill="#ffffff" stroke="#dadce0"/>
+  <text x="86" y="22" font-family="sans-serif" font-size="11" fill="#5f6368">chromewebstore.google.com/detail/catglish</text>
+  <!-- page -->
+  <rect x="12" y="38" width="456" height="310" rx="8" fill="#ffffff" stroke="#dadce0"/>
+  <!-- store header: neutral shapes, no store logo -->
+  <rect x="28" y="52" width="20" height="20" rx="4" fill="#e8eaed"/>
+  <rect x="56" y="58" width="84" height="8" rx="4" fill="#e8eaed"/>
+  <rect x="230" y="52" width="160" height="20" rx="10" fill="#f1f3f4"/>
+  <circle cx="440" cy="62" r="10" fill="#e8eaed"/>
+  <line x1="12" y1="86" x2="468" y2="86" stroke="#e8eaed"/>
+  <!-- listing header -->
+  <defs>
+    <!-- the Catglish mark, as in LogoMark.tsx and the store icon -->
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#009ca5"/>
+      <stop offset="1" stop-color="#006871"/>
+    </linearGradient>
+    <symbol id="mark" viewBox="0 0 96 96">
+      <rect width="96" height="96" rx="22" fill="url(#logo)"/>
+      <path d="M41.1 35.3 23.6 14l1.3 28.8zM54.9 35.3 72.4 14l-1.3 28.8z" fill="#fff"/>
+      <path d="M66.9 38.1A24.7 24.7 0 1 0 66.9 69.9" fill="none" stroke="#fff" stroke-width="13.1" stroke-linecap="round"/>
+      <circle cx="55.5" cy="54" r="5" fill="#ffc83d"/>
+    </symbol>
+  </defs>
+  <use href="#mark" x="32" y="104" width="52" height="52"/>
+  <text x="100" y="124" font-family="sans-serif" font-size="20" font-weight="bold" fill="#202124">Catglish</text>
+  <rect x="100" y="134" width="120" height="7" rx="3.5" fill="#e8eaed"/>
+  <rect x="100" y="148" width="86" height="7" rx="3.5" fill="#e8eaed"/>
+  <!-- Add to Chrome: a blue pill on the right -->
+  <rect x="330" y="108" width="114" height="36" rx="18" fill="#0b57d0"/>
+  <text x="387" y="131" font-family="sans-serif" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">Add to Chrome</text>
+  <!-- highlight -->
+  <rect x="323" y="101" width="128" height="50" rx="25" fill="none" stroke="#00878F" stroke-width="3"/>
+  <!-- cursor -->
+  <path d="M424 134 l0 16 l4 -4 l3 7 l3 -1.5 l-3 -7 l5.5 0 z" fill="#202124" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- screenshots and description, faded -->
+  <rect x="32" y="178" width="196" height="112" rx="6" fill="#f1f3f4"/>
+  <rect x="240" y="178" width="196" height="112" rx="6" fill="#f1f3f4"/>
+  <rect x="32" y="304" width="380" height="8" rx="4" fill="#e8eaed"/>
+  <rect x="32" y="322" width="300" height="8" rx="4" fill="#e8eaed"/>
+</svg>
