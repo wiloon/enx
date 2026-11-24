@@ -85,6 +85,7 @@ type Box = { x: number; y: number; width: number; height: number }
 type Line = { left: number; right: number; top: number; bottom: number }
 
 const expectClearOfSentence = (box: Box, lines: Line[]) => {
+  expect(lines.length).toBeGreaterThan(0)
   for (const line of lines) {
     const overlaps =
       box.x < line.right &&
@@ -183,6 +184,7 @@ test.describe('Hover sentence translate button', () => {
         expect(next.top).toBe(geometry.lastChar.top)
         expect(box.x).toBeGreaterThanOrEqual(geometry.lastChar.right - 1)
         expect(box.x).toBeLessThanOrEqual(geometry.lastChar.right + 8)
+        expect(box.y).toBeLessThanOrEqual(geometry.lastChar.bottom + 8)
       } else {
         // Flush against the viewport's right edge: shifted in, still below.
         expect(geometry.lastChar.right).toBeGreaterThan(270)

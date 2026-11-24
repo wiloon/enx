@@ -91,7 +91,13 @@ export const mountSentenceTranslateButton = (
   const update = () => {
     if (options.placement === 'last-character') {
       const last = lastCharacterRange(reference)
-      const rect = last ? Array.from(last.getClientRects()).at(-1) : undefined
+      // A zero-width trailing character (\u200B, soft hyphen) reports a 0x0
+      // rect; fall back rather than anchor the button to it.
+      const rect = last
+        ? Array.from(last.getClientRects())
+            .filter(r => r.width > 0 && r.height > 0)
+            .at(-1)
+        : undefined
       if (rect) {
         void positionHoverSentenceButton(rect, host)
         return

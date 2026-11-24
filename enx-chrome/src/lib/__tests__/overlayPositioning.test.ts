@@ -238,13 +238,38 @@ describe('positionHoverSentenceButton', () => {
   })
 
   it('moves right of the character when there is no room below', async () => {
-    await positionHoverSentenceButton(
-      charAt(500, window.innerHeight - 24),
+    const char = charAt(500, window.innerHeight - 24)
+    const placement = await positionHoverSentenceButton(
+      char,
       overlay,
       fakePlatform(BUTTON, BUTTON)
     )
+    expect(placement).toBe('right')
     const { left, top } = box()
-    expect(left).toBeGreaterThanOrEqual(510)
+    expect(left).toBeGreaterThanOrEqual(char.right)
+    // Beside the glyph, not lifted above it onto the line before.
+    expect(top + BUTTON).toBeGreaterThan(char.top)
+    expect(top).toBeLessThan(char.bottom)
     expect(top + BUTTON).toBeLessThanOrEqual(window.innerHeight)
+  })
+
+  it('goes above the character only in the bottom-right corner', async () => {
+    const char = charAt(window.innerWidth - 40, window.innerHeight - 24)
+    const placement = await positionHoverSentenceButton(
+      char,
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    expect(placement).toBe('top-start')
+    expect(box().top + BUTTON).toBeLessThanOrEqual(char.top)
+  })
+
+  it('hides when the last character is scrolled off-screen', async () => {
+    await positionHoverSentenceButton(
+      charAt(500, -100),
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    expect(overlay.style.visibility).toBe('hidden')
   })
 })

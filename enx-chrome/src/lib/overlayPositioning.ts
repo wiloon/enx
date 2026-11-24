@@ -125,7 +125,7 @@ export const positionHoverSentenceButton = async (
   lastCharacter: DOMRect,
   overlay: HTMLElement,
   platform?: Platform
-): Promise<void> => {
+): Promise<Placement> => {
   // The character itself is the reference, so `hide` sees a real glyph (a
   // zero-width line flush with the viewport edge counts as clipped). The
   // cross-axis offset moves 'bottom-start' / 'top-start' past the glyph, so
@@ -134,7 +134,7 @@ export const positionHoverSentenceButton = async (
     getBoundingClientRect: () => lastCharacter,
     getClientRects: () => [lastCharacter],
   }
-  const { x, y, middlewareData } = await computePosition(reference, overlay, {
+  const { x, y, placement, middlewareData } = await computePosition(reference, overlay, {
     strategy: 'fixed',
     placement: 'bottom-start',
     middleware: [
@@ -143,8 +143,13 @@ export const positionHoverSentenceButton = async (
           ? HOVER_BUTTON_GAP
           : { mainAxis: HOVER_BUTTON_GAP, crossAxis: lastCharacter.width }
       ),
+      // Main axis only: 'right' vertically centres the 28px button on a
+      // ~20px glyph, so near the bottom it overflows on the cross axis by a
+      // few px; shift below fixes that. With crossAxis on, flip would reject
+      // 'right' and jump to 'top-start', over the sentence's previous line.
       flip({
         fallbackPlacements: ['right', 'top-start'],
+        crossAxis: false,
         padding: OVERLAY_EDGE_PADDING,
       }),
       shift({ padding: OVERLAY_EDGE_PADDING }),
@@ -157,4 +162,5 @@ export const positionHoverSentenceButton = async (
   overlay.style.left = `${x}px`
   overlay.style.top = `${y}px`
   applyReferenceHiddenVisibility(overlay, middlewareData.hide?.referenceHidden)
+  return placement
 }
