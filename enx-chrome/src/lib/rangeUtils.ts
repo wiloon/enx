@@ -35,3 +35,33 @@ export const referenceLineHeight = (range: Range): number => {
   const height = Math.max(rectHeight, styleHeight)
   return height > 0 ? Math.ceil(height) : 20
 }
+
+// The last visible (non-whitespace) character inside `range`, as its own
+// Range, or null when the range holds only whitespace. The hover sentence
+// button hangs off this character's bottom-right corner (#1125).
+export const lastCharacterRange = (range: Range): Range | null => {
+  const root = range.commonAncestorContainer
+  const texts: Text[] = []
+  if (root instanceof Text) {
+    texts.push(root)
+  } else {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (range.intersectsNode(node)) texts.push(node as Text)
+    }
+  }
+
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const text = texts[i]
+    const start = text === range.startContainer ? range.startOffset : 0
+    const end = text === range.endContainer ? range.endOffset : text.length
+    for (let offset = end - 1; offset >= start; offset--) {
+      if (/\s/.test(text.data[offset])) continue
+      const last = document.createRange()
+      last.setStart(text, offset)
+      last.setEnd(text, offset + 1)
+      return last
+    }
+  }
+  return null
+}
