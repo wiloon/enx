@@ -69,6 +69,27 @@ func TestWordsTableFind(t *testing.T) {
 	}
 }
 
+// #1037: a failed words read is an error, never a miss, or Resolve would go
+// on to ECDICT and paid AI fallback though the local dictionary was unread.
+func TestWordsTableFindReportsAFailedReadAsAnError(t *testing.T) {
+	setupWordsDB(t)
+	seedWord(t, "serendipity", "机缘巧合")
+	raw, err := sqlitex.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, includeAI := range []bool{false, true} {
+		id, _, ok, err := WordsTable{}.Find(context.Background(), "serendipity", includeAI)
+		if err == nil || ok || id != "" {
+			t.Errorf("Find(includeAI=%v) on a closed database = %q, ok=%v, err=%v; want an error", includeAI, id, ok, err)
+		}
+	}
+}
+
 // seedWordFrom seeds a words row with an explicit source and admin-edit mark.
 func seedWordFrom(t *testing.T, english, chinese, source string, editedAt *int64) string {
 	t.Helper()

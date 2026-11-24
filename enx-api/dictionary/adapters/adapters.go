@@ -49,7 +49,10 @@ func (LookupEvents) Add(ctx context.Context, e dictionary.LookupEvent) error {
 type WordsTable struct{}
 
 func (WordsTable) Find(_ context.Context, english string, includeAI bool) (string, dictionary.Entry, bool, error) {
-	w := repo.FindWordForLookup(english, includeAI)
+	w, err := repo.FindWordForLookup(english, includeAI)
+	if err != nil {
+		return "", dictionary.Entry{}, false, err
+	}
 	if w.Id == "" {
 		return "", dictionary.Entry{}, false, nil
 	}

@@ -146,7 +146,7 @@ func TestFindWordForLookupHidesUneditedAIRows(t *testing.T) {
 		{"gist", false, "w-ecdict-edited"},
 		{"missing", true, ""},
 	} {
-		if got := FindWordForLookup(tc.word, tc.includeAI).Id; got != tc.want {
+		if got := findWordForLookupID(t, tc.word, tc.includeAI); got != tc.want {
 			t.Errorf("FindWordForLookup(%q, includeAI=%v) = %q, want %q", tc.word, tc.includeAI, got, tc.want)
 		}
 	}
@@ -158,7 +158,7 @@ func TestFindWordForLookupSkipsSoftDeletedRows(t *testing.T) {
 	if err := db.Create(&Word{Id: "w1", English: "gone", Chinese: "没了", Source: WordSourceECDICT, CreatedAt: now, UpdatedAt: now, DeletedAt: &now}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := FindWordForLookup("gone", true).Id; got != "" {
+	if got := findWordForLookupID(t, "gone", true); got != "" {
 		t.Fatalf("a soft-deleted row was found: %q", got)
 	}
 }
@@ -169,7 +169,7 @@ func TestAdminEditWordRecordsTheEditAndKeepsTheSource(t *testing.T) {
 	if err := db.Create(&Word{Id: "w-ai", English: "rizzler", Chinese: "旧释义", Pronunciation: "", Source: WordSourceAI, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got := FindWordForLookup("rizzler", false).Id; got != "" {
+	if got := findWordForLookupID(t, "rizzler", false); got != "" {
 		t.Fatal("precondition: an unedited AI row should be hidden")
 	}
 
@@ -195,7 +195,7 @@ func TestAdminEditWordRecordsTheEditAndKeepsTheSource(t *testing.T) {
 		t.Fatalf("stored row = %+v", stored)
 	}
 	// Editing is what releases an AI row to users who can't use AI.
-	if got := FindWordForLookup("rizzler", false).Id; got != "w-ai" {
+	if got := findWordForLookupID(t, "rizzler", false); got != "w-ai" {
 		t.Fatalf("after an admin edit the row should be visible to everyone, got %q", got)
 	}
 }
@@ -280,7 +280,10 @@ func TestInsertWordKeepsAnAISourceAndItsProvenance(t *testing.T) {
 	if err := InsertWord(&row); err != nil {
 		t.Fatal(err)
 	}
-	stored := FindWordForLookup("rizzler", true)
+	stored, err := FindWordForLookup("rizzler", true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if stored.Source != WordSourceAI || stored.AIQuality == nil || *stored.AIQuality != 9 || *stored.AIPromptVersion != "v1" {
 		t.Fatalf("stored row = %+v", stored)
 	}
@@ -416,4 +419,14 @@ func TestAdminListAIWordsPagesAndTotalCountsEverything(t *testing.T) {
 	if err != nil || len(beyond) != 0 || total != 5 {
 		t.Fatalf("beyond the end = %d rows, total %d, %v", len(beyond), total, err)
 	}
+}
+
+// findWordForLookupID returns the id FindWordForLookup reads, "" on a miss.
+func findWordForLookupID(t *testing.T, english string, includeAI bool) string {
+	t.Helper()
+	w, err := FindWordForLookup(english, includeAI)
+	if err != nil {
+		t.Fatalf("FindWordForLookup(%q, includeAI=%v): %v", english, includeAI, err)
+	}
+	return w.Id
 }

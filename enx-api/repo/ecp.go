@@ -3,10 +3,13 @@ package repo
 import (
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Word struct {
@@ -107,7 +110,11 @@ func InsertWord(row *Word) error {
 // definitions no admin has edited yet (ADR-045 Decision 6). The exclusion is
 // in the query rather than applied after reading, so a hidden row is never
 // loaded and cannot leak through a caller that forgets to filter it.
-func FindWordForLookup(english string, includeAI bool) *Word {
+//
+// A miss returns an empty Word and no error. Any other failure is returned,
+// never folded into a miss: a lookup that reads a miss goes on to paid AI
+// fallback (#1037).
+func FindWordForLookup(english string, includeAI bool) (*Word, error) {
 	english = CanonicalEnglish(english)
 	query := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english)
 	if !includeAI {
@@ -115,10 +122,12 @@ func FindWordForLookup(english string, includeAI bool) *Word {
 	}
 	word := &Word{}
 	if err := query.First(word).Error; err != nil {
-		logger.Debugf("word not found for lookup: %s (includeAI=%v): %v", english, includeAI, err)
-		return &Word{}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &Word{}, nil
+		}
+		return &Word{}, fmt.Errorf("find word %q for lookup: %w", english, err)
 	}
-	return word
+	return word, nil
 }
 
 // GetUserWordQueryCount gets a user's query count and known flag for a
