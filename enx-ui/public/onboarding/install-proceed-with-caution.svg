@@ -27,12 +27,12 @@
   <text x="100" y="172" font-family="sans-serif" font-size="12" fill="#3c4043">This extension is not trusted by Enhanced</text>
   <text x="100" y="188" font-family="sans-serif" font-size="12" fill="#3c4043">Safe Browsing.</text>
   <!-- buttons: Continue to install is outlined -->
-  <rect x="172" y="214" width="124" height="32" rx="16" fill="#ffffff" stroke="#747775"/>
-  <text x="234" y="234" font-family="sans-serif" font-size="12" font-weight="bold" fill="#0b57d0" text-anchor="middle">Continue to install</text>
+  <rect x="140" y="214" width="148" height="32" rx="16" fill="#ffffff" stroke="#747775"/>
+  <text x="214" y="234" font-family="sans-serif" font-size="12" font-weight="bold" fill="#0b57d0" text-anchor="middle">Continue to install</text>
   <rect x="306" y="214" width="78" height="32" rx="16" fill="#0b57d0"/>
   <text x="345" y="234" font-family="sans-serif" font-size="12" font-weight="bold" fill="#ffffff" text-anchor="middle">Cancel</text>
   <!-- highlight -->
-  <rect x="165" y="207" width="138" height="46" rx="23" fill="none" stroke="#00878F" stroke-width="3"/>
+  <rect x="133" y="207" width="162" height="46" rx="23" fill="none" stroke="#00878F" stroke-width="3"/>
   <!-- cursor -->
-  <path d="M270 236 l0 16 l4 -4 l3 7 l3 -1.5 l-3 -7 l5.5 0 z" fill="#202124" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M258 236 l0 16 l4 -4 l3 7 l3 -1.5 l-3 -7 l5.5 0 z" fill="#202124" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
 </svg>
