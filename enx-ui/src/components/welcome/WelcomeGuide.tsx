@@ -282,7 +282,7 @@ export default function WelcomeGuide({
     <>
       <header className="mx-auto flex w-full max-w-6xl items-center px-6 pt-6 font-semibold md:px-10">
         <HomeLink
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 rounded-sm transition-opacity hover:opacity-80 active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
           onClick={leaveByBrandMark}
         >
           <BrandMark />

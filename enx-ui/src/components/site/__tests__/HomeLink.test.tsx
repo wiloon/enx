@@ -63,4 +63,40 @@ describe('HomeLink', () => {
     expect(clickLogo({ metaKey: true })).toBe(true)
     expect(scrollTo).not.toHaveBeenCalled()
   })
+
+  describe('with an onClick handler', () => {
+    function clickWith(handler: (e: React.MouseEvent) => void) {
+      render(
+        <HomeLink className="" onClick={handler}>
+          Catglish
+        </HomeLink>
+      )
+      return fireEvent.click(screen.getByRole('link', { name: 'Catglish' }))
+    }
+
+    it('lets a handler that calls preventDefault take over the navigation', () => {
+      window.history.replaceState(null, '', '/#features')
+      const handler = jest.fn((e: React.MouseEvent) => {
+        expect(scrollTo).not.toHaveBeenCalled()
+        e.preventDefault()
+      })
+
+      expect(clickWith(handler)).toBe(false)
+
+      expect(handler).toHaveBeenCalledTimes(1)
+      expect(scrollTo).not.toHaveBeenCalled()
+      expect(window.location.hash).toBe('#features')
+    })
+
+    it('still scrolls to the top when the handler leaves the click alone', () => {
+      window.history.replaceState(null, '', '/#features')
+      const handler = jest.fn()
+
+      expect(clickWith(handler)).toBe(false)
+
+      expect(handler).toHaveBeenCalledTimes(1)
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }))
+      expect(window.location.hash).toBe('')
+    })
+  })
 })
