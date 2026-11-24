@@ -10,13 +10,18 @@ import { usePathname } from 'next/navigation'
 export default function HomeLink({
   className,
   children,
+  onClick: beforeNavigate,
 }: {
   className: string
   children: ReactNode
+  /** Runs first; calling preventDefault takes over the navigation. */
+  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void
 }) {
   const pathname = usePathname()
 
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    beforeNavigate?.(e)
+    if (e.defaultPrevented) return
     // Let modified clicks (new tab / window) through untouched.
     if (pathname !== '/' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
       return
