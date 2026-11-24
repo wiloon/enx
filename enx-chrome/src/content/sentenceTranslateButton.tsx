@@ -3,8 +3,11 @@
 
 import type { Root } from 'react-dom/client'
 import { autoUpdate } from '@floating-ui/dom'
-import { positionSelectionHint } from '@/lib/overlayPositioning'
-import { nearestElement } from '@/lib/rangeUtils'
+import {
+  positionHoverSentenceButton,
+  positionSelectionHint,
+} from '@/lib/overlayPositioning'
+import { lastCharacterRange, nearestElement } from '@/lib/rangeUtils'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 
 export type OverlayElement = HTMLElement & {
@@ -19,10 +22,11 @@ export type SentenceTranslateButtonOptions = {
   ariaLabel: string
   reference: Range
   // Which client rect anchors the button: selection may use the start for a
-  // backward drag; hover always uses the sentence's last line.
+  // backward drag; hover always uses the sentence's last character.
   anchor: 'start' | 'end'
-  placement: 'top-start' | 'bottom-end' | 'right'
-  sentenceContainer?: Element | null
+  // 'last-character': hang off the bottom-right corner of the reference's
+  // last visible character, never over the sentence itself (#1125).
+  placement: 'top-start' | 'bottom-end' | 'last-character'
   mountShadowRoot: (host: HTMLElement) => Root
   onTrigger: () => void
   onMouseEnter?: () => void
@@ -34,30 +38,6 @@ export type SentenceTranslateButtonOptions = {
 export type SentenceTranslateButtonHandle = {
   overlay: OverlayElement
   cleanup: () => void
-}
-
-// Look at the first visible text after the sentence, including inline siblings.
-const followingTextRect = (
-  sentence: Range,
-  container: Element
-): DOMRect | null => {
-  const end = sentence.endContainer
-  if (!(end instanceof Text) || !container.contains(end)) return null
-
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  walker.currentNode = end
-  const probe = document.createRange()
-  for (let node: Node | null = end; node; node = walker.nextNode()) {
-    const text = node as Text
-    const start = node === end ? sentence.endOffset : 0
-    const offset = text.data.slice(start).search(/[^\s\x85]/)
-    if (offset < 0) continue
-    probe.setStart(text, start + offset)
-    probe.setEnd(text, start + offset + 1)
-    const rect = probe.getClientRects()[0]
-    if (rect?.width && rect.height) return rect
-  }
-  return null
 }
 
 export const mountSentenceTranslateButton = (
@@ -109,15 +89,17 @@ export const mountSentenceTranslateButton = (
     contextElement: nearestElement(reference.startContainer) ?? undefined,
   }
   const update = () => {
-    let placement: typeof options.placement | 'top-end' = options.placement
-    if (placement === 'right' && options.sentenceContainer) {
-      const last = virtualReference.getBoundingClientRect()
-      const next = followingTextRect(reference, options.sentenceContainer)
-      if (next && next.top < last.bottom && next.bottom > last.top) {
-        placement = 'top-end'
+    if (options.placement === 'last-character') {
+      const last = lastCharacterRange(reference)
+      const rect = last ? Array.from(last.getClientRects()).at(-1) : undefined
+      if (rect) {
+        void positionHoverSentenceButton(rect, host)
+        return
       }
+      void positionSelectionHint(virtualReference, host, 'bottom-end')
+      return
     }
-    void positionSelectionHint(virtualReference, host, placement)
+    void positionSelectionHint(virtualReference, host, options.placement)
   }
   const stopPositioning = autoUpdate(virtualReference, host, update)
 

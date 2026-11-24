@@ -48,12 +48,59 @@ const gapBetweenWords = async (
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
+// #1125: the button hangs off the bottom-right corner of the hovered
+// sentence's last character and never overlaps the sentence's own text.
+const hoveredSentenceGeometry = (page: Page) =>
+  page.evaluate(() => {
+    const [sentence] = CSS.highlights.get('enx-hover-sentence')!
+    const range = sentence as Range
+    const rects = [...range.getClientRects()].filter(r => r.width && r.height)
+    const root = range.commonAncestorContainer
+    const texts: Node[] = []
+    if (root instanceof Text) texts.push(root)
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (range.intersectsNode(node)) texts.push(node)
+    }
+    let lastChar: DOMRect | null = null
+    for (const node of texts) {
+      const text = node as Text
+      const start = node === range.startContainer ? range.startOffset : 0
+      const end = node === range.endContainer ? range.endOffset : text.length
+      for (let i = start; i < end; i++) {
+        if (/\s/.test(text.data[i])) continue
+        const probe = document.createRange()
+        probe.setStart(text, i)
+        probe.setEnd(text, i + 1)
+        lastChar = [...probe.getClientRects()].at(-1) ?? lastChar
+      }
+    }
+    return {
+      lines: rects.map(rect => rect.toJSON()),
+      lastChar: lastChar!.toJSON(),
+    }
+  })
+
+type Box = { x: number; y: number; width: number; height: number }
+type Line = { left: number; right: number; top: number; bottom: number }
+
+const expectClearOfSentence = (box: Box, lines: Line[]) => {
+  for (const line of lines) {
+    const overlaps =
+      box.x < line.right &&
+      box.x + box.width > line.left &&
+      box.y < line.bottom &&
+      box.y + box.height > line.top
+    expect(overlaps).toBe(false)
+  }
+}
+
 test.describe('Hover sentence translate button', () => {
   test.skip(!loginAvailable, LOGIN_SKIP_REASON)
 
   test.beforeEach(async ({ signedIn: _signedIn }) => {})
 
-  test('shows the button at the last line of a wrapped sentence and clears wash on leave', async ({
+  test('shows the button below-right of the last character of a wrapped sentence and clears wash on leave', async ({
     page,
     extensionId,
   }) => {
@@ -65,44 +112,21 @@ test.describe('Hover sentence translate button', () => {
     const button = page.locator('.enx-hover-sentence-translate-button')
     await expect(button).toBeVisible({ timeout: 2000 })
 
-    const geometry = await page.evaluate(() => {
-      const p = document.querySelector('#wrap')!
+    const wraps = await page.evaluate(() => {
       const range = document.createRange()
-      range.selectNodeContents(p)
-      const rects = [...range.getClientRects()]
-      const next = document.createRange()
-      next.selectNodeContents(document.querySelector('#next')!)
-      return {
-        wraps: rects.length >= 2,
-        nextLines: [...next.getClientRects()].map(rect => rect.toJSON()),
-        last: (() => {
-          const last = rects[rects.length - 1]
-          return {
-            top: last.top,
-            bottom: last.bottom,
-            left: last.left,
-            right: last.right,
-          }
-        })(),
-      }
+      range.selectNodeContents(document.querySelector('#wrap')!)
+      return range.getClientRects().length >= 2
     })
-    expect(geometry.wraps).toBe(true)
+    expect(wraps).toBe(true)
 
-    const buttonBox = await button.boundingBox()
-    expect(buttonBox).not.toBeNull()
-    // Anchored near the end of the last wrapped line on both axes.
-    expect(buttonBox!.y).toBeGreaterThanOrEqual(geometry.last.top - 8)
-    expect(buttonBox!.y).toBeLessThanOrEqual(geometry.last.bottom + 40)
-    expect(buttonBox!.x).toBeGreaterThanOrEqual(geometry.last.left - 24)
-    expect(Math.abs(buttonBox!.x - geometry.last.right)).toBeLessThan(80)
-    for (const line of geometry.nextLines) {
-      const overlaps =
-        buttonBox!.x < line.right &&
-        buttonBox!.x + buttonBox!.width > line.left &&
-        buttonBox!.y < line.bottom &&
-        buttonBox!.y + buttonBox!.height > line.top
-      expect(overlaps).toBe(false)
-    }
+    const buttonBox = (await button.boundingBox())!
+    const geometry = await hoveredSentenceGeometry(page)
+    // Below and right of the last character of the last wrapped line.
+    expect(buttonBox.x).toBeGreaterThanOrEqual(geometry.lastChar.right - 1)
+    expect(buttonBox.x).toBeLessThanOrEqual(geometry.lastChar.right + 8)
+    expect(buttonBox.y).toBeGreaterThanOrEqual(geometry.lastChar.bottom - 1)
+    expect(buttonBox.y).toBeLessThanOrEqual(geometry.lastChar.bottom + 8)
+    expectClearOfSentence(buttonBox, geometry.lines)
 
     expect(
       await page.evaluate(() => CSS.highlights.has('enx-hover-sentence'))
@@ -127,7 +151,7 @@ test.describe('Hover sentence translate button', () => {
   })
 
   for (const scenario of ['inline', 'narrow'] as const) {
-    test(`keeps the button near the sentence end in a ${scenario} layout`, async ({
+    test(`puts the button below-right of the last character in a ${scenario} layout`, async ({
       page,
       extensionId,
     }) => {
@@ -146,28 +170,23 @@ test.describe('Hover sentence translate button', () => {
 
       const button = page.locator('.enx-hover-sentence-translate-button')
       await expect(button).toBeVisible({ timeout: 2000 })
-      const geometry = await page.evaluate(() => {
-        const [sentence] = CSS.highlights.get('enx-hover-sentence')!
-        const rects = [...(sentence as Range).getClientRects()]
-        const anchor = rects[rects.length - 1]
-        const continuation = document.querySelector('#continuation')!
-        return {
-          anchor: anchor.toJSON(),
-          continuation: [...continuation.getClientRects()].map(rect =>
-            rect.toJSON()
-          ),
-        }
-      })
+      const geometry = await hoveredSentenceGeometry(page)
       const box = (await button.boundingBox())!
-      expect(
-        Math.abs(box.x + box.width - geometry.anchor.right)
-      ).toBeLessThanOrEqual(8)
+      expectClearOfSentence(box, geometry.lines)
+      expect(box.y).toBeGreaterThanOrEqual(geometry.lastChar.bottom - 1)
       if (scenario === 'inline') {
-        const [next] = geometry.continuation
-        expect(next.top).toBe(geometry.anchor.top)
-        expect(box.y + box.height).toBeLessThanOrEqual(next.top)
+        // The next sentence continues on the same line: still below-right of
+        // the last character, not lifted above it (#1125).
+        const next = await page
+          .locator('#continuation')
+          .evaluate(el => el.getClientRects()[0].toJSON())
+        expect(next.top).toBe(geometry.lastChar.top)
+        expect(box.x).toBeGreaterThanOrEqual(geometry.lastChar.right - 1)
+        expect(box.x).toBeLessThanOrEqual(geometry.lastChar.right + 8)
       } else {
-        expect(geometry.anchor.right).toBe(280)
+        // Flush against the viewport's right edge: shifted in, still below.
+        expect(geometry.lastChar.right).toBeGreaterThan(270)
+        expect(box.x + box.width).toBeLessThanOrEqual(280)
       }
     })
   }

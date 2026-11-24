@@ -90,29 +90,67 @@ export const positionAnchoredOverlay = async (
   return placement
 }
 
-// Sentence translate button: same hide-when-clipped rule as the word card.
-// Selections follow the drag direction. Hover sits beside the last line.
+// Selection translate button (ADR-007): same hide-when-clipped rule as the
+// word card, placed by drag direction.
 export const positionSelectionHint = async (
   reference: VirtualElement,
   overlay: HTMLElement,
   placement: Placement,
   platform?: Platform
 ): Promise<void> => {
-  // Keep hover aligned with the sentence end even when the right edge is tight.
-  const fallbackPlacements: Placement[] | undefined =
-    placement === 'right'
-      ? ['top-end', 'bottom-end']
-      : placement === 'top-end'
-        ? ['bottom-end']
-        : undefined
   const { x, y, middlewareData } = await computePosition(reference, overlay, {
     strategy: 'fixed',
     placement,
     middleware: [
       offset(6),
-      flip({ fallbackPlacements }),
+      flip(),
       shift({ padding: OVERLAY_EDGE_PADDING }),
       hide({ padding: OVERLAY_EDGE_PADDING }),
+    ],
+    ...(platform ? { platform } : {}),
+  })
+  overlay.style.left = `${x}px`
+  overlay.style.top = `${y}px`
+  applyReferenceHiddenVisibility(overlay, middlewareData.hide?.referenceHidden)
+}
+
+// Gap between the sentence's last character and the hover button.
+const HOVER_BUTTON_GAP = 2
+
+// Hover sentence button (ADR-068, #1125): hang it off the bottom-right corner
+// of the sentence's last character, so it never covers the sentence it
+// translates. Covering the start of the next line is acceptable. With no room
+// below it moves right of the character, and above only as a last resort.
+export const positionHoverSentenceButton = async (
+  lastCharacter: DOMRect,
+  overlay: HTMLElement,
+  platform?: Platform
+): Promise<void> => {
+  // The character itself is the reference, so `hide` sees a real glyph (a
+  // zero-width line flush with the viewport edge counts as clipped). The
+  // cross-axis offset moves 'bottom-start' / 'top-start' past the glyph, so
+  // the button's left edge lines up with the character's right edge.
+  const reference: VirtualElement = {
+    getBoundingClientRect: () => lastCharacter,
+    getClientRects: () => [lastCharacter],
+  }
+  const { x, y, middlewareData } = await computePosition(reference, overlay, {
+    strategy: 'fixed',
+    placement: 'bottom-start',
+    middleware: [
+      offset(({ placement }) =>
+        placement === 'right'
+          ? HOVER_BUTTON_GAP
+          : { mainAxis: HOVER_BUTTON_GAP, crossAxis: lastCharacter.width }
+      ),
+      flip({
+        fallbackPlacements: ['right', 'top-start'],
+        padding: OVERLAY_EDGE_PADDING,
+      }),
+      shift({ padding: OVERLAY_EDGE_PADDING }),
+      // No padding: only a glyph fully off-screen hides the button; a final
+      // period flush with the viewport edge would otherwise count as clipped.
+      hide(),
     ],
     ...(platform ? { platform } : {}),
   })

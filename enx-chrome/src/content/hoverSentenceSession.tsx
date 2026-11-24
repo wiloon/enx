@@ -157,8 +157,7 @@ export const createHoverSentenceSession = (
       ariaLabel: 'Translate sentence',
       reference: target.range,
       anchor: 'end',
-      placement: 'right',
-      sentenceContainer: WordProcessor.findSentenceContainer(target.range.startContainer),
+      placement: 'last-character',
       mountShadowRoot: deps.mountShadowRoot,
       onTrigger: () => {
         void onButtonClick(target)

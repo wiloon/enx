@@ -4,17 +4,18 @@ import {
   applyReferenceHiddenVisibility,
   buildAnchoredOverlayMiddleware,
   positionAnchoredOverlay,
+  positionHoverSentenceButton,
   positionSelectionHint,
 } from '../overlayPositioning'
 
 // jsdom has no layout, so the platform is faked: the viewport is
 // window.innerWidth x innerHeight, and the overlay is `naturalHeight` tall
 // unless its max-height says less -- the one bit of layout the bug hinged on.
-const fakePlatform = (naturalHeight: number): Platform => {
+const fakePlatform = (naturalHeight: number, width = 400): Platform => {
   const dims = (el: Element) => {
     const max = parseFloat((el as HTMLElement).style.maxHeight)
     return {
-      width: 400,
+      width,
       height: Number.isNaN(max) ? naturalHeight : Math.min(naturalHeight, max),
     }
   }
@@ -178,5 +179,72 @@ describe('positionSelectionHint', () => {
       fakePlatform(28)
     )
     expect(overlay.style.visibility).toBe('visible')
+  })
+})
+
+// #1125: the hover button must never sit on the sentence it translates. It
+// hangs off the bottom-right corner of the sentence's last character.
+describe('positionHoverSentenceButton', () => {
+  const BUTTON = 28
+  let overlay: HTMLElement
+  beforeEach(() => {
+    overlay = document.createElement('div')
+    document.body.appendChild(overlay)
+  })
+  afterEach(() => overlay.remove())
+
+  // A glyph (10x20 unless narrower) whose top-left is (left, top).
+  const charAt = (left: number, top: number, width = 10) =>
+    new DOMRect(left, top, width, 20)
+  const box = () => ({
+    left: parseFloat(overlay.style.left),
+    top: parseFloat(overlay.style.top),
+  })
+
+  it('puts its top-left corner at the last character\'s bottom-right', async () => {
+    await positionHoverSentenceButton(
+      charAt(500, 400),
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    const { left, top } = box()
+    expect(left).toBeGreaterThanOrEqual(510)
+    expect(left).toBeLessThanOrEqual(514)
+    expect(top).toBeGreaterThanOrEqual(420)
+    expect(top).toBeLessThanOrEqual(424)
+  })
+
+  it('stays below the character when shifted in from the right edge', async () => {
+    await positionHoverSentenceButton(
+      charAt(window.innerWidth - 12, 400),
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    const { left, top } = box()
+    expect(left + BUTTON).toBeLessThanOrEqual(window.innerWidth)
+    expect(top).toBeGreaterThanOrEqual(420)
+  })
+
+  it('stays visible when a final period is flush with the right edge', async () => {
+    await positionHoverSentenceButton(
+      charAt(window.innerWidth - 4, 400, 4),
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    expect(overlay.style.visibility).toBe('visible')
+    const { left, top } = box()
+    expect(left + BUTTON).toBeLessThanOrEqual(window.innerWidth)
+    expect(top).toBeGreaterThanOrEqual(420)
+  })
+
+  it('moves right of the character when there is no room below', async () => {
+    await positionHoverSentenceButton(
+      charAt(500, window.innerHeight - 24),
+      overlay,
+      fakePlatform(BUTTON, BUTTON)
+    )
+    const { left, top } = box()
+    expect(left).toBeGreaterThanOrEqual(510)
+    expect(top + BUTTON).toBeLessThanOrEqual(window.innerHeight)
   })
 })

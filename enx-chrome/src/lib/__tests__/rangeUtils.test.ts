@@ -1,4 +1,8 @@
-import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
+import {
+  lastCharacterRange,
+  nearestElement,
+  referenceLineHeight,
+} from '@/lib/rangeUtils'
 
 describe('nearestElement', () => {
   beforeEach(() => {
@@ -75,5 +79,43 @@ describe('referenceLineHeight', () => {
     range.setStart(orphan, 0)
     range.collapse(true)
     expect(referenceLineHeight(range)).toBe(20)
+  })
+})
+
+describe('lastCharacterRange', () => {
+  const sentenceIn = (html: string) => {
+    document.body.innerHTML = `<p>${html}</p>`
+    const range = document.createRange()
+    range.selectNodeContents(document.querySelector('p')!)
+    return range
+  }
+
+  it('covers the final visible character of the sentence', () => {
+    expect(lastCharacterRange(sentenceIn('The ship sailed.'))?.toString()).toBe(
+      '.'
+    )
+  })
+
+  it('skips trailing whitespace, including a trailing empty element', () => {
+    const last = lastCharacterRange(
+      sentenceIn('It <em>rained</em> \n <span> </span>')
+    )!
+    expect(last.toString()).toBe('d')
+    expect(last.startContainer.parentElement?.tagName).toBe('EM')
+  })
+
+  it('respects a range that ends partway through a text node', () => {
+    document.body.innerHTML = '<p>First one. Second one.</p>'
+    const text = document.querySelector('p')!.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 'First one. '.length)
+    const last = lastCharacterRange(range)!
+    expect(last.toString()).toBe('.')
+    expect(last.startOffset).toBe(9)
+  })
+
+  it('returns null for a whitespace-only range', () => {
+    expect(lastCharacterRange(sentenceIn('  '))).toBeNull()
   })
 })
