@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-03
-revised: 2026-11-23
+revised: 2026-11-24
 related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，本 ADR 与它共用步骤模型）、adr-019 / adr-020（网页 → 扩展通道与登录回跳，本 ADR 加一个消息类型）、adr-039（站点自动启用）、adr-044（服务端偏好，存 `onboardingCompleted`）、adr-048（免费用户试用 AI 积分）
 ---
 
@@ -19,6 +19,17 @@ related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，�
 adr-046 去掉了正文里的「Article processed • Click words for translation」，学习模式的状态只靠扩展图标角标表达。这要求用户在第一次使用时**把图标固定到工具栏**（否则角标看不见、也找不到启用入口）。此外新用户还得完成登录，并**亲手**启用一次学习模式、点一次词——在真实网站上每次都要点图标启用，这是用户必须学会的唯一习惯。
 
 现状：adr-027 在 Home 上给零阅读的用户显示三步清单（安装扩展 → 打开英文页启用 → 读完第一篇），但这只覆盖「先到网站」的用户，且第 2、3 步无法自动勾选；从 Chrome Web Store 直接安装的用户，`runtime.onInstalled` 只初始化了 storage，什么页面都不打开。
+
+## 2026-11-24 修订（#1101，未安装扩展时右栏显示安装引导轮播；内测用户没认出商店页的 Add to Chrome，owner 决定）
+
+- 问题：一位没有技术背景的内测用户从 `/welcome` 打开 Chrome Web Store 后，没注意到也看不懂蓝色的「Add to Chrome」按钮，扩展一直没装上。从没用过 Chrome 扩展的用户到了商店页就没有任何指引。
+- 只要**确定扩展未安装**，`/welcome` 右栏就是安装引导轮播，不论已登录、未登录还是登录状态未定，也包括完成页（扩展被卸载后从「Check setup」打开）。按 Chrome 的实际安装顺序共四张：① 商店页，点蓝色「Add to Chrome」；②（如果出现）「Proceed with caution」，点「Continue to install」（临时，#560 关闭时与 `ENHANCED_PROTECTION_NOTE` 一起删除）；③ `Add "Catglish"?`，点「Add extension」；④ 原有的查词示意图，说明装好后能做什么。
+- 前三张是手绘 SVG 示意图（`public/onboarding/install-*.svg`，480×360，与查词示意图同风格），不用截图：不用为截图准备全新的 Chrome 配置，也不会带出账号信息。不画 Google 和 Chrome Web Store 的 logo；Catglish 图标与商店图标相同。
+- 轮播每 5 秒切换一次，第 4 张后回到第 1 张；指针停在上面或焦点在里面时暂停；系统开了减少动态效果（`prefers-reduced-motion`）时不自动切换；用户点了 1–4 编号按钮后，本次访问不再自动切换。只有编号按钮，没有左右箭头。
+- 检测到已安装后恢复原规则：已登录显示示例文章（后面的开启学习模式和查词都在它上面完成），未登录或登录状态未定显示单独的查词示意图。
+- 首次检测结果返回前（未安装时约 2 秒），右栏留空但保持两栏布局，不先闪出文章或示意图；`live` 切换（步骤页进入完成页）时沿用上一次的检测结果，示例文章不重新挂载，正在显示的查词浮层不会被打断。#846、#872 的「已登录但账号数据加载中保持单栏」与「从安装进入时加载中不显示右栏」不变。
+- 右栏选择规则在 `src/lib/onboarding.ts` 的 `welcomePanel`，组件只负责渲染。
+- 修订记录（#1101）：取代 #872「未登录右栏是静态示意图」和 #846「已登录右栏是示例文章」在扩展未安装时的情况。
 
 ## 2026-11-23 修订（#1100，左上角 logo 链接到首页；内测用户提出、owner 决定）
 

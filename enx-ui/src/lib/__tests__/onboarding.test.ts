@@ -2,7 +2,9 @@ import {
   homeChecklistSteps,
   onboardingSteps,
   welcomeLanding,
+  welcomePanel,
   type OnboardingState,
+  type WelcomeLanding,
 } from '../onboarding'
 
 describe('welcomeLanding (ADR-047 Decision 1a)', () => {
@@ -245,5 +247,75 @@ describe('step titles per screen (Decision 6)', () => {
         'Sign in'
       )
     }
+  })
+})
+
+describe('welcomePanel (#1101)', () => {
+  const base = {
+    signedIn: true as boolean | undefined,
+    landing: 'steps' as WelcomeLanding,
+    fromInstall: false,
+    installed: true as boolean | undefined,
+  }
+
+  it('shows nothing while an install arrival is still loading or leaving for /app', () => {
+    expect(
+      welcomePanel({ ...base, fromInstall: true, landing: 'loading' })
+    ).toBe('none')
+    expect(welcomePanel({ ...base, fromInstall: true, landing: 'app' })).toBe(
+      'none'
+    )
+  })
+
+  it('shows nothing while a signed-in user’s account history loads', () => {
+    expect(
+      welcomePanel({ ...base, landing: 'loading', installed: false })
+    ).toBe('none')
+  })
+
+  it('holds the column empty until the extension first answers', () => {
+    expect(welcomePanel({ ...base, installed: undefined })).toBe('pending')
+    expect(
+      welcomePanel({
+        ...base,
+        signedIn: false,
+        landing: 'sign-in',
+        installed: undefined,
+      })
+    ).toBe('pending')
+  })
+
+  it.each([
+    ['a signed-in user on the steps', { landing: 'steps', signedIn: true }],
+    [
+      'a signed-in user on the finished view',
+      { landing: 'done', signedIn: true },
+    ],
+    ['a visitor', { landing: 'sign-in', signedIn: false }],
+    [
+      'a visitor whose sign-in is unresolved',
+      { landing: 'loading', signedIn: undefined },
+    ],
+  ] as const)(
+    'shows the install walkthrough to %s without the extension',
+    (_, state) => {
+      expect(welcomePanel({ ...base, ...state, installed: false })).toBe(
+        'install-walkthrough'
+      )
+    }
+  )
+
+  it('shows the sample article to a signed-in user with the extension', () => {
+    expect(welcomePanel(base)).toBe('sample-article')
+    expect(welcomePanel({ ...base, landing: 'done' })).toBe('sample-article')
+  })
+
+  it('shows the word-lookup illustration to a visitor with the extension', () => {
+    expect(welcomePanel({ ...base, signedIn: false, landing: 'sign-in' })).toBe(
+      'word-lookup-illustration'
+    )
+    expect(
+      welcomePanel({ ...base, signedIn: undefined, landing: 'loading' })
+    ).toBe('word-lookup-illustration')
   })
 })

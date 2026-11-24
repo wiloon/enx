@@ -5,7 +5,7 @@ import { SITE } from '../src/lib/site'
 // installs from the Chrome Web Store usually has no account yet.
 
 test.describe('/welcome (signed out)', () => {
-  test('shows the steps beside the word-lookup illustration under the brand mark', async ({
+  test('shows a visitor without the extension the steps beside the install walkthrough', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
@@ -19,29 +19,45 @@ test.describe('/welcome (signed out)', () => {
     const brand = page.getByRole('banner')
     await expect(brand.getByTestId('logo-mark')).toBeVisible()
     await expect(brand).toContainText('Catglish')
-    await expect(brand.getByRole('link')).toHaveCount(0)
+    await expect(brand.getByRole('link')).toHaveAttribute('href', '/')
     const brandBox = (await brand.getByTestId('logo-mark').boundingBox())!
     const headingBox = (await heading.boundingBox())!
     expect(brandBox.y + brandBox.height).toBeLessThanOrEqual(headingBox.y)
     expect(brandBox.x).toBeLessThanOrEqual(headingBox.x)
 
-    const illustration = page.getByRole('img', {
-      name: 'An English article: click a word and Catglish shows its meaning in a small card',
-    })
-    await expect(illustration).toBeVisible()
-    await expect(illustration).toHaveAttribute(
-      'src',
-      '/onboarding/word-lookup.svg'
-    )
-    expect(
-      await illustration.evaluate((el) => (el as HTMLImageElement).naturalWidth)
-    ).toBeGreaterThan(0)
-    const caption = page.getByText(
+    // #1101: no extension, so the right column shows how to install.
+    const walkthrough = page.getByRole('region', { name: 'How to install' })
+    await expect(walkthrough).toBeVisible()
+    const slide = walkthrough.getByRole('img')
+    const slides = [
+      ['/onboarding/install-store-listing.svg', /Add to Chrome/],
+      ['/onboarding/install-proceed-with-caution.svg', /Continue to install/],
+      ['/onboarding/install-add-extension.svg', /Add extension/],
+      ['/onboarding/word-lookup.svg', /click a word/],
+    ] as const
+    for (const [i, [src, name]] of slides.entries()) {
+      await walkthrough
+        .getByRole('button', { name: `Show slide ${i + 1}` })
+        .click()
+      await expect(slide).toHaveAttribute('src', src)
+      await expect(slide).toHaveAccessibleName(name)
+      // `complete` too: until the new src loads, Chromium still reports the
+      // previous slide's naturalWidth.
+      await expect
+        .poll(() =>
+          slide.evaluate((el) => {
+            const img = el as HTMLImageElement
+            return img.complete && img.naturalWidth > 0
+          })
+        )
+        .toBe(true)
+    }
+    const caption = walkthrough.getByText(
       'Click any word while you read — see its meaning in context.'
     )
     await expect(caption).toBeVisible()
     const guideBox = (await heading.locator('..').boundingBox())!
-    const imageBox = (await illustration.boundingBox())!
+    const imageBox = (await slide.boundingBox())!
     expect(imageBox.x).toBeGreaterThan(guideBox.x + guideBox.width)
     expect(imageBox.y).toBeLessThan(guideBox.y + guideBox.height)
 
@@ -80,10 +96,20 @@ test.describe('/welcome (signed out)', () => {
         (dark) => document.documentElement.classList.toggle('dark', dark),
         colorScheme === 'dark'
       )
-      await page.screenshot({
-        path: `test-results/welcome-signed-out-illustration-${colorScheme}.png`,
-        animations: 'disabled',
-      })
+      // One shot per new install slide, so each is checked by eye.
+      for (const n of [1, 2, 3]) {
+        await walkthrough
+          .getByRole('button', { name: `Show slide ${n}` })
+          .click()
+        await expect(slide).toHaveAttribute('src', slides[n - 1][0])
+        await expect
+          .poll(() => slide.evaluate((el) => (el as HTMLImageElement).complete))
+          .toBe(true)
+        await page.screenshot({
+          path: `test-results/welcome-signed-out-walkthrough-${n}-${colorScheme}.png`,
+          animations: 'disabled',
+        })
+      }
     }
 
     await skip.click()
@@ -113,6 +139,17 @@ test.describe('/welcome (signed out)', () => {
     await expect(current.locator('p').first()).toHaveText(
       'Create your free account'
     )
+    // Installed: the lone word-lookup illustration, not the walkthrough.
+    const illustration = page.getByRole('img', {
+      name: 'An English article: click a word and Catglish shows its meaning in a small card',
+    })
+    await expect(illustration).toBeVisible()
+    expect(
+      await illustration.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+    ).toBeGreaterThan(0)
+    await expect(
+      page.getByRole('region', { name: 'How to install' })
+    ).toHaveCount(0)
     await expect(
       current.getByText('Look up words and translate sentences as you read.')
     ).toBeVisible()
@@ -399,7 +436,10 @@ test.describe('/welcome (signed in)', () => {
     await expect(
       page.getByRole('banner').getByTestId('logo-mark')
     ).toBeVisible()
-    await expect(page.getByRole('banner').getByRole('link')).toHaveCount(0)
+    await expect(page.getByRole('banner').getByRole('link')).toHaveAttribute(
+      'href',
+      '/'
+    )
     await expect(
       page.getByText('You can finish it later from your dashboard.')
     ).toBeVisible()
@@ -630,6 +670,13 @@ test('shows the checking state until the extension answers, and updates after in
     animations: 'disabled',
     path: 'test-results/welcome-checking.png',
   })
+  // #1101: the empty right column keeps the desktop two-column layout, so
+  // the steps do not move when the walkthrough arrives.
+  const heading = page.getByRole('heading', {
+    name: 'Welcome to Catglish',
+    exact: true,
+  })
+  const checkingBox = (await heading.boundingBox())!
   await page.evaluate(() =>
     window.dispatchEvent(
       new CustomEvent('test:extension-status', { detail: false })
@@ -637,6 +684,12 @@ test('shows the checking state until the extension answers, and updates after in
   )
   const install = page.getByRole('link', { name: 'Add to Chrome' })
   await expect(install).toHaveAttribute('href', SITE.chromeWebStoreUrl)
+  await expect(
+    page.getByRole('region', { name: 'How to install' })
+  ).toBeVisible()
+  const answeredBox = (await heading.boundingBox())!
+  expect(answeredBox.x).toBe(checkingBox.x)
+  expect(answeredBox.y).toBe(checkingBox.y)
   await page.clock.resume()
   await expect(install).toHaveAttribute('target', '_blank')
   for (const colorScheme of ['light', 'dark'] as const) {
