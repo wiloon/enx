@@ -348,7 +348,10 @@ describe('brand mark', () => {
 
   it.each([
     ['signed out', { isLoading: false, isAuthenticated: false }],
-    ['authentication is unresolved', { isLoading: true, isAuthenticated: false }],
+    [
+      'authentication is unresolved',
+      { isLoading: true, isAuthenticated: false },
+    ],
   ])(
     'follows the link home without writing anything when %s',
     async (_state, auth) => {
