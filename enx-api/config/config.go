@@ -261,22 +261,10 @@ type Account struct {
 }
 
 // Admin is the admin allowlist of external auth subjects (ADR-036). Load
-// resolves it from ADMIN_AUTH_SUBJECTS and the deprecated ADMIN_CLERK_USER_IDS;
-// read AuthSubjects only.
+// resolves it from ADMIN_AUTH_SUBJECTS, then admin.auth-subjects.
 type Admin struct {
 	AuthSubjects []string `mapstructure:"auth-subjects"`
-	// LegacyAuthSubjects only receives the deprecated admin.clerk-user-ids
-	// binding as decoded; authorization reads AuthSubjects only.
-	LegacyAuthSubjects []string `mapstructure:"clerk-user-ids"`
-	// DeprecatedSource names the deprecated input that supplied AuthSubjects
-	// ("" when a current one did, or nothing is set).
-	DeprecatedSource string `mapstructure:"-"`
 }
-
-const (
-	adminLegacyEnv  = "ADMIN_CLERK_USER_IDS"
-	adminLegacyTOML = "admin.clerk-user-ids"
-)
 
 // nonBlank trims every entry and drops the empty ones.
 func nonBlank(in []string) []string {
@@ -289,17 +277,12 @@ func nonBlank(in []string) []string {
 	return out
 }
 
-// resolveAdmin picks the first non-empty list from ADMIN_AUTH_SUBJECTS,
-// ADMIN_CLERK_USER_IDS, admin.auth-subjects and admin.clerk-user-ids, in that
-// order. fileAdmin contains the admin keys before the environment was merged.
+// resolveAdmin takes ADMIN_AUTH_SUBJECTS when it is not blank, else
+// admin.auth-subjects. fileAdmin contains the admin keys before the
+// environment was merged.
 func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
 	if subjects := strings.Fields(os.Getenv("ADMIN_AUTH_SUBJECTS")); len(subjects) > 0 {
 		c.Admin.AuthSubjects = subjects
-		return nil
-	}
-	if subjects := strings.Fields(os.Getenv(adminLegacyEnv)); len(subjects) > 0 {
-		c.Admin.AuthSubjects = subjects
-		c.Admin.DeprecatedSource = adminLegacyEnv
 		return nil
 	}
 
@@ -308,12 +291,6 @@ func (c *Config) resolveAdmin(fileAdmin *koanf.Koanf) error {
 		return err
 	}
 	c.Admin.AuthSubjects = nonBlank(admin.AuthSubjects)
-	if len(c.Admin.AuthSubjects) == 0 {
-		c.Admin.AuthSubjects = nonBlank(admin.LegacyAuthSubjects)
-		if len(c.Admin.AuthSubjects) > 0 {
-			c.Admin.DeprecatedSource = adminLegacyTOML
-		}
-	}
 	return nil
 }
 
@@ -759,7 +736,7 @@ func decode[T any](k *koanf.Koanf) (*T, error) {
 
 // splitOnWhitespace decodes a string into a []string by splitting on
 // whitespace. The usual decode hook splits on commas, but the deployments set
-// CLERK_AUTHORIZED_PARTIES and ADMIN_CLERK_USER_IDS space-separated; split on
+// CLERK_AUTHORIZED_PARTIES and ADMIN_AUTH_SUBJECTS space-separated; split on
 // commas, every signed-in request would fail Clerk's azp check (401). A TOML
 // array is already a slice and does not pass through here.
 func splitOnWhitespace(from, to reflect.Type, data any) (any, error) {
@@ -1076,10 +1053,8 @@ var envBindings = map[string]string{
 	// ADR-062 Decision 3: the trial grant record's email HMAC key.
 	"account.email-hmac-key": "ACCOUNT_EMAIL_HMAC_KEY",
 	// Space-separated external auth subjects allowed to call POST /api/admin/*.
-	// Empty => admin endpoints are effectively off. ADMIN_CLERK_USER_IDS is
-	// the deprecated name, still read while deployments transition.
-	"admin.auth-subjects":  "ADMIN_AUTH_SUBJECTS",
-	"admin.clerk-user-ids": "ADMIN_CLERK_USER_IDS",
+	// Empty => admin endpoints are effectively off.
+	"admin.auth-subjects": "ADMIN_AUTH_SUBJECTS",
 
 	// Sentence translation (TASK-SPEC-enx-chrome-sentence-translation-sidepanel.md
 	// §3.5). provider and the per-provider model/base-url are bindable too so

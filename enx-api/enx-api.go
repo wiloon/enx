@@ -66,10 +66,6 @@ func main() {
 	if cfg.File != "" {
 		logger.Infof("loaded config file: %s", cfg.File)
 	}
-	if src := cfg.Admin.DeprecatedSource; src != "" {
-		// Names the input only: the subjects themselves are never logged.
-		logger.Warnf("%s is deprecated and supplies the admin allowlist; move it to ADMIN_AUTH_SUBJECTS (admin.auth-subjects)", src)
-	}
 	gin.SetMode(server.GinMode(logLevel))
 	m := metrics.New()
 	// A database that failed to open or migrate (e.g. the #211 users
