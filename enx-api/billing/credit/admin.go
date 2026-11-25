@@ -2,6 +2,7 @@ package credit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"enx-api/utils/sqlitex"
@@ -19,11 +20,24 @@ const (
 	TypeDeductAdmin = "DEDUCT_ADMIN"
 )
 
+// MaxAdminGrantAmount caps one admin grant (#1098): a larger amount is a
+// typo, not an intent, and an admin who means more grants again. Deductions
+// are not capped, so a mistaken large grant can still be undone.
+const MaxAdminGrantAmount int64 = 10_000
+
+// ErrAdminGrantExceedsLimit: GrantAdmin was asked for more than
+// MaxAdminGrantAmount. Answer 400.
+var ErrAdminGrantExceedsLimit = errors.New("credit: admin grant exceeds MaxAdminGrantAmount")
+
 // GrantAdmin adds amount to userID's top-up pool (never expires) on an
-// admin's behalf; note records the admin's reason and is required.
+// admin's behalf; note records the admin's reason and is required. amount
+// may be at most MaxAdminGrantAmount.
 func GrantAdmin(ctx context.Context, userID string, amount int64, note string) error {
 	if amount <= 0 {
 		return fmt.Errorf("credit: GrantAdmin amount must be positive, got %d", amount)
+	}
+	if amount > MaxAdminGrantAmount {
+		return fmt.Errorf("%w: got %d, limit %d", ErrAdminGrantExceedsLimit, amount, MaxAdminGrantAmount)
 	}
 	if note == "" {
 		return fmt.Errorf("credit: GrantAdmin requires a reason")

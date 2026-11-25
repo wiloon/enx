@@ -2,6 +2,7 @@ package credit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"enx-api/utils/sqlitex"
@@ -43,6 +44,41 @@ func TestGrantAdminRejectsNonPositiveAmountOrEmptyReason(t *testing.T) {
 	}
 	if acc := loadAccount(t, userID); acc.TopupBalance != 10 {
 		t.Fatalf("topup = %d, want 10 (unchanged)", acc.TopupBalance)
+	}
+}
+
+func TestGrantAdminCapsOneGrantAtMaxAdminGrantAmount(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
+	seedPaidPools(t, userID, 0, 0)
+
+	if err := GrantAdmin(ctx, userID, 10001, "typo"); !errors.Is(err, ErrAdminGrantExceedsLimit) {
+		t.Fatalf("GrantAdmin(10001) = %v, want ErrAdminGrantExceedsLimit", err)
+	}
+	if acc := loadAccount(t, userID); acc.TopupBalance != 0 {
+		t.Fatalf("topup = %d after a rejected grant, want 0 (unchanged)", acc.TopupBalance)
+	}
+
+	if err := GrantAdmin(ctx, userID, 10000, "largest single grant"); err != nil {
+		t.Fatalf("GrantAdmin(10000): %v", err)
+	}
+	if acc := loadAccount(t, userID); acc.TopupBalance != 10000 {
+		t.Fatalf("topup = %d, want 10000", acc.TopupBalance)
+	}
+}
+
+func TestDeductAdminIsNotCappedAtMaxAdminGrantAmount(t *testing.T) {
+	ctx := context.Background()
+	userID := "u-" + t.Name()
+	seedCreditUser(t, userID)
+	seedPaidPools(t, userID, 0, 50000)
+
+	if err := DeductAdmin(ctx, userID, 40000, "undo a mistaken large grant"); err != nil {
+		t.Fatalf("DeductAdmin(40000): %v", err)
+	}
+	if acc := loadAccount(t, userID); acc.TopupBalance != 10000 {
+		t.Fatalf("topup = %d, want 10000", acc.TopupBalance)
 	}
 }
 

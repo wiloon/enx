@@ -162,6 +162,59 @@ func TestDeductCredits_RecordsDeductAdminAndMayGoNegative(t *testing.T) {
 	}
 }
 
+// #1098: one grant is capped at credit.MaxAdminGrantAmount (10,000).
+func TestGrantCredits_OverTheLimitIsRefusedAndWritesNothing(t *testing.T) {
+	u := seedGrantee(t, "admin-grant-cap-1", "cap1@example.com")
+
+	w := adminRequest(t, grantPath, `{"email":"cap1@example.com","amount":10001,"reason":"typo"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Message != "A single grant may be at most 10,000 credits." {
+		t.Fatalf("message = %q, want it to name the 10,000 limit", body.Message)
+	}
+	if rows := ledgerRows(t, u.Id); len(rows) != 0 {
+		t.Fatalf("ledger rows = %+v, want none", rows)
+	}
+}
+
+func TestGrantCredits_OverTheLimitIsBadRequestEvenForAnUnknownUser(t *testing.T) {
+	w := adminRequest(t, grantPath, `{"email":"nobody@nowhere.example","amount":10001,"reason":"typo"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (not 404), body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestGrantCredits_ExactlyTheLimitSucceeds(t *testing.T) {
+	u := seedGrantee(t, "admin-grant-cap-2", "cap2@example.com")
+
+	w := adminRequest(t, grantPath, `{"email":"cap2@example.com","amount":10000,"reason":"largest single grant"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if bal, err := credit.Balance(context.Background(), u.Id); err != nil || bal != 10000 {
+		t.Fatalf("Balance = %d, %v; want 10000", bal, err)
+	}
+}
+
+func TestDeductCredits_IsNotCappedAtTheGrantLimit(t *testing.T) {
+	u := seedGrantee(t, "admin-deduct-cap-1", "cap3@example.com")
+
+	w := adminRequest(t, deductPath, `{"email":"cap3@example.com","amount":95000000,"reason":"undo a mistaken grant"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if bal, err := credit.Balance(context.Background(), u.Id); err != nil || bal != -95000000 {
+		t.Fatalf("Balance = %d, %v; want -95000000", bal, err)
+	}
+}
+
 func ledgerRows(t *testing.T, userID string) []sqlitex.CreditTransaction {
 	t.Helper()
 	var rows []sqlitex.CreditTransaction

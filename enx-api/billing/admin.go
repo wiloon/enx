@@ -3,8 +3,10 @@ package billing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,8 +22,9 @@ import (
 // credits to any user, named by enx id or email, recorded as GRANT_ADMIN with the reason
 // (ADR-049 Decision 2) -- for testing on homelab and for support comps in
 // production. Mount behind clerkAuth + RequireAdmin.
+// One grant is capped at credit.MaxAdminGrantAmount (#1098).
 func (h *Handler) GrantCredits(c *gin.Context) {
-	adjustCredits(c, "GrantCredits", "granted", credit.GrantAdmin)
+	adjustCredits(c, "GrantCredits", "granted", credit.MaxAdminGrantAmount, credit.GrantAdmin)
 }
 
 // DeductCredits handles POST /api/admin/credits/deduct: an admin takes
@@ -29,13 +32,17 @@ func (h *Handler) GrantCredits(c *gin.Context) {
 // reason; the balance may go negative (ADR-049 Decision 3). Mount behind
 // clerkAuth + RequireAdmin.
 func (h *Handler) DeductCredits(c *gin.Context) {
-	adjustCredits(c, "DeductCredits", "deducted", credit.DeductAdmin)
+	adjustCredits(c, "DeductCredits", "deducted", noAmountLimit, credit.DeductAdmin)
 }
+
+// noAmountLimit: the change takes any positive amount.
+const noAmountLimit int64 = 0
 
 // adjustCredits is the shared body of GrantCredits and DeductCredits: resolve
 // the user by enx id or by email, apply the ledger change, answer with the
-// new balance.
-func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Context, userID string, amount int64, note string) error) {
+// new balance. A maxAmount above zero refuses a larger amount with 400
+// before the user lookup, so bad input never answers 404 or 409.
+func adjustCredits(c *gin.Context, name, verb string, maxAmount int64, apply func(ctx context.Context, userID string, amount int64, note string) error) {
 	var req adjustCreditsRequest
 	err := c.ShouldBindJSON(&req)
 	req.UserID = strings.TrimSpace(req.UserID)
@@ -46,6 +53,10 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 		httpjson.Fail(c, http.StatusBadRequest, "exactly one of userId or a valid email, a positive amount and a reason are required")
 		return
 	}
+	if maxAmount > 0 && req.Amount > maxAmount {
+		httpjson.Fail(c, http.StatusBadRequest, grantLimitMessage())
+		return
+	}
 
 	user, ok := adjustTarget(c, req)
 	if !ok {
@@ -54,6 +65,10 @@ func adjustCredits(c *gin.Context, name, verb string, apply func(ctx context.Con
 
 	ctx := c.Request.Context()
 	if err := apply(ctx, user.Id, req.Amount, req.Reason); err != nil {
+		if errors.Is(err, credit.ErrAdminGrantExceedsLimit) {
+			httpjson.Fail(c, http.StatusBadRequest, grantLimitMessage())
+			return
+		}
 		if errors.Is(err, credit.ErrDeletionInProgress) {
 			c.Header("Retry-After", "60")
 			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "deletion_in_progress", "message": "Account deletion is in progress. Try again later."})
@@ -130,6 +145,20 @@ func adjustTarget(c *gin.Context, req adjustCreditsRequest) (*enx.User, bool) {
 		"candidates": candidates,
 	})
 	return nil, false
+}
+
+// grantLimitMessage names credit.MaxAdminGrantAmount, e.g. "A single grant
+// may be at most 10,000 credits."
+func grantLimitMessage() string {
+	digits := strconv.FormatInt(credit.MaxAdminGrantAmount, 10)
+	var b strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(d)
+	}
+	return fmt.Sprintf("A single grant may be at most %s credits.", b.String())
 }
 
 func validEmail(s string) bool {
