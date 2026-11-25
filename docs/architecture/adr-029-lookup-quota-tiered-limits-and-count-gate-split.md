@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | **2026-10-15 部分被 [ADR-059](adr-059-lookup-event-log-and-get-post-split.md) 修订**（数据源、两档上限、免费档兼引导付费，见文末）。 **已实现 — 2026-09-16**（代码 + 配置 + 文案全部落地；两档默认值仍为 0 = 「计数开、拦截关」，具体数值等上线后的真实用量）。修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。**Decision 7a（L1 改服务端记 + 时区头）不在本次实现范围**，它属于 ADR-028 落地时的选型。 |
+| **状态** | **2026-11-24 Amended by [ADR-093](adr-093-paid-quota-tier-includes-topup-balance.md)**（Decision 1、5：订阅档改为付费档，`upgrade` 只发给订阅与充值余额都确认为无的免费用户）。**2026-10-15 部分被 [ADR-059](adr-059-lookup-event-log-and-get-post-split.md) 修订**（数据源、两档上限、免费档兼引导付费，见文末）。 **已实现 — 2026-09-16**（代码 + 配置 + 文案全部落地；两档默认值仍为 0 = 「计数开、拦截关」，具体数值等上线后的真实用量）。修订两份已 Accepted 的 ADR 的具体决策，并修正 `LAUNCH-CHECKLIST` §1.5 里一个**无法自洽的上线计划**（见 Context）。**Decision 7a（L1 改服务端记 + 时区头）不在本次实现范围**，它属于 ADR-028 落地时的选型。 |
 | **日期** | 2026-09-16 |
 | **关联 Spec** | [`docs/tasks/TASK-SPEC-enx-billing-stripe-subscription.md`](../tasks/TASK-SPEC-enx-billing-stripe-subscription.md) §1.4 / §4.2（配额表与拦截语义，本 ADR 改动其口径） |
 | **关联 ADR** | [`adr-009-billing-stripe-subscription-and-ai-credits.md`](adr-009-billing-stripe-subscription-and-ai-credits.md)（**修订其决策 6**「免费用户每日上限值待定；**订阅用户不限量**」→ 改为分档上限，订阅档高到正常用户碰不到，但**存在**）、[`adr-018-dictionary-lookup-single-metered-seam.md`](adr-018-dictionary-lookup-single-metered-seam.md)（**修订其决策 2「订阅用户跳过」、决策 8「`limit <= 0` 维持无限语义」**；其决策 5 的 fail-open 策略**保留但改写**：失败时用最高档而不是「跳过计量」，#18「付费用户不被 DB 抖动降级 429」的不变量继续成立）、[`adr-028-reading-stats-what-to-measure.md`](adr-028-reading-stats-what-to-measure.md)（本 ADR 让 `dictionary_lookup_quota` 第一次成为**全体用户**的每日查词计数器，028 Context 里「该表对订阅用户偏斜」的描述随之修订，L1 的数据来源可改为服务端，见 Decision 7）、[`adr-027-enx-ui-app-home-workbench-and-return-path.md`](adr-027-enx-ui-app-home-workbench-and-return-path.md)（剩余额度的显示方式随之改为**状态驱动**，见 Decision 8） |
@@ -317,5 +317,4 @@ dictionary-lookup-daily-subscribed = 0
 
 - 2026-11-19，issue #282：Decision 5 增加服务端升级信号，让 `/lookup` 只向已确认的免费用户显示升级入口，并沿用订阅档的支持提示。
 - 2026-11-20，issue #1082：按用户决定修订 ADR-079、ADR-080 的定价文案约定，免费档展示生效配置，避免部署覆盖后显示旧值；付费方案展示省略仅用于保护 API 的上限。
-- 2026-11-24：订阅档改为付费档，充值积分余额大于 0 的用户也适用，`upgrade` 只发给订阅与充值余额都确认为无的免费用户。详见 ADR-059 文末同日修订。
 - **Out of Scope「按 plan 细分四档」**：仍不做，付费档差异用 AI 积分体现（ADR-059 Decision 6）。

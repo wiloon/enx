@@ -1,5 +1,5 @@
 ---
-status: accepted；2026-11-11 Amended by adr-080（Decision 1、5、8：QUERY 里用户查过的词不扣每日查词配额）
+status: accepted；2026-11-11 Amended by adr-080（Decision 1、5、8：QUERY 里用户查过的词不扣每日查词配额）；2026-11-24 Amended by adr-093（Decision 5：两档改为免费档 / 付费档）
 date: 2026-11-10
 related: PR #810、实现 #815、adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029（每日查词配额）、adr-058（活跃用户）、adr-059（查词事件；GET 读释义、POST 记查词次数）、adr-060（请求限流）、adr-061（本地词典缓存）、http-query 实测（2026-09-29）
 ---
@@ -67,7 +67,7 @@ ADR-061 之后，点过的词再点会立刻显示释义。但本地词典缓存
 - **扣 n**（QUERY 扣请求里的词数，POST 扣 1）：在一条语句里做「`used + n` 不超过上限就加上」，加上了就放行；加不上就把 `rejected` 加 n、返回 429（`lookup_quota_exceeded`，响应体见 ADR-029 Decision 5）。整批要么全扣，要么全拒，不做部分放行。
   - 好处：余量不够一批预取时，预取被拒，单个词的点击查词仍能通过；预取天然先于点击被挡住。
 - `rejected` 保留 ADR-029 C2 想要的信号（「有多少人撞墙、撞得多狠」），但不再让它进 `used`，也不再为被拒的请求写查词事件。
-- 上限仍按订阅档位分两档，仍由 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed` 配置，启动时必须大于 0（ADR-059）。
+- 上限仍按订阅档位分两档（2026-11-24 起改为免费档 / 付费档，见 [adr-093](adr-093-paid-quota-tier-includes-topup-balance.md)），仍由 `stripe.quota.dictionary-lookup-daily-free` / `-subscribed` 配置，启动时必须大于 0（ADR-059）。
 - 计数失败照旧放行（ADR-029）：读写计数表出错只记 warning，放行这次请求。
 - 用现有 `stats.lookup-events.retention-days`（31–100 天）保留每日用量行，每小时清理超过该窗口的行；不建汇总表。
 - 这张表带 `user_id`，注销账号时要一并删除（加进 `repo/account.go` 的 `personalTables`，ADR-062）。
