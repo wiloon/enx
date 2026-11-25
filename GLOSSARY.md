@@ -128,8 +128,8 @@ _Avoid_: 收藏句子（「收藏」指收藏页面，见下文）、星标、�
 选中 2–5 个词、无句末标点的选区，走 AI 的「在上下文中解释这个短语」，而非词典查询（词典无短语条目）。见 adr-008。
 _Avoid_: 词组翻译、idiom lookup
 
-**整句+词义合并调用（sentence-with-word）**：
-从查词浮层打开 Side Panel 时，用**一次** AI 调用（`POST /api/translate/sentence-with-word`，结构化返回 `{sentence, word}`）同时拿到整句译文和「刚点的那个词在这句里的含义」，并在侧边栏原文里高亮该词的所有同形词。模型漏返回 `word` 时优雅降级为再单独查一次。见 adr-014。
+**整句+词义合并调用（sentence-with-words）**：
+翻译或重试一张**吸收**了单词卡的句子卡时，用**一次** AI 调用（`POST /api/translate/sentence-with-words`）同时拿到整句译文和每个被吸收的词「在这句里的含义」。某个词的释义为空时，只对那个词单独再查一次词义。见 adr-023 Decision 9（思路源自 adr-014；adr-014 的单词版 `sentence-with-word` 已于 #1135 删除）。
 _Avoid_: 合并翻译、combined translate
 
 **AI 翻译按 token 计费**：
