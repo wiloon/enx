@@ -8,7 +8,6 @@ const fixtures = [
     sentence: '[fake] 这只猫在读书。',
     words: listedWords(userContent).map(word => ({ word, chinese: `[fake] ${word}义`, why: '' })),
   })],
-  ['sentence-word', '"sentence"', { sentence: '[fake] 这只猫在读书。', word: '猫' }],
   ['word-context', '"why"', { word: '猫', why: '' }],
   // Words starting with "zlq" come back below ai-word.min-quality, so an e2e
   // word can become an AI candidate definition (ADR-091).
