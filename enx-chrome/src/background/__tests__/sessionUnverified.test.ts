@@ -230,8 +230,12 @@ describe('the flag through every message handler', () => {
     ['markKnown', { type: 'markKnown', word: 'fox' }],
     ['translateSentence', { type: 'translateSentence', sentence: 'A fox.' }],
     [
-      'translateSentenceWithWord',
-      { type: 'translateSentenceWithWord', sentence: 'A fox.', word: 'fox' },
+      'translateSentenceWithWords',
+      {
+        type: 'translateSentenceWithWords',
+        sentence: 'A fox.',
+        sentenceWords: [{ word: 'fox', dictionaryChinese: '' }],
+      },
     ],
     [
       'translateWordInContext',

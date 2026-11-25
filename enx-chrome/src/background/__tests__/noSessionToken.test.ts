@@ -399,8 +399,12 @@ describe('the session-loss flag through every message handler', () => {
     ['getReviewWords', { type: 'getReviewWords' }],
     ['translateSentence', { type: 'translateSentence', sentence: 'A fox.' }],
     [
-      'translateSentenceWithWord',
-      { type: 'translateSentenceWithWord', sentence: 'A fox.', word: 'fox' },
+      'translateSentenceWithWords',
+      {
+        type: 'translateSentenceWithWords',
+        sentence: 'A fox.',
+        sentenceWords: [{ word: 'fox', dictionaryChinese: '' }],
+      },
     ],
     [
       'translateWordInContext',

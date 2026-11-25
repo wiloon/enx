@@ -561,7 +561,7 @@ export async function mockBackendFetch(
         // are counted, so shared-history specs can assert one paid call.
         if (
           init?.method === 'POST' &&
-          (url.includes('/api/translate/sentence-with-word') ||
+          (url.includes('/api/translate/sentence-with-words') ||
             url.includes('/api/translate/word-in-context') ||
             url.includes('/api/translate/sentence'))
         ) {
@@ -589,15 +589,6 @@ export async function mockBackendFetch(
                   why: '',
                 })),
               }),
-              {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-              }
-            )
-          }
-          if (url.includes('/api/translate/sentence-with-word')) {
-            return new Response(
-              JSON.stringify({ chinese: '译文', wordChinese: '词义' }),
               {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' },
