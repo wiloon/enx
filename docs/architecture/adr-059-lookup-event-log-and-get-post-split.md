@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted；2026-11-24 Amended by adr-093（Decision 6：高档改为付费档，含充值积分余额大于 0 的用户）
 date: 2026-10-15
 related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-028（阅读统计 `daily_stats`，Options B1 否决过事件表、Decision 10 不存时间戳）、adr-029（配额 UTC 日、计数与拦截分离、Decision 6 两表口径分裂）、adr-058（活跃用户复用配额表并长期保留）、issue #136（查词不幂等）、#133（可选重试，PR #184）、#146（活跃用户实现）、#185（令牌桶限流）、#187（复习档位）、Linear WIL-176（调整免费配额）
 ---
@@ -113,6 +113,8 @@ CREATE INDEX idx_lookup_events_at      ON lookup_events (at);
 - `quota.IncrementLookup`、`stats.AddLookup` 删除；`translate` 两个 handler 和 `ai-word` 不再调 `RecordWordLookup`。
 
 ### 6. 每日配额的两种作用与两档数值
+
+> 2026-11-24 由 [adr-093](adr-093-paid-quota-tier-includes-topup-balance.md) 修订：下表的「订阅」档改为付费档（有生效中的订阅，或充值积分余额大于 0）。
 
 令牌桶（#185）管**速度**（每秒几次），每日配额管**总量**（一天几次）。只有令牌桶，一个每秒 5 次的脚本跑满一天也能打 43 万次；两层一起用才是常见做法。在这个分工下，同一个每日配额对两档用户的作用不同：
 
