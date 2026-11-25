@@ -19,9 +19,6 @@ func (translatorOnly) TranslateSentence(ctx context.Context, s string) (string, 
 func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w, dictionaryChinese string) (wordcontext.Result, Usage, error) {
 	return wordcontext.Result{}, Usage{}, nil
 }
-func (translatorOnly) TranslateSentenceWithWord(ctx context.Context, s, w string) (sentenceword.Result, Usage, error) {
-	return sentenceword.Result{}, Usage{}, nil
-}
 func (translatorOnly) TranslateSentenceWithWords(ctx context.Context, s string, w []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
 	return sentenceword.WordsResult{}, Usage{}, nil
 }

@@ -9,21 +9,14 @@ import (
 	"enx-api/aitranslate/aiusage"
 )
 
-// The two JSON features retry a reply that does not parse once, never a
-// failed request, and bill the tokens of every attempt made.
+// The JSON features retry a reply that does not parse once, never a failed
+// request, and bill the tokens of every attempt made. The multi-word sentence
+// call is deliberately not retried (see sentencewords_test.go).
 var retryingFeatures = []struct {
 	name string
 	good string // reply content that parses
 	call func(m *MiniMax) (aiusage.Usage, error)
 }{
-	{
-		name: "sentence with word",
-		good: `{\"sentence\":\"我在银行存了现金。\",\"word\":\"银行\"}`,
-		call: func(m *MiniMax) (aiusage.Usage, error) {
-			_, u, err := m.TranslateSentenceWithWord(context.Background(), "I deposited cash at the bank.", "bank")
-			return u, err
-		},
-	},
 	{
 		name: "word in context",
 		good: `{\"word\":\"银行\"}`,

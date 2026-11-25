@@ -42,10 +42,6 @@ func (f stubTranslator) TranslateSentenceWithWords(context.Context, string, []se
 	}, f.usage, f.err
 }
 
-func (f stubTranslator) TranslateSentenceWithWord(context.Context, string, string) (sentenceword.Result, Usage, error) {
-	return sentenceword.Result{WordChinese: "跑"}, f.usage, f.err
-}
-
 type stubRephraser struct {
 	res rephrase.Result
 	err error
@@ -66,9 +62,6 @@ func TestInstrumentRecordsEveryTranslatorCall(t *testing.T) {
 	if res, _, _ := tr.TranslateWordInContext(ctx, "s", "w", ""); res.WordChinese != "跑" {
 		t.Fatalf("TranslateWordInContext passthrough: %+v", res)
 	}
-	if res, _, _ := tr.TranslateSentenceWithWord(ctx, "s", "w"); res.WordChinese != "跑" {
-		t.Fatalf("TranslateSentenceWithWord passthrough: %+v", res)
-	}
 	res, usage, err := tr.TranslateSentenceWithWords(ctx, "s", []sentenceword.WordInput{{Word: "run"}})
 	wantGlosses := []sentenceword.WordGloss{{Word: "run", Chinese: "跑"}}
 	if err != nil || res.SentenceChinese != "句" || !slices.Equal(res.Words, wantGlosses) ||
@@ -79,7 +72,6 @@ func TestInstrumentRecordsEveryTranslatorCall(t *testing.T) {
 	want := []observed{
 		{"bedrock", "translate_sentence", nil, 100, 20},
 		{"bedrock", "word_in_context", nil, 100, 20},
-		{"bedrock", "sentence_with_word", nil, 100, 20},
 		{"bedrock", "sentence_with_words", nil, 100, 20},
 	}
 	if len(obs.calls) != len(want) {

@@ -33,17 +33,9 @@ type Translator interface {
 	// case Result.Why will always come back empty too.
 	TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error)
 
-	// TranslateSentenceWithWord does both of the above in ONE LLM call
-	// (ADR-014): the whole-sentence translation plus `word`'s meaning in
-	// that sentence's context, used when the Side Panel is opened from a
-	// word click. Result.WordChinese may be empty if the model omitted it --
-	// the caller falls back to a separate word-in-context call rather than
-	// failing.
-	TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, Usage, error)
-
-	// TranslateSentenceWithWords is the multi-word form (ADR-023 Decision 9):
-	// the sentence translation plus one in-context gloss per word, in ONE LLM
-	// call. words is already deduplicated; each gloss may be empty, and the
+	// TranslateSentenceWithWords does both of the above in ONE LLM call
+	// (ADR-023 Decision 9, extending ADR-014): the sentence translation plus
+	// one in-context gloss per word the Side Panel's sentence card absorbed. words is already deduplicated; each gloss may be empty, and the
 	// caller then falls back to an individual word-in-context call.
 	TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error)
 }

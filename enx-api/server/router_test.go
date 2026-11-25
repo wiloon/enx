@@ -30,7 +30,6 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"POST /dictionary/entries/query",
 		"POST /translate/sentence",
 		"POST /translate/word-in-context",
-		"POST /translate/sentence-with-word",
 		"POST /translate/sentence-with-words",
 		"POST /rephrase",
 		"PUT /me/words/:english/known",
@@ -49,16 +48,34 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 }
 
 // Routes with no remaining caller are gone: DELETE /api/word/:word moved to
-// the admin group, /api/wrap had no client at all, and the toggle POST
-// /api/mark gave way to PUT/DELETE /api/me/words/:english/known (#133).
+// the admin group, /api/wrap had no client at all, the toggle POST
+// /api/mark gave way to PUT/DELETE /api/me/words/:english/known (#133), and
+// the single-word POST /api/translate/sentence-with-word gave way to
+// /api/translate/sentence-with-words (ADR-023 Decision 9, #1135).
 func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
 		switch r.Method + " " + r.Path {
-		case "DELETE /api/word/:word", "GET /api/wrap", "POST /api/mark":
+		case "DELETE /api/word/:word", "GET /api/wrap", "POST /api/mark",
+			"POST /api/translate/sentence-with-word":
 			t.Errorf("%s %s is still registered", r.Method, r.Path)
 		}
+	}
+}
+
+// No extension build ever shipped a call to the single-word endpoint, so a
+// request to it is a plain 404 rather than a translation (#1135).
+func TestSentenceWithWordReturns404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`{"sentence":"A fox.","word":"fox"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/translate/sentence-with-word", body)
+	req.Header.Set("Content-Type", "application/json")
+	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("POST /api/translate/sentence-with-word = %d %s, want 404", w.Code, w.Body.String())
 	}
 }
 

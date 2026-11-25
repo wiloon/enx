@@ -16,7 +16,7 @@ import (
 func TestEveryPromptThatWritesChineseRequiresSimplifiedChinese(t *testing.T) {
 	prompts := map[string]string{
 		"sentence":     sentence.SystemPrompt,
-		"sentenceword": sentenceword.SystemPrompt,
+		"sentenceword": sentenceword.WordsSystemPrompt,
 		"wordcontext":  wordcontext.SystemPrompt,
 		"worddef":      worddef.SystemPrompt,
 		"rephrase":     rephrase.SystemPrompt,

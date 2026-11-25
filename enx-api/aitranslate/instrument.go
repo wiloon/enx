@@ -45,13 +45,6 @@ func (i *instrumentedTranslator) TranslateWordInContext(ctx context.Context, sen
 	return res, u, err
 }
 
-func (i *instrumentedTranslator) TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, Usage, error) {
-	start := time.Now()
-	res, u, err := i.next.TranslateSentenceWithWord(ctx, sentence, word)
-	i.observe("sentence_with_word", start, u, err)
-	return res, u, err
-}
-
 func (i *instrumentedTranslator) TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
 	start := time.Now()
 	res, u, err := i.next.TranslateSentenceWithWords(ctx, sentence, words)

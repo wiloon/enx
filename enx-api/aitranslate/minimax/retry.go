@@ -10,7 +10,7 @@ import (
 
 // parseMaxAttempts bounds retries of a malformed reply. MiniMax's
 // "thinking" models occasionally write almost-JSON (e.g. a dropped comma
-// followed by a stray remark, see sentenceword.ParseResult's fallback) --
+// followed by a stray remark, see wordcontext.ParseResult's fallback) --
 // that's usually a one-off, so asking again is worth one retry. It is NOT
 // retried on a transport/API error from m.chat (auth, rate limit, timeout,
 // ...): those aren't fixed by asking again and each attempt costs real

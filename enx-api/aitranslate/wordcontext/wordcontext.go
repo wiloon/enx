@@ -66,8 +66,11 @@ type wireResult struct {
 
 // wordFieldPattern and whyFieldPattern pull a "word" or "why" field's
 // quoted value out of a reply directly, without requiring the surrounding
-// text to be a well-formed JSON object -- see fieldFallback below, and
-// sentenceword's identical rationale for this fallback.
+// text to be a well-formed JSON object. Chatty models sometimes drop the
+// comma between fields and insert a stray remark instead (e.g.
+// `"word": "..." Additional note here, "why": "..."`), which breaks strict
+// JSON parsing even though each field's own value is intact -- see
+// fieldFallback below.
 var (
 	wordFieldPattern = regexp.MustCompile(`"word"\s*:\s*"((?:[^"\\]|\\.)*)"`)
 	whyFieldPattern  = regexp.MustCompile(`"why"\s*:\s*"((?:[^"\\]|\\.)*)"`)
@@ -87,8 +90,9 @@ func BuildUserContent(sentence, word, dictionaryChinese string) string {
 
 // ParseResult turns a provider's raw reply into a Result. The word gloss is
 // required; a missing or empty why is fine (Result.Why). Extraction starts
-// from the same lenient "first brace to last brace" span as sentenceword,
-// falling back to fieldFallback when that span isn't valid JSON.
+// from a lenient "first brace to last brace" span, since small models don't
+// reliably return a bare object even when told to, falling back to
+// fieldFallback when that span isn't valid JSON.
 func ParseResult(raw string) (Result, error) {
 	start := strings.IndexByte(raw, '{')
 	end := strings.LastIndexByte(raw, '}')

@@ -67,8 +67,8 @@ func TestParseResultInvalidJSON(t *testing.T) {
 	}
 }
 
-// Mirrors sentenceword's fallback recovery for a dropped comma between
-// fields, since both packages share the same lenient parsing rationale.
+// A chatty model can drop the comma between fields and add a stray remark;
+// each field's own value is still intact, so both are recovered.
 func TestParseResultRecoversFromMissingCommaBetweenFields(t *testing.T) {
 	raw := `{"word": "自主的" Additional thoughts here, "why": "习语用法"}`
 	res, err := ParseResult(raw)
