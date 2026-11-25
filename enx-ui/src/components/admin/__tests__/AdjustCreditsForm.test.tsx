@@ -85,6 +85,38 @@ it('does not send a form without a reason', () => {
   expect(mockAdjust).not.toHaveBeenCalled()
 })
 
+// #1098: one grant is capped at 10,000 credits; deductions are not.
+it('shows the per-grant limit next to the amount', () => {
+  renderForm()
+  expect(screen.getByLabelText('Credits')).toHaveAccessibleDescription(
+    'Up to 10,000 per grant.'
+  )
+})
+
+it('does not send a grant above 10,000 credits', () => {
+  renderForm()
+
+  fill('10001', 'comp')
+  fireEvent.click(screen.getByRole('button', { name: 'Grant credits' }))
+
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'A single grant may be at most 10,000 credits.'
+  )
+  expect(mockAdjust).not.toHaveBeenCalled()
+})
+
+it('still lets a deduction above 10,000 credits reach the confirmation', () => {
+  renderForm(95000000)
+
+  fill('95000000', 'undo a mistaken grant')
+  fireEvent.click(screen.getByRole('button', { name: 'Deduct credits' }))
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(
+    screen.getByText('Deduct 95000000 credits from reader@example.com?')
+  ).toBeInTheDocument()
+})
+
 // ADR-049 Decision 3: a deduction asks first, and warns when it would push
 // the top-up pool below zero.
 it('asks before deducting, warning that the top-up balance goes negative', async () => {

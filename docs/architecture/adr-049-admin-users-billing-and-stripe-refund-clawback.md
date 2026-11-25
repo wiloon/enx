@@ -45,7 +45,7 @@ related: adr-009（两池积分账本、Stripe webhook）、adr-021（管理员�
    - `stripe_payment_intent_id`：Stripe 付款发放（`GRANT_TOPUP`、`GRANT_SUBSCRIPTION`）时记下对应的 payment intent；其他行为空。加普通索引。
    - `related_transaction_id`：扣回行指向它扣回的那条发放行。
    - `note`：自由文本。管理员赠送和扣减存 `reason`，扣回行存被退款的 charge id 和累计退款额（如 `Stripe charge ch_…, 150 of 499 refunded`）：`charge.refunded` 默认不带 refund 对象，charge id 足以在 Stripe Dashboard 里找到这次退款。
-2. 新增流水类型 **`GRANT_ADMIN`**：管理员赠送改为 `credit.GrantAdmin(ctx, userID, amount, note)`。积分进**充值池**（和现在一样，永不过期），只是类型不同、`note` 存原因。`POST /api/admin/credits/grant` 的 `reason` 改为必填。
+2. 新增流水类型 **`GRANT_ADMIN`**：管理员赠送改为 `credit.GrantAdmin(ctx, userID, amount, note)`。积分进**充值池**（和现在一样，永不过期），只是类型不同、`note` 存原因。`POST /api/admin/credits/grant` 的 `reason` 改为必填。单次赠送最多 **10,000** 积分（`credit.MaxAdminGrantAmount`，2026-11-22 定，#1098）：超过的多半是手误，真要多送就分几次；超限返回 400，不写流水。扣减不设上限，以便纠正送错的大额积分。
 3. 新增流水类型 **`DEDUCT_ADMIN`**：管理员扣减，`credit.DeductAdmin(ctx, userID, amount, note)`。传入正数，流水 `Amount` 记负数（与 `SETTLE`、`CLAWBACK` 的符号约定一致）；从**充值池**扣，可以扣成负数（与 `Settle` 一致）；`amount ≤ 0` 或 `note` 为空时报错。用途：纠正送错的积分、冷静期后退款时手动扣回邀请奖励（adr-051 第 6 条），以及第 8 条不自动处理的争议。
 4. **不迁移历史数据**：截至 2026-10-16 没有真实付费，生产库已重置过，没有需要从 `GRANT_TOPUP` 改成 `GRANT_ADMIN` 的旧行。
 

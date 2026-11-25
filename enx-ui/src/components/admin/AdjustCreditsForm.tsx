@@ -5,11 +5,14 @@ import { useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { deductWarning, parseAdjustment } from '@/lib/adminUsers'
+import {
+  type AdjustDirection as Direction,
+  GRANT_LIMIT_HINT,
+  deductWarning,
+  parseAdjustment,
+} from '@/lib/adminUsers'
 import { apiService } from '@/services/api'
 import { unwrap } from '@/lib/apiResult'
-
-type Direction = 'grant' | 'deduct'
 
 // Admin grant and deduction for one user (ADR-049 Decisions 2-3). Both go
 // through the top-up pool and keep the reason on the ledger row. A deduction
@@ -61,7 +64,7 @@ export default function AdjustCreditsForm({
 
   const submit = (direction: Direction) => {
     setDone(null)
-    const parsed = parseAdjustment(amount, reason)
+    const parsed = parseAdjustment(direction, amount, reason)
     if (!parsed.ok) {
       setError(parsed.error)
       return
@@ -94,10 +97,14 @@ export default function AdjustCreditsForm({
             inputMode="numeric"
             min={1}
             step={1}
+            aria-describedby="adjust-amount-hint"
             value={amount}
             disabled={confirming !== null}
             onChange={(e) => setAmount(e.target.value)}
           />
+          <p id="adjust-amount-hint" className="text-xs text-muted-foreground">
+            {GRANT_LIMIT_HINT}
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="adjust-reason">Reason</Label>

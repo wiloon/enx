@@ -32,7 +32,7 @@ describe('deductWarning', () => {
 
 describe('parseAdjustment', () => {
   it('accepts a positive whole amount and a reason, trimming the reason', () => {
-    expect(parseAdjustment('25', '  support comp ')).toEqual({
+    expect(parseAdjustment('grant', '25', '  support comp ')).toEqual({
       ok: true,
       amount: 25,
       reason: 'support comp',
@@ -42,7 +42,7 @@ describe('parseAdjustment', () => {
   it.each(['', '0', '-5', '2.5', 'abc', '1e3'])(
     'rejects %p as an amount',
     (amount) => {
-      expect(parseAdjustment(amount, 'comp')).toEqual({
+      expect(parseAdjustment('grant', amount, 'comp')).toEqual({
         ok: false,
         error: 'Enter a whole number of credits above zero.',
       })
@@ -50,9 +50,34 @@ describe('parseAdjustment', () => {
   )
 
   it('rejects a blank reason', () => {
-    expect(parseAdjustment('10', '   ')).toEqual({
+    expect(parseAdjustment('grant', '10', '   ')).toEqual({
       ok: false,
       error: 'A reason is required.',
+    })
+  })
+
+  // #1098: one grant may be at most 10,000 credits; deductions are not
+  // capped, so a mistaken large grant can still be undone.
+  it('accepts a grant of exactly 10,000 credits', () => {
+    expect(parseAdjustment('grant', '10000', 'comp')).toEqual({
+      ok: true,
+      amount: 10000,
+      reason: 'comp',
+    })
+  })
+
+  it('rejects a grant above 10,000 credits', () => {
+    expect(parseAdjustment('grant', '10001', 'comp')).toEqual({
+      ok: false,
+      error: 'A single grant may be at most 10,000 credits.',
+    })
+  })
+
+  it('accepts a deduction above 10,000 credits', () => {
+    expect(parseAdjustment('deduct', '95000000', 'undo a typo')).toEqual({
+      ok: true,
+      amount: 95000000,
+      reason: 'undo a typo',
     })
   })
 })

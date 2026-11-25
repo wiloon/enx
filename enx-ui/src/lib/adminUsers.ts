@@ -4,12 +4,32 @@
 export type Adjustment =
   { ok: true; amount: number; reason: string } | { ok: false; error: string }
 
-// Reads the grant / deduct form: a positive whole number of credits and a
-// reason, which the ledger keeps as the note (enx-api rejects a blank one).
-export function parseAdjustment(amount: string, reason: string): Adjustment {
+export type AdjustDirection = 'grant' | 'deduct'
+
+// One admin grant may be at most this many credits (#1098); enx-api's
+// credit.MaxAdminGrantAmount is the source of truth. Deductions are not
+// capped, so a mistaken large grant can still be undone.
+export const MAX_ADMIN_GRANT_AMOUNT = 10_000
+
+export const GRANT_LIMIT_HINT = `Up to ${MAX_ADMIN_GRANT_AMOUNT.toLocaleString('en-US')} per grant.`
+
+// Reads the grant / deduct form: a positive whole number of credits (at
+// most MAX_ADMIN_GRANT_AMOUNT for a grant) and a reason, which the ledger
+// keeps as the note (enx-api rejects a blank one).
+export function parseAdjustment(
+  direction: AdjustDirection,
+  amount: string,
+  reason: string
+): Adjustment {
   const trimmed = amount.trim()
   if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) {
     return { ok: false, error: 'Enter a whole number of credits above zero.' }
+  }
+  if (direction === 'grant' && Number(trimmed) > MAX_ADMIN_GRANT_AMOUNT) {
+    return {
+      ok: false,
+      error: `A single grant may be at most ${MAX_ADMIN_GRANT_AMOUNT.toLocaleString('en-US')} credits.`,
+    }
   }
   if (reason.trim() === '') {
     return { ok: false, error: 'A reason is required.' }
