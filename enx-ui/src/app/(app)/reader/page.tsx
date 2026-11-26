@@ -278,7 +278,7 @@ export default function ReaderPage() {
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8">
       <PageHeader
         title="Reader"
-        description="For English text you can't look up where it is: an AI chat reply, a PDF, or a site where the extension doesn't work well. Paste it here and read it with Catglish."
+        description="Paste any English text you can copy: an article, a news story, or paragraphs from a PDF, a Word or text file, or an e-book. It also works for web pages where the extension doesn't work well. Paste it below and read it with Catglish."
       />
 
       <ol className="grid gap-3 text-sm sm:grid-cols-3">
