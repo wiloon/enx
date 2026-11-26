@@ -170,6 +170,10 @@ it('shows the Admin group for an admin', () => {
   expect(
     screen.getByRole('link', { name: 'AI definitions' })
   ).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Funnel' })).toHaveAttribute(
+    'href',
+    '/admin/funnel'
+  )
 })
 
 it('marks the product as Beta and links to GitHub', () => {

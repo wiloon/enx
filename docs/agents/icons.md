@@ -48,7 +48,7 @@ Before placing an icon, find its concept below and use that row's icon. A concep
 | Explanation | `InformationCircleIcon` | `Info` | Reading Stats footnote |
 | Open the navigation drawer | — | `Menu` | top bar on mobile; site header menu below `lg` |
 | GitHub repository | — | `GitHubIcon` (custom; lucide has no brand icons) | site header, beside Sign in |
-| Admin: dictionary / AI definitions / feedback / users | — | `Wrench` / `ClipboardCheck` / `MessageSquare` / `Users` | admin nav |
+| Admin: dictionary / AI definitions / feedback / users / funnel | — | `Wrench` / `ClipboardCheck` / `MessageSquare` / `Users` / `Filter` | admin nav |
 
 ## Style
 

@@ -272,6 +272,25 @@ export interface AdminUsersPage {
   total: number
 }
 
+// GET /api/admin/funnel: counts per weekly sign-up cohort. A windowed step is
+// null until the week is old enough to measure it.
+export interface AdminFunnelCohort {
+  weekStart: string
+  signedUp: number
+  firstLookup: number
+  threeLookupDays: number | null
+  week2: number | null
+  week4: number | null
+  firstAiCall: number
+  trialEnded: number
+  firstPayment: number
+}
+
+export interface AdminFunnelPage {
+  // Newest first.
+  cohorts: AdminFunnelCohort[]
+}
+
 // GET /api/admin/users/:id
 export interface AdminUserDetail {
   user: AdminUserSummary & {
