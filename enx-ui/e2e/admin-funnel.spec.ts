@@ -62,9 +62,11 @@ for (const theme of ['light', 'dark'] as const) {
     }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/admin/funnel')
+      // The app shell shows "Loading..." until clerk-js, fetched from the
+      // network on every load, is ready; that alone can pass the 5s default.
       await expect(
         page.getByRole('rowheader', { name: '2026-11-23' })
-      ).toBeVisible()
+      ).toBeVisible({ timeout: 15_000 })
       await page.evaluate(
         (dark) => document.documentElement.classList.toggle('dark', dark),
         theme === 'dark'
