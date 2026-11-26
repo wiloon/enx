@@ -7,16 +7,19 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/aitranslate/sentence"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // tokenTestPricing: cost = ceil((prompt*1 + completion*3) / 3000), floored at 1.
@@ -136,6 +139,41 @@ func TestHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "unusable reply")
+}
+
+// A blank translation is a failed call (#1155): never a 200 with an empty
+// chinese, billed only if the model reported usage.
+func TestHandlerEmptyTranslationIsAFailedCall(t *testing.T) {
+	cases := []struct {
+		name    string
+		chinese string
+		usage   Usage
+		assert  func(*testing.T, *httptest.ResponseRecorder, []settleCall, *observer.ObservedLogs, string, string)
+	}{
+		{"empty with usage", "", usageCosting2, assertBilledOnFailure},
+		{"whitespace with usage", "  \n", usageCosting2, assertBilledOnFailure},
+		{"empty without usage", "", Usage{}, assertUnbilledFailure},
+		{"whitespace without usage", "  \n", Usage{}, assertUnbilledFailure},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := observeLogs(t)
+			tr := &fakeTranslator{chinese: tc.chinese, usage: tc.usage}
+			ledger := &fakeTokenLedger{balance: 100}
+			w := doPost(t, NewHandler(tr, ledger, tokenTestPricing), `{"sentence":"Hello world"}`)
+
+			tc.assert(t, w, ledger.settleCalls, logs, "translate_sentence", sentence.ErrEmptyTranslation.Error())
+
+			var got map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatalf("response is not JSON: %v: %s", err, w.Body)
+			}
+			want := map[string]any{"success": false, "code": "ai_upstream_failed", "message": "The AI service is having trouble right now. Please try again."}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("body = %s, want %v", w.Body, want)
+			}
+		})
+	}
 }
 
 // Either token count alone is nonzero usage (ADR-094).
