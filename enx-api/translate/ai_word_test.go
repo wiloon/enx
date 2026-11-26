@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -111,7 +112,7 @@ func TestAIWordWithoutARowHasNoReviewState(t *testing.T) {
 }
 
 func TestAIWordWhenThereIsNoDefinition(t *testing.T) {
-	for _, source := range []dictionary.Source{dictionary.SourceAIMiss, dictionary.SourceTimeout, dictionary.SourceError, dictionary.SourceMiss} {
+	for _, source := range []dictionary.Source{dictionary.SourceAIMiss, dictionary.SourceMiss} {
 		ai := &fakeAI{res: dictionary.Result{English: "asdfgh", Source: source}}
 		h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
 
@@ -138,8 +139,6 @@ func TestAIWordErrorMapping(t *testing.T) {
 		{"trial daily limit", dictionary.ErrTrialLimitedPerDay, http.StatusTooManyRequests, "trial_limit_day"},
 		{"trial per-minute limit", dictionary.ErrTrialLimitedPerMinute, http.StatusTooManyRequests, "trial_limit_minute"},
 		{"not available", dictionary.ErrAIUnavailable, http.StatusServiceUnavailable, "ai_unavailable"},
-		{"model failed", dictionary.ErrAIFailed, http.StatusBadGateway, "ai_failed"},
-		{"anything else", errors.New("secret database detail"), http.StatusBadGateway, "ai_failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
@@ -152,8 +151,35 @@ func TestAIWordErrorMapping(t *testing.T) {
 			if got := decode(t, w)["code"]; got != tc.wantCode {
 				t.Fatalf("code = %v, want %s", got, tc.wantCode)
 			}
-			if strings.Contains(w.Body.String(), "secret database detail") {
-				t.Fatal("an underlying error leaked to the client")
+		})
+	}
+}
+
+// A 502 says which side failed (#1153): ENX before the model was called, or
+// the upstream AI service. The whole body is pinned, copy included.
+func TestAIWordFailureSaysWhichSideFailed(t *testing.T) {
+	internal := map[string]any{"success": false, "code": "internal_error", "message": "Something went wrong on our side. Please try again later."}
+	upstream := map[string]any{"success": false, "code": "ai_upstream_failed", "message": "The AI service is having trouble right now. Please try again."}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want map[string]any
+	}{
+		{"model failed", dictionary.ErrAIFailed, upstream},
+		{"unusable reply", dictionary.ErrInvalidAIReply, upstream},
+		{"ECDICT could not answer", dictionary.ErrDictionaryFailed, internal},
+		{"anything else", errors.New("secret database detail"), internal},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
+
+			w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+
+			if w.Code != http.StatusBadGateway {
+				t.Fatalf("status %d, want 502: %s", w.Code, w.Body)
+			}
+			if got := decode(t, w); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("body = %s, want %v", w.Body, tc.want)
 			}
 		})
 	}

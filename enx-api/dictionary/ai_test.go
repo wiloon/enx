@@ -207,11 +207,8 @@ func TestDefineWithAIUnusableReplyIsBilled(t *testing.T) {
 	env.definer.usage = AIUsage{PromptTokens: 150, CompletionTokens: 9}
 
 	res, err := env.define("rizzler")
-	if err != nil {
-		t.Fatalf("an unusable reply is a miss, not an error: %v", err)
-	}
-	if res != (Result{English: "rizzler", Source: SourceAIMiss}) {
-		t.Fatalf("got %+v, want an AI miss", res)
+	if !errors.Is(err, ErrInvalidAIReply) || res != (Result{}) {
+		t.Fatalf("got %+v, %v, want ErrInvalidAIReply", res, err)
 	}
 	if len(env.words.added) != 0 {
 		t.Fatalf("cached %v from an unusable reply", env.words.added)
@@ -276,8 +273,8 @@ func TestDefineWithAIUnusableReplyWithoutUsageIsNotBilled(t *testing.T) {
 	env.definer.usage = AIUsage{}
 
 	res, err := env.define("rizzler")
-	if err != nil || res != (Result{English: "rizzler", Source: SourceAIMiss}) {
-		t.Fatalf("got %+v, %v, want an AI miss", res, err)
+	if !errors.Is(err, ErrInvalidAIReply) || res != (Result{}) {
+		t.Fatalf("got %+v, %v, want ErrInvalidAIReply", res, err)
 	}
 	if len(env.billing.settled) != 0 || len(env.words.added) != 0 {
 		t.Fatalf("billed %v, cached %v, want neither", env.billing.settled, env.words.added)
@@ -297,7 +294,7 @@ func TestDefineWithAIReportsAFailedChargeForAFailedCall(t *testing.T) {
 		source  Source
 		outcome string
 	}{
-		{"unusable reply", ErrInvalidAIReply, nil, SourceAIMiss, "invalid_reply"},
+		{"unusable reply", ErrInvalidAIReply, ErrInvalidAIReply, "", "invalid_reply"},
 		{"failed call", errors.New("no choices"), ErrAIFailed, "", "failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -549,20 +546,22 @@ func TestDefineWithAIDoesNotPayForAKnownWord(t *testing.T) {
 
 func TestDefineWithAIDoesNotPaperOverADictionaryThatCouldNotAnswer(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		err    error
-		source Source
+		name string
+		err  error
 	}{
-		{"ECDICT timed out", ErrExternalTimeout, SourceTimeout},
-		{"ECDICT read failed", errors.New("read failed"), SourceError},
+		{"ECDICT timed out", ErrExternalTimeout},
+		{"ECDICT read failed", errors.New("read failed")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newAIEnv()
 			env.external.err = tc.err
 
 			res, err := env.define("rizzler")
-			if err != nil || res.Source != tc.source {
-				t.Fatalf("got %+v, %v, want source %s", res, err, tc.source)
+			if !errors.Is(err, ErrDictionaryFailed) || res != (Result{}) {
+				t.Fatalf("got %+v, %v, want ErrDictionaryFailed", res, err)
+			}
+			if len(env.billing.settled) != 0 {
+				t.Fatalf("billed %v for a call that was never made", env.billing.settled)
 			}
 			if len(env.definer.calls) != 0 {
 				t.Fatal("the AI must not stand in for a dictionary that could not answer")

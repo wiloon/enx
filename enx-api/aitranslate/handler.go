@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/aitranslate/aifailure"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
@@ -114,12 +115,12 @@ func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenP
 // as rephrase).
 func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context.Context) (Usage, error)) bool {
 	if h.translator == nil {
-		httpjson.Fail(c, http.StatusBadGateway, "sentence translation is not configured")
+		aifailure.Internal(c)
 		return false
 	}
 	if !h.pricing.Priced() {
 		logger.Errorf("aitranslate: %s is unpriced (%+v)", feature, h.pricing)
-		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
+		aifailure.Internal(c)
 		return false
 	}
 
@@ -128,7 +129,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	balance, err := h.ledger.Balance(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("aitranslate: %s balance check failed: %v", feature, err)
-		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
+		aifailure.Internal(c)
 		return false
 	}
 	if balance < 1 {
@@ -142,7 +143,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	usage, err := fn(c.Request.Context())
 	if err != nil {
 		settleFailedCall(c.Request.Context(), h.ledger, h.pricing, feature, userID, usage.PromptTokens, usage.CompletionTokens, err)
-		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
+		aifailure.Upstream(c)
 		return false
 	}
 
