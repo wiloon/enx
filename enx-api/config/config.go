@@ -47,9 +47,11 @@ type Config struct {
 	Credits   Credits   `mapstructure:"credits"`
 	RateLimit RateLimit `mapstructure:"rate-limit"`
 	Feedback  Feedback  `mapstructure:"feedback"`
-	Stats     Stats     `mapstructure:"stats"`
-	User      User      `mapstructure:"user"`
-	Ops       Ops       `mapstructure:"ops"`
+	// AnonymousLookup is click-to-lookup without an account (ADR-095).
+	AnonymousLookup AnonymousLookup `mapstructure:"anonymous-lookup"`
+	Stats           Stats           `mapstructure:"stats"`
+	User            User            `mapstructure:"user"`
+	Ops             Ops             `mapstructure:"ops"`
 
 	// File is the config file that was read, "" when none was.
 	File string `mapstructure:"-"`
@@ -501,6 +503,18 @@ type Feedback struct {
 	DailyLimit int `mapstructure:"daily-limit"`
 }
 
+// AnonymousLookup configures POST /api/anonymous/dictionary/entry (ADR-095
+// Decisions 5-6). Enabled false answers every request 403. The two limits
+// are served lookups per UTC day and must be positive. ClientIPHeader names
+// the request header carrying the client IP (production: CF-Connecting-IP);
+// empty means the connection's remote address.
+type AnonymousLookup struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	DeviceDailyLimit int64  `mapstructure:"device-daily-limit"`
+	IPDailyLimit     int64  `mapstructure:"ip-daily-limit"`
+	ClientIPHeader   string `mapstructure:"client-ip-header"`
+}
+
 type Credits struct {
 	Trial    Trial    `mapstructure:"trial"`
 	Referral Referral `mapstructure:"referral"`
@@ -863,6 +877,8 @@ func (c *Config) Validate() error {
 		positive("rate-limit.burst", rl.Burst > 0)
 	}
 	positive("feedback.daily-limit", c.Feedback.DailyLimit > 0)
+	positive("anonymous-lookup.device-daily-limit", c.AnonymousLookup.DeviceDailyLimit > 0)
+	positive("anonymous-lookup.ip-daily-limit", c.AnonymousLookup.IPDailyLimit > 0)
 
 	errs = append(errs, c.Clerk.validate()...)
 	errs = append(errs, c.EffectiveOIDC().validate()...)
@@ -981,6 +997,13 @@ func defaults() map[string]any {
 	// New user feedback records per user per UTC day, all kinds together
 	// (ADR-076 Decision 5): a guard against flooding, never hit in normal use.
 	set("feedback.daily-limit", 50)
+
+	// Anonymous lookup (ADR-095 Decision 5): on, with the starting daily
+	// limits per device and per IP, to be tuned from real use.
+	set("anonymous-lookup.enabled", true)
+	set("anonymous-lookup.device-daily-limit", 100)
+	set("anonymous-lookup.ip-daily-limit", 1000)
+	set("anonymous-lookup.client-ip-header", "")
 
 	// Reading statistics ingest guards (ADR-028 Decision 9). The word cap
 	// bounds a single session report; the TTL is how long a deduplication
@@ -1153,6 +1176,11 @@ var envBindings = map[string]string{
 	"rate-limit.burst":               "RATE_LIMIT_BURST",
 
 	"feedback.daily-limit": "FEEDBACK_DAILY_LIMIT",
+
+	"anonymous-lookup.enabled":            "ANONYMOUS_LOOKUP_ENABLED",
+	"anonymous-lookup.device-daily-limit": "ANONYMOUS_LOOKUP_DEVICE_DAILY_LIMIT",
+	"anonymous-lookup.ip-daily-limit":     "ANONYMOUS_LOOKUP_IP_DAILY_LIMIT",
+	"anonymous-lookup.client-ip-header":   "ANONYMOUS_LOOKUP_CLIENT_IP_HEADER",
 
 	"stats.ingest.max-words-per-report":  "STATS_INGEST_MAX_WORDS_PER_REPORT",
 	"stats.ingest.log-ttl-days":          "STATS_INGEST_LOG_TTL_DAYS",

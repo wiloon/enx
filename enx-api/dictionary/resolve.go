@@ -110,6 +110,10 @@ type Service struct {
 	aiRecorder AIWordRecorder
 }
 
+// NoUser is the userID of a lookup made without an account (ADR-095): it
+// sees only the definitions every user may see and asks no entitlement.
+const NoUser = ""
+
 func NewService(words WordStore, external ExternalDictionary, ent Entitlements) *Service {
 	return &Service{words: words, external: external, ent: ent}
 }
@@ -120,9 +124,10 @@ func NewService(words WordStore, external ExternalDictionary, ent Entitlements) 
 // use AI and, if so, look again for AI-made rows. A user who may not never
 // has such a row read at all, and an entitlement error counts as "may not":
 // the worst outcome is a paying user briefly not seeing an AI definition.
+// NoUser never gets past the first read (ADR-095 Decision 1).
 func (s *Service) findCached(ctx context.Context, english, userID string) (string, Entry, bool, error) {
 	id, entry, ok, err := s.words.Find(ctx, english, false)
-	if err != nil || ok {
+	if err != nil || ok || userID == NoUser {
 		return id, entry, ok, err
 	}
 	canUseAI, err := s.ent.CanUseAI(ctx, userID)

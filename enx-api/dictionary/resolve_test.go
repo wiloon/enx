@@ -388,3 +388,27 @@ func TestResolveTreatsAnEntitlementErrorAsNotEntitled(t *testing.T) {
 		t.Fatalf("got %+v, want the AI row hidden, as for a user who can't use AI", res)
 	}
 }
+
+// ADR-095 Decision 1: an anonymous lookup never sees an AI-made definition
+// no admin has edited, and asks no entitlement: there is no user to ask about.
+func TestResolveForNoUserHidesAIDefinitionWithoutAnEntitlementCheck(t *testing.T) {
+	ent := &fakeEntitlements{can: true}
+	svc, words, _ := newTestServiceFor(ent)
+	words.seed("w2", aiRow)
+
+	res, err := svc.Resolve(context.Background(), "rizzler", NoUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Source != SourceMiss || res.Chinese != "" {
+		t.Fatalf("got %+v, want a plain miss", res)
+	}
+	if ent.calls != 0 {
+		t.Fatalf("entitlement asked %d times, want 0 for no user", ent.calls)
+	}
+	for _, includeAI := range words.finds {
+		if includeAI {
+			t.Fatalf("Find calls = %v: no user must never trigger a read of AI rows", words.finds)
+		}
+	}
+}

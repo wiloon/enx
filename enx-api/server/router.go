@@ -437,6 +437,27 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	router.GET("/api/dictionary/free-daily-lookup-limit",
 		dictionaryhttp.FreeDailyLookupLimit(cfg.Stripe.Quota.DictionaryLookupDailyFree))
 
+	// Click-to-lookup without an account (ADR-095): not in apiGroup, there
+	// is no session. Dictionary definitions only, through the same Resolve
+	// for no user, behind a per-IP request rate (the ADR-060 rule, its own
+	// buckets), a per-IP and a per-device daily limit.
+	anonLookups := dictionary.NewAnonymousLookups(dictionaryService,
+		ratelimit.NewMemoryLimiter(ratelimit.Limits{
+			RequestsPerSecond: cfg.RateLimit.RequestsPerSecond,
+			Burst:             cfg.RateLimit.Burst,
+		}, nil),
+		dictionary.NewMemoryIPDailyCounter(), adapters.AnonymousDeviceUsage{},
+		dictionary.AnonymousLimits{
+			Enabled:     cfg.AnonymousLookup.Enabled,
+			DeviceDaily: cfg.AnonymousLookup.DeviceDailyLimit,
+			IPDaily:     cfg.AnonymousLookup.IPDailyLimit,
+		}, time.Now)
+	if m != nil {
+		anonLookups.WithObserver(m)
+	}
+	router.POST("/api/anonymous/dictionary/entry",
+		dictionaryhttp.NewAnonymousHandler(anonLookups, cfg.AnonymousLookup.ClientIPHeader).Entry)
+
 	// Site-wide user numbers for Grafana's Infinity datasource (ADR-058
 	// Decision 4). Not in apiGroup: Grafana has no Clerk session and presents
 	// the OPS_STATS_TOKEN bearer instead; without the token the handler

@@ -107,6 +107,12 @@ func TestLoadDefaults(t *testing.T) {
 		{"rate-limit.burst", cfg.RateLimit.Burst, 60},
 		// ADR-076 Decision 5: all feedback kinds together, per user per UTC day.
 		{"feedback.daily-limit", cfg.Feedback.DailyLimit, 50},
+		// ADR-095 Decision 5: starting values; the switch is on; an empty
+		// header means the connection's remote address.
+		{"anonymous-lookup.enabled", cfg.AnonymousLookup.Enabled, true},
+		{"anonymous-lookup.device-daily-limit", cfg.AnonymousLookup.DeviceDailyLimit, int64(100)},
+		{"anonymous-lookup.ip-daily-limit", cfg.AnonymousLookup.IPDailyLimit, int64(1000)},
+		{"anonymous-lookup.client-ip-header", cfg.AnonymousLookup.ClientIPHeader, ""},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -283,6 +289,10 @@ var envVars = map[string]string{
 	"RATE_LIMIT_REQUESTS_PER_SECOND":                  "rate-limit.requests-per-second",
 	"RATE_LIMIT_BURST":                                "rate-limit.burst",
 	"FEEDBACK_DAILY_LIMIT":                            "feedback.daily-limit",
+	"ANONYMOUS_LOOKUP_ENABLED":                        "anonymous-lookup.enabled",
+	"ANONYMOUS_LOOKUP_DEVICE_DAILY_LIMIT":             "anonymous-lookup.device-daily-limit",
+	"ANONYMOUS_LOOKUP_IP_DAILY_LIMIT":                 "anonymous-lookup.ip-daily-limit",
+	"ANONYMOUS_LOOKUP_CLIENT_IP_HEADER":               "anonymous-lookup.client-ip-header",
 	"OPS_STATS_TOKEN":                                 "ops.stats-token",
 }
 
@@ -302,6 +312,9 @@ func TestEnvVarsPopulateTheirFields(t *testing.T) {
 			switch key {
 			case "stats.lookup-events.retention-days":
 				value, want = "42", 42
+			case "anonymous-lookup.enabled":
+				// On by default, so the value no default has is false.
+				value, want = "false", false
 			case "clerk.issuer":
 				value = "https://from-clerk-issuer.clerk.accounts.dev"
 				want = value
@@ -560,6 +573,16 @@ func TestLoadRejects(t *testing.T) {
 			name:    "negative daily feedback limit",
 			env:     map[string]string{"FEEDBACK_DAILY_LIMIT": "-5"},
 			wantErr: "feedback.daily-limit must be positive",
+		},
+		{
+			name:    "zero anonymous device daily limit",
+			env:     map[string]string{"ANONYMOUS_LOOKUP_DEVICE_DAILY_LIMIT": "0"},
+			wantErr: "anonymous-lookup.device-daily-limit must be positive",
+		},
+		{
+			name:    "negative anonymous IP daily limit",
+			env:     map[string]string{"ANONYMOUS_LOOKUP_IP_DAILY_LIMIT": "-1"},
+			wantErr: "anonymous-lookup.ip-daily-limit must be positive",
 		},
 		{
 			name:    "AI word quality above 10",

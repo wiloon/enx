@@ -130,7 +130,13 @@ func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]En
 }
 
 func (e *Entries) resolve(ctx context.Context, word, userID string) EntryResult {
-	res, err := e.resolver.Resolve(ctx, word, userID)
+	return resolveEntry(ctx, e.resolver, word, userID)
+}
+
+// resolveEntry resolves one normalized word into its batch status: found,
+// not found, or failed (never passed off as not found).
+func resolveEntry(ctx context.Context, resolver Resolver, word, userID string) EntryResult {
+	res, err := resolver.Resolve(ctx, word, userID)
 	switch {
 	case errors.Is(err, ErrEcdictUnavailable):
 		return EntryResult{Word: word, Status: EntryFailed}

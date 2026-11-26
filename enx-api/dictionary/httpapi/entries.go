@@ -101,18 +101,23 @@ func (h *Handler) Entries(c *gin.Context) {
 
 	body := make([]entryJSON, len(results))
 	for i, r := range results {
-		body[i] = entryJSON{Word: r.Word, Status: r.Status, AIFallback: r.AIFallback}
-		if r.Status == dictionary.EntryFound {
-			body[i].definitionJSON = &definitionJSON{
-				Id:            r.Result.ID,
-				English:       r.Result.English,
-				Pronunciation: r.Result.Pronunciation,
-				Chinese:       r.Result.Chinese,
-				Origin:        r.Result.Origin,
-				Source:        r.Result.Source,
-			}
-		}
+		body[i] = toEntryJSON(r)
 	}
 	c.Header("Accept-Query", "application/json")
 	c.JSON(http.StatusOK, body)
+}
+
+func toEntryJSON(r dictionary.EntryResult) entryJSON {
+	body := entryJSON{Word: r.Word, Status: r.Status, AIFallback: r.AIFallback}
+	if r.Status == dictionary.EntryFound {
+		body.definitionJSON = &definitionJSON{
+			Id:            r.Result.ID,
+			English:       r.Result.English,
+			Pronunciation: r.Result.Pronunciation,
+			Chinese:       r.Result.Chinese,
+			Origin:        r.Result.Origin,
+			Source:        r.Result.Source,
+		}
+	}
+	return body
 }

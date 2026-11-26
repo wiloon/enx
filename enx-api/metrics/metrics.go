@@ -45,6 +45,8 @@ type Metrics struct {
 	referralClaims *prometheus.CounterVec
 	referralReward *prometheus.CounterVec
 	aiWordFallback *prometheus.CounterVec
+	anonAllowed    prometheus.Counter
+	anonRefused    *prometheus.CounterVec
 }
 
 // New builds the metrics on a fresh registry, with the Go runtime and
@@ -108,13 +110,21 @@ func New() *Metrics {
 			Name: "enx_ai_word_fallback_total",
 			Help: "AI word fallback calls (ADR-091), by outcome.",
 		}, []string{"outcome"}),
+		anonAllowed: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "enx_anonymous_lookups_allowed_total",
+			Help: "Anonymous lookups that passed every limit and reached the dictionary (ADR-095).",
+		}),
+		anonRefused: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "enx_anonymous_lookups_refused_total",
+			Help: "Anonymous lookups refused (ADR-095), by the layer that refused: rate, ip_daily or device_daily.",
+		}, []string{"layer"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.httpRequests, m.httpDuration, m.lookupDuration, m.aiDuration, m.aiTokens,
 		m.clerkVerify, m.stripeWebhooks, m.sqliteBusy, m.trialGrants, m.rateLimited,
-		m.referralClaims, m.referralReward, m.aiWordFallback,
+		m.referralClaims, m.referralReward, m.aiWordFallback, m.anonAllowed, m.anonRefused,
 	)
 	return m
 }
@@ -208,6 +218,18 @@ func (m *Metrics) ObserveTrialGrant() {
 // stays bounded; who was refused is on the request log line, not here.
 func (m *Metrics) ObserveRateLimited(route string) {
 	m.rateLimited.WithLabelValues(route).Inc()
+}
+
+// ObserveAnonymousLookupAllowed records one anonymous lookup served
+// (dictionary.AnonymousLookups).
+func (m *Metrics) ObserveAnonymousLookupAllowed() {
+	m.anonAllowed.Inc()
+}
+
+// ObserveAnonymousLookupRefused records one anonymous lookup a limit refused.
+// layer is a fixed set; no device or IP label.
+func (m *Metrics) ObserveAnonymousLookupRefused(layer string) {
+	m.anonRefused.WithLabelValues(layer).Inc()
 }
 
 // ObserveReferralClaim records one invite claim: "ok" or the refusal reason

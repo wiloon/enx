@@ -27,7 +27,8 @@ func CORS(allowed []string) gin.HandlerFunc {
 			// X-Enx-Tz-Offset is read by stats.TZOffsetMiddleware (ADR-029
 			// Decision 7a); without it here, preflight rejects the header and
 			// the whole cross-origin request fails once a client starts sending it.
-			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset")
+			// X-Enx-Device-Id is the anonymous device id (ADR-095 Decision 4).
+			c.Header("Access-Control-Allow-Headers", "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset, X-Enx-Device-Id")
 			c.Header("Access-Control-Expose-Headers", "Content-Length")
 			c.Header("Access-Control-Max-Age", "43200") // 12 hours
 		}
