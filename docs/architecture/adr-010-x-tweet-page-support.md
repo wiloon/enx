@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 **2026-11-07** Amended by [ADR-071](adr-071-adapter-whole-page-on-miss.md)：`contentSelector` 未命中默认仍是空正文，适配器可显式选择退回整页。 **2026-11-09** Amended by [ADR-076](adr-076-user-feedback.md)：页面上报成为用户反馈的一种类型，存进 `feedback` 表；决定 9 的 90 天过期和每人 50 条上限取消，改为每人每天 50 条（所有反馈类型合计）。 |
+| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 **2026-11-07** Amended by [ADR-071](adr-071-adapter-whole-page-on-miss.md)：`contentSelector` 未命中默认仍是空正文，适配器可显式选择退回整页。 **2026-11-09** Amended by [ADR-076](adr-076-user-feedback.md)：页面上报成为用户反馈的一种类型，存进 `feedback` 表；决定 9 的 90 天过期和每人 50 条上限取消，改为每人每天 50 条（所有反馈类型合计）。 **2026-11-25** 修订（#1137）：Decision 5 增补保留换行的 `white-space` 下的分句换行规则（原因：Reader 里 `pre-wrap` 的列表行被合并成一句）；`<br>` 切句仍 defer。 |
 | **日期** | 2026-08-29 |
 | **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。历史 TASK-SPEC 文件若存在只作参考，不是编码门禁。 |
 | **关联 ADR** | [`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（划词整句翻译，本决策不改其分级逻辑，只需确认 `mouseup` 在 X 上不被抢）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语查询依赖"选区内能找到 `.enx-word` 锚点"这个前提，本决策必须保持该前提成立）、[`adr-002-word-popup-react-shadow-dom.md`](adr-002-word-popup-react-shadow-dom.md)（Shadow DOM + Popover 弹窗，在 X 上无需改动，见 Consequences） |
@@ -275,6 +275,18 @@ flex 容器修复（`content.tsx:563-577`）在 `inPlace` 分支保留：它只�
 这样 "KARDASHEV 2 IS THE REAL ENDGAME"（无句末标点）不会和下一行粘成一句，送给 AI 的上下文是用户实际看到的那一行/那一句。
 
 > **实现状态（2026-08-31）**：取词侧已随首批实现落地。切句侧改动**留到 §2 前提验证之后**再做——它要改的是 `extractSentenceContext` 这条 9 个站点共用的路径，在没有前提 §2.3（`<br>` vs 块级）实测结果前动它风险偏高。在此之前，X 上跨行且无标点的两句会被合并送给 AI（质量降级，非功能损坏）。
+
+> **2026-11-25 增补（#1137）：保留换行的 `white-space` 下的换行规则**。Reader（ADR-019）用 `pre-wrap` 渲染粘贴文本，列表各行只靠 `\n` 分隔；`buildSegmentationText` 把所有换行折成空格（#616，按 `white-space: normal` 设计），整个列表于是被切成一句。规则在分句层实现，适用于所有站点，不依赖前提 §2.3：
+>
+> - 换行指 `\n`、`\r` 或 `\r\n`（`\r\n` 算一个换行，两个字符一起保留或一起折叠）。
+> - 仅当换行所在文本节点的父元素保留换行（`pre`、`pre-wrap`、`pre-line`、`break-spaces` 等），且满足下列任一条时保留，否则照旧折成空格：
+>   1. 句末：从换行向前跳过水平空白、再跳过右引号/右括号后是 `.`、`!`、`?`；
+>   2. 列表项：下一行跳过水平空白后以 `-`、`*`、`•`、`1.`、`1)` 一类标记加空格或制表符开头；
+>   3. 空行：前一行或后一行只有水平空白。
+> - `U+0085`、`U+2028`、`U+2029` 一律折成空格。
+> - 折行的普通句子因此仍是一句；既无标点也无列表标记的相邻行仍会合并（上面的 "KARDASHEV 2 IS THE REAL ENDGAME" 即属此类）。
+>
+> 本节的 `<br>` / 块级边界方案**仍然 defer**：上述规则只处理文本节点里的换行字符，X 用什么标记推文换行（前提 §2.3）仍未实测。
 
 ### 6. 点击冲突（采用 F1：维持现状，依赖前提 §2.5）
 
