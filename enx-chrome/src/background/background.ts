@@ -11,6 +11,7 @@ import {
   requestDictionaryEntries,
 } from '@/lib/dictionaryEntries'
 import { wordKey } from '@/lib/wordHighlight'
+import { isLookupQuotaExceeded, LOOKUP_QUOTA_MESSAGE } from '@/lib/rateLimit'
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
 import { createReadingPositionWriter } from '@/lib/readingPositionWriter'
 import { createCoalescedSync } from '@/lib/coalescedSync'
@@ -550,6 +551,9 @@ export type ApiRequestResult = {
   // (request rate limit), lookup_quota_exceeded, trial_limit_day/_minute,
   // rate_limited (AI lookups).
   code?: string
+  // The failed response said `upgrade: true`: a free user's quota refusal
+  // (lib/rateLimit.ts).
+  upgrade?: true
   // Retry-After, in milliseconds, when the response carried one.
   retryAfterMs?: number
   // fetch itself failed, so there was no response at all.
@@ -766,15 +770,26 @@ export const makeApiRequest = async (
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`
         let fromApi = false
         let code: string | undefined
+        let upgrade = false
+        let worded = false
         try {
           const errorData = await response.json()
           if (errorData.error || errorData.message) {
             errorMessage = errorData.error || errorData.message
+            worded = true
           }
           if (typeof errorData.code === 'string') code = errorData.code
+          upgrade = errorData.upgrade === true
           fromApi = 'success' in errorData || 'error' in errorData
         } catch {
           // Ignore JSON parsing errors, use default message
+        }
+        // The UI shows a quota refusal's own words, so a bare one needs some.
+        if (
+          !worded &&
+          isLookupQuotaExceeded({ status: response.status, code })
+        ) {
+          errorMessage = LOOKUP_QUOTA_MESSAGE
         }
 
         // A 502/503/504 that enx-api did not write itself came from the
@@ -810,6 +825,7 @@ export const makeApiRequest = async (
           status: response.status,
         }
         if (code) failure.code = code
+        if (upgrade) failure.upgrade = true
         const wait = retryAfterMs(response)
         if (wait !== undefined) failure.retryAfterMs = wait
         return failure
@@ -1681,14 +1697,16 @@ const handleGetOneWord = async (word: string, refresh = false) => {
     return { success: true, ecp }
   } else {
     console.error('API request failed:', response.error)
-    // Pass through the session flags, status and code (a 429 is the daily
-    // quota or the request rate limit, told apart by code -- ADR-060)
+    // Pass through the session flags, status, code (a 429 is the daily
+    // quota or the request rate limit, told apart by code -- ADR-060) and
+    // the upgrade flag
     return {
       success: false,
       error: response.error || 'Translation service error',
       ...sessionFlags(response),
       status: response.status,
       code: response.code,
+      upgrade: response.upgrade,
     }
   }
 }

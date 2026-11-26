@@ -1031,6 +1031,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
               dictionaryError: undefined,
               dictionaryErrorHttpStatus: undefined,
               dictionaryErrorCode: undefined,
+              dictionaryErrorUpgrade: undefined,
               dictionarySessionExpired: false,
               dictionarySessionUnverified: false,
             }),

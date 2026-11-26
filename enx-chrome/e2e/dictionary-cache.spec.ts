@@ -86,6 +86,26 @@ test.describe('Local dictionary cache (ADR-061, ADR-079)', () => {
     await page.screenshot({ path: 'test-results/dictionary-cache-quota.png' })
   })
 
+  test("a quota refusal with no upgrade flag shows the server's message and no link", async ({
+    page,
+    context,
+  }) => {
+    await clickHighlightedWord(page, 0)
+    await expect.poll(() => wordLookupPosts(context)).toHaveLength(1)
+    await page.getByTestId('word-popover-close').click()
+    await mockBackendFetch(context, {
+      wordData: { Id: 'cache-word', Chinese: '缓存释义', LoadCount: 3 },
+      lookupPostStatus: 429,
+      quotaUpgrade: false,
+    })
+    await clickHighlightedWord(page, 0)
+    const notice = page.getByTestId('word-popover-lookup-notice')
+    await expect(notice).toHaveText(
+      'Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit.'
+    )
+    await expect(notice.getByRole('link')).toHaveCount(0)
+  })
+
   test('highlighted words arrive in one batch QUERY, so a click sends only the POST', async ({
     page,
     context,
