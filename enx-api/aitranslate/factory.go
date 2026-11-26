@@ -11,6 +11,7 @@ import (
 	"enx-api/aitranslate/kimi"
 	"enx-api/aitranslate/minimax"
 	"enx-api/aitranslate/openrouter"
+	"enx-api/utils/logger"
 )
 
 // New builds the Translator selected by cfg.Provider (sentence-translate.provider) ("kimi", "bedrock", "minimax", "deepseek", "gemini", or
@@ -30,6 +31,8 @@ func New(ctx context.Context, cfg config.SentenceTranslate) (Translator, error) 
 	case "bedrock":
 		return bedrock.New(ctx, cfg.Bedrock, cfg.RequestTimeout)
 	case "minimax":
+		// Before minimax.New, so a failed construction warns too.
+		logger.Warnf("⚠️  aitranslate: sentence-translate.provider \"minimax\" is deprecated (#1152)")
 		return minimax.New(cfg.MiniMax, cfg.RequestTimeout)
 	case "deepseek":
 		return deepseek.New(cfg.DeepSeek, cfg.RequestTimeout)
