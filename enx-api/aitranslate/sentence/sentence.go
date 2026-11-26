@@ -4,7 +4,12 @@
 // package, so the provider packages can import it without a cycle.
 package sentence
 
-import "enx-api/aitranslate/zh"
+import (
+	"errors"
+	"strings"
+
+	"enx-api/aitranslate/zh"
+)
 
 // SystemPrompt asks for the translation and nothing else, so the reply can be
 // shown as-is.
@@ -16,3 +21,15 @@ Rules:
 
 // Temperature: one most-natural rendering, not creative variety.
 const Temperature = 0.3
+
+// ErrEmptyTranslation: the model replied, but with nothing to show.
+var ErrEmptyTranslation = errors.New("empty translation")
+
+// Check rejects a reply that is unusable as a translation: one that is empty or
+// only whitespace.
+func Check(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return ErrEmptyTranslation
+	}
+	return nil
+}

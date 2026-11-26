@@ -11,6 +11,7 @@ import (
 
 	"enx-api/ailimit"
 	"enx-api/aitranslate/aifailure"
+	"enx-api/aitranslate/sentence"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
@@ -199,6 +200,9 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 		var u Usage
 		var err error
 		chinese, u, err = h.translator.TranslateSentence(ctx, req.Sentence)
+		if err == nil {
+			err = sentence.Check(chinese)
+		}
 		return u, err
 	})
 	if !ok {
