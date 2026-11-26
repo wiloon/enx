@@ -9,10 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"enx-api/utils/logger"
-
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -20,13 +17,6 @@ import (
 // Shared assertions for the failed-call billing rules and log contract
 // (ADR-094), used by the translate and rephrase handler tests. Requests there
 // carry no signed-in user, so user_id is empty.
-
-func observeLogs(t *testing.T) *observer.ObservedLogs {
-	t.Helper()
-	core, logs := observer.New(zap.DebugLevel)
-	t.Cleanup(logger.Swap(zap.New(core).Sugar()))
-	return logs
-}
 
 func cancelledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,10 +36,12 @@ func doPostWithContext(t *testing.T, ctx context.Context, route string, h gin.Ha
 	return w
 }
 
-func assertBadGateway(t *testing.T, w *httptest.ResponseRecorder) {
+// assertBadGateway checks the 502 and the message the feature's handler
+// returns: rephrase has its own, every translate feature shares one.
+func assertBadGateway(t *testing.T, w *httptest.ResponseRecorder, feature string) {
 	t.Helper()
 	want := "translation service unavailable"
-	if strings.Contains(w.Body.String(), "Rephrase") {
+	if feature == "rephrase_to_english" {
 		want = "Rephrase service unavailable."
 	}
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), want) {
@@ -95,7 +87,7 @@ func assertSettledOnce(t *testing.T, calls []settleCall, feature string) {
 
 func assertBilledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w)
+	assertBadGateway(t, w, feature)
 	assertSettledOnce(t, calls, feature)
 	assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(feature, true, errText))
 	if got := errorEntries(logs); len(got) != 1 {
@@ -105,7 +97,7 @@ func assertBilledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []s
 
 func assertUnsettledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w)
+	assertBadGateway(t, w, feature)
 	assertSettledOnce(t, calls, feature)
 	assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(feature, false, errText))
 	want := "aitranslate: Settle after " + feature + " failed (user= cost=2): db write failed"
@@ -116,7 +108,7 @@ func assertUnsettledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls 
 
 func assertUnbilledFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w)
+	assertBadGateway(t, w, feature)
 	if len(calls) != 0 {
 		t.Fatalf("settle calls = %+v, want none", calls)
 	}
@@ -128,7 +120,7 @@ func assertUnbilledFailure(t *testing.T, w *httptest.ResponseRecorder, calls []s
 
 func assertCancelledUnbilled(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature string) {
 	t.Helper()
-	assertBadGateway(t, w)
+	assertBadGateway(t, w, feature)
 	if len(calls) != 0 {
 		t.Fatalf("settle calls = %+v, want none", calls)
 	}

@@ -43,3 +43,18 @@ func TestInfowLogsStructuredFields(t *testing.T) {
 		t.Fatalf("fields = %+v", fields)
 	}
 }
+
+func TestErrorwLogsStructuredFieldsAtErrorLevel(t *testing.T) {
+	logs := observe(t)
+
+	Errorw("ai_call_billed_on_failure", "feature", "rephrase_to_english", "settled", false)
+
+	entries := logs.All()
+	if len(entries) != 1 || entries[0].Level != zap.ErrorLevel || entries[0].Message != "ai_call_billed_on_failure" {
+		t.Fatalf("got %+v, want one error-level entry", entries)
+	}
+	fields := entries[0].ContextMap()
+	if fields["feature"] != "rephrase_to_english" || fields["settled"] != false {
+		t.Fatalf("fields = %+v", fields)
+	}
+}
