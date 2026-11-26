@@ -1,5 +1,7 @@
 # ADR-012：enx-ui 新增「地道表达」页面——把中文 / 中英混杂 / 不地道的英文改写成地道的职场美式英语（面向跟美国同事沟通的措辞优化），在 `aitranslate` 包内**新建**反向 `Rephraser` 能力，并以此作为**全站按 token 计费**基础设施的第一块试点
 
+> 2026-11-25（ADR-094）：Decision 8 及本文其他「失败路径不扣费」的说法已被推翻。只要真实调用了模型（拿到了 token 用量），解析失败也按实际 token 扣费；失败在日志里醒目标记，由管理员手动补偿。见 [ADR-094](adr-094-bill-ai-calls-that-reached-the-model.md)。
+
 > 2026-11-17（#960）：token 价格默认使用共享的 `[stripe.costs.default]`；功能覆盖必须设置全部三个键，部分设置即未定价。解析与校验规则见 [ADR-014「默认 token 价格与按功能覆盖」](adr-014-sidepanel-clicked-word-and-token-billing.md#默认-token-价格与按功能覆盖2026-11-17issue-960)，取代本文原有的逐功能部署配置要求。
 
 
