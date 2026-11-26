@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/aitranslate/llm/llmtest"
 	"enx-api/aitranslate/sentence"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
@@ -367,6 +368,33 @@ func TestWordInContextHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_word_in_context", "unusable reply")
+}
+
+// parsingWordTranslator runs TranslateWordInContext through the real
+// wordcontext.Call and ParseResult on a fake chat, so the handler sees what
+// production's parser makes of the model's reply.
+type parsingWordTranslator struct {
+	fakeTranslator
+	chat *llmtest.Fake
+}
+
+func (p *parsingWordTranslator) TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error) {
+	return wordcontext.Call(ctx, p.chat.Chat, sentence, word, dictionaryChinese)
+}
+
+// #1136: a reply whose only "word" sits in a nested object is not the
+// model's gloss for this word, so it is a 502, not a 200 with that gloss.
+func TestWordInContextHandlerNestedWordReplyIsBadGateway(t *testing.T) {
+	tr := &parsingWordTranslator{chat: &llmtest.Fake{Reply: `{"metadata":{"word":"银行"}}`, Usage: usageCosting2}}
+	h := NewHandler(tr, &fakeTokenLedger{balance: 100}, tokenTestPricing)
+	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "银行") {
+		t.Fatalf("nested gloss leaked into the response: %s", w.Body.String())
+	}
 }
 
 func TestWordInContextHandlerNotConfigured(t *testing.T) {

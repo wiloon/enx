@@ -16,7 +16,6 @@ package wordcontext
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"enx-api/aitranslate/zh"
@@ -64,18 +63,6 @@ type wireResult struct {
 	Why  string `json:"why"`
 }
 
-// wordFieldPattern and whyFieldPattern pull a "word" or "why" field's
-// quoted value out of a reply directly, without requiring the surrounding
-// text to be a well-formed JSON object. Chatty models sometimes drop the
-// comma between fields and insert a stray remark instead (e.g.
-// `"word": "..." Additional note here, "why": "..."`), which breaks strict
-// JSON parsing even though each field's own value is intact -- see
-// fieldFallback below.
-var (
-	wordFieldPattern = regexp.MustCompile(`"word"\s*:\s*"((?:[^"\\]|\\.)*)"`)
-	whyFieldPattern  = regexp.MustCompile(`"why"\s*:\s*"((?:[^"\\]|\\.)*)"`)
-)
-
 // BuildUserContent formats the user message every provider sends alongside
 // SystemPrompt. The dictionary definition line is omitted entirely when
 // dictionaryChinese is empty, so the prompt never references a missing
@@ -92,7 +79,9 @@ func BuildUserContent(sentence, word, dictionaryChinese string) string {
 // required; a missing or empty why is fine (Result.Why). Extraction starts
 // from a lenient "first brace to last brace" span, since small models don't
 // reliably return a bare object even when told to, falling back to
-// fieldFallback when that span isn't valid JSON.
+// fieldFallback when that span isn't valid JSON. Either way, word and why
+// come only from the reply's top-level object (#1136): a gloss nested
+// anywhere deeper is not the model's answer for this word.
 func ParseResult(raw string) (Result, error) {
 	start := strings.IndexByte(raw, '{')
 	end := strings.LastIndexByte(raw, '}')
@@ -103,38 +92,143 @@ func ParseResult(raw string) (Result, error) {
 
 	var wire wireResult
 	if err := json.Unmarshal([]byte(obj), &wire); err == nil {
-		if word := strings.TrimSpace(wire.Word); word != "" {
-			return Result{WordChinese: word, Why: strings.TrimSpace(wire.Why)}, nil
-		}
+		return newResult(wire.Word, wire.Why)
 	}
 
 	return fieldFallback(obj)
 }
 
-// fieldFallback recovers Result fields by regex when obj as a whole doesn't
-// parse as JSON (or parsed but came out with no word gloss).
-func fieldFallback(obj string) (Result, error) {
-	word := unquoteJSONString(firstSubmatch(wordFieldPattern, obj))
-	if strings.TrimSpace(word) == "" {
+// newResult trims the fields and rejects a blank word gloss.
+func newResult(word, why string) (Result, error) {
+	word = strings.TrimSpace(word)
+	if word == "" {
 		return Result{}, fmt.Errorf("wordcontext: reply has no word gloss")
 	}
-	why := unquoteJSONString(firstSubmatch(whyFieldPattern, obj))
-	return Result{WordChinese: strings.TrimSpace(word), Why: strings.TrimSpace(why)}, nil
+	return Result{WordChinese: word, Why: strings.TrimSpace(why)}, nil
 }
 
-func firstSubmatch(re *regexp.Regexp, s string) string {
-	m := re.FindStringSubmatch(s)
-	if m == nil {
-		return ""
+// Positions of the top-level scan in fieldFallback.
+const (
+	expectKey   = iota // before a key: skips junk and commas
+	expectColon        // after a key
+	expectValue        // after the colon
+	afterValue         // skips junk up to the next top-level comma
+)
+
+// fieldFallback recovers Result fields when obj as a whole doesn't parse as
+// JSON. Chatty models sometimes drop the comma between fields and insert a
+// stray remark instead (e.g. `"word": "..." Additional note here, "why":
+// "..."`), which breaks strict parsing even though each field's own value
+// is intact.
+//
+// It walks obj (which starts with '{') byte by byte, respecting string
+// literals and escapes and tracking {/[ depth, and takes a "word" or "why"
+// key only at depth 1 and only when its value is a quoted string. Nested
+// values and junk between fields are skipped. The scan stops when the root
+// object closes, ignoring anything after it; a root that never closes, or
+// an unclosed string, is an error.
+func fieldFallback(obj string) (Result, error) {
+	var word, why, key string
+	depth, state := 0, expectKey
+	for i := 0; i < len(obj); i++ {
+		c := obj[i]
+		if c == '"' {
+			end, ok := stringEnd(obj, i)
+			if !ok {
+				return Result{}, fmt.Errorf("wordcontext: reply has an unclosed string")
+			}
+			if depth == 1 {
+				body := obj[i+1 : end]
+				switch state {
+				case expectKey:
+					key, state = body, expectColon
+				case expectColon:
+					// A string where the colon belongs: treat it as a value.
+					state = afterValue
+				case expectValue:
+					switch key {
+					case "word":
+						word = unquoteJSONString(body)
+					case "why":
+						why = unquoteJSONString(body)
+					}
+					state = afterValue
+				}
+			}
+			i = end
+			continue
+		}
+		switch c {
+		case '{', '[':
+			depth++
+			if depth == 2 && (state == expectValue || state == expectColon) {
+				state = afterValue
+			}
+			continue
+		case '}', ']':
+			if depth > 1 {
+				depth--
+				continue
+			}
+			if c == '}' {
+				// The root closes: anything after it is ignored.
+				return newResult(word, why)
+			}
+			// A stray ']' at the top level is junk.
+		}
+		if depth != 1 {
+			continue
+		}
+		switch state {
+		case expectColon:
+			if c == ':' {
+				state = expectValue
+			} else if !isSpace(c) {
+				state = afterValue
+			}
+		case expectValue:
+			if c == ',' {
+				state = expectKey
+			} else if !isSpace(c) {
+				// A number, literal or junk: not a quoted string.
+				state = afterValue
+			}
+		case afterValue:
+			if c == ',' {
+				state = expectKey
+			}
+		}
 	}
-	return m[1]
+	return Result{}, fmt.Errorf("wordcontext: reply's JSON object never closes")
+}
+
+// stringEnd returns the index of the quote closing the string literal that
+// opens at s[open], skipping backslash escapes. ok is false when the string
+// never closes.
+func stringEnd(s string, open int) (end int, ok bool) {
+	for i := open + 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			if i+1 >= len(s) {
+				return 0, false
+			}
+			i++
+		case '"':
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
 // unquoteJSONString decodes a JSON string body's escape sequences (\", \n,
 // \uXXXX, ...) by re-wrapping it as a JSON string literal and letting
-// encoding/json unescape it. Falls back to the raw text if that somehow
-// isn't valid (the regex it comes from guarantees well-formed escapes, so
-// this is only a safety net).
+// encoding/json unescape it. Falls back to the raw text if that isn't valid
+// (stringEnd only guarantees the literal closes, not that every escape is
+// well formed).
 func unquoteJSONString(s string) string {
 	if s == "" {
 		return ""

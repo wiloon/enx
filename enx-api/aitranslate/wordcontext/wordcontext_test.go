@@ -94,3 +94,59 @@ func TestBuildUserContentIncludesDictionaryWhenPresent(t *testing.T) {
 		t.Fatalf("got %q want %q", content, want)
 	}
 }
+
+// #1136: word and why are only ever taken from the reply's top-level
+// object. A word gloss found only inside a nested object, past the root's
+// close, as a string value, or in a root that never closes is not the
+// model's answer for this word, so the reply is a parse error.
+func TestParseResultRejectsWordNotAtTopLevel(t *testing.T) {
+	cases := map[string]string{
+		"nested in valid JSON":              `{"metadata":{"word":"银行"}}`,
+		"word is an object":                 `{"word":{"word":"银行"}}`,
+		"nested in malformed JSON":          `{"metadata":{"word":"银行"} oops}`,
+		"nested before empty top-level":     `{"data":{"word":"银行"},"word":""}`,
+		"second object after a stray brace": `{"a":1}} {"x":{"word":"银行"}}`,
+		"root not closed":                   `{"metadata":{"word":"银行"}`,
+		"word as a string value":            `{"note":"word":"银行"}`,
+		"root not closed with nested why":   `{"word":"银行","extra":{"why":"x"}`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if res, err := ParseResult(raw); err == nil {
+				t.Fatalf("ParseResult(%s): expected an error, got %+v", raw, res)
+			}
+		})
+	}
+}
+
+// Already green before #1136 only because the regex hit the empty
+// top-level "word" first; kept as a guard against key-order luck.
+func TestParseResultEmptyTopLevelWordWithNestedWordIsError(t *testing.T) {
+	if res, err := ParseResult(`{"word":"","data":{"word":"银行"}}`); err == nil {
+		t.Fatalf("expected an error, got %+v", res)
+	}
+}
+
+// Recovery from a malformed reply keeps the top-level word but never
+// attaches a why that sits inside a nested object.
+func TestParseResultRecoveryIgnoresNestedWhy(t *testing.T) {
+	res, err := ParseResult(`{"word":"银行" oops, "extra":{"why":"x"}}`)
+	if err != nil {
+		t.Fatalf("expected recovery, got error: %v", err)
+	}
+	if res.WordChinese != "银行" || res.Why != "" {
+		t.Fatalf("got %+v", res)
+	}
+}
+
+// An escaped backslash right before the closing quote ends the string;
+// recovery still finds both fields. Already green before #1136.
+func TestParseResultRecoveryHandlesEscapedBackslash(t *testing.T) {
+	res, err := ParseResult(`{"word":"a\\" oops, "why":"y"}`)
+	if err != nil {
+		t.Fatalf("expected recovery, got error: %v", err)
+	}
+	if res.WordChinese != `a\` || res.Why != "y" {
+		t.Fatalf("got %+v", res)
+	}
+}
