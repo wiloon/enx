@@ -2094,7 +2094,7 @@ describe('SidePanel', () => {
       expect(contextCalls).toBe(1)
     })
 
-    it('sends translateSentence (not translateSentenceWithWord) and looks up the anchor word dictionary-first', async () => {
+    it('sends translateSentence and looks up the anchor word dictionary-first', async () => {
       seedSession(pendingWithWord)
       mockSendMessage.mockImplementation(
         async (message: {
@@ -2138,9 +2138,6 @@ describe('SidePanel', () => {
         expect(card).toHaveTextContent('great的词典释义')
         expect(card).toHaveTextContent('/greɪt/')
       })
-      expect(mockSendMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateSentenceWithWord' })
-      )
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'translateWordInContext',
@@ -2162,7 +2159,6 @@ describe('SidePanel', () => {
       mockSendMessage.mockResolvedValue({
         success: true,
         chinese: '译文',
-        wordChinese: '极好的',
       })
 
       render(<SidePanel />)
@@ -2236,9 +2232,6 @@ describe('SidePanel', () => {
         expect(screen.getByTestId('sidepanel-chinese')).toHaveTextContent(
           '猫是很棒的宠物。'
         )
-      )
-      expect(mockSendMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translateSentenceWithWord' })
       )
       expect(screen.queryAllByTestId(/^sidepanel-card-/)).toHaveLength(0)
       expect(

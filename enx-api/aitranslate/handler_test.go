@@ -23,7 +23,6 @@ var tokenTestPricing = credit.TokenPricing{WeightIn: 1, WeightOut: 3, Divisor: 3
 
 type fakeTranslator struct {
 	chinese      string
-	swwResult    sentenceword.Result
 	wordResult   wordcontext.Result
 	usage        Usage
 	err          error
@@ -45,12 +44,6 @@ func (f *fakeTranslator) TranslateWordInContext(ctx context.Context, sentence, w
 	f.callCount++
 	f.sentenceIn, f.wordIn, f.dictionaryIn = sentence, word, dictionaryChinese
 	return f.wordResult, f.usage, f.err
-}
-
-func (f *fakeTranslator) TranslateSentenceWithWord(ctx context.Context, sentence, word string) (sentenceword.Result, Usage, error) {
-	f.callCount++
-	f.sentenceIn, f.wordIn = sentence, word
-	return f.swwResult, f.usage, f.err
 }
 
 func (f *fakeTranslator) TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
@@ -102,10 +95,6 @@ func doPost(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
 
 func doPostWordInContext(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
 	return doPostTo(t, "/api/translate/word-in-context", h.TranslateWordInContext, body)
-}
-
-func doPostSentenceWithWord(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
-	return doPostTo(t, "/api/translate/sentence-with-word", h.TranslateSentenceWithWord, body)
 }
 
 // --- TranslateSentence -------------------------------------------------------
@@ -292,85 +281,17 @@ func TestWordInContextHandlerMissingFields(t *testing.T) {
 	}
 }
 
-// --- TranslateSentenceWithWord (ADR-014) ----------------------------------
+// --- TranslateSentenceWithWords (ADR-023 Decision 9) ----------------------
 
-func TestSentenceWithWordHandlerSuccess(t *testing.T) {
-	tr := &fakeTranslator{
-		swwResult: sentenceword.Result{SentenceChinese: "我在银行存了现金。", WordChinese: "银行"},
-		usage:     usageCosting2,
-	}
-	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
-	}
-	var resp struct {
-		Success     bool   `json:"success"`
-		Chinese     string `json:"chinese"`
-		WordChinese string `json:"wordChinese"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if !resp.Success || resp.Chinese != "我在银行存了现金。" || resp.WordChinese != "银行" {
-		t.Fatalf("unexpected response: %+v", resp)
-	}
-	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].feature != "translate_sentence_with_word" || ledger.settleCalls[0].cost != 2 {
-		t.Fatalf("unexpected settle calls: %+v", ledger.settleCalls)
-	}
+func doPostSentenceWithWords(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
+	return doPostTo(t, "/api/translate/sentence-with-words", h.TranslateSentenceWithWords, body)
 }
 
-// The word gloss can be empty (model omitted it) -- still a 200 with the
-// sentence translation; the client falls back to a separate call (ADR-014).
-func TestSentenceWithWordHandlerEmptyWordGlossStillSucceeds(t *testing.T) {
-	tr := &fakeTranslator{
-		swwResult: sentenceword.Result{SentenceChinese: "我在银行存了现金。", WordChinese: ""},
-		usage:     usageCosting2,
-	}
-	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
-	}
-	var resp struct {
-		Success     bool   `json:"success"`
-		Chinese     string `json:"chinese"`
-		WordChinese string `json:"wordChinese"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if !resp.Success || resp.Chinese != "我在银行存了现金。" || resp.WordChinese != "" {
-		t.Fatalf("unexpected response: %+v", resp)
-	}
-	if len(ledger.settleCalls) != 1 {
-		t.Fatalf("expected the call to still be billed, got: %+v", ledger.settleCalls)
-	}
-}
-
-func TestSentenceWithWordHandlerTranslatorErrorNotBilled(t *testing.T) {
-	tr := &fakeTranslator{err: errors.New("bad JSON from model"), usage: usageCosting2}
-	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
-
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
-	}
-	if len(ledger.settleCalls) != 0 {
-		t.Fatalf("a failed call must not be billed, got: %+v", ledger.settleCalls)
-	}
-}
-
-func TestSentenceWithWordHandlerInsufficientBalance(t *testing.T) {
-	tr := &fakeTranslator{swwResult: sentenceword.Result{SentenceChinese: "x"}, usage: usageCosting2}
+func TestSentenceWithWordsHandlerInsufficientBalance(t *testing.T) {
+	tr := &fakeTranslator{swwsResult: sentenceword.WordsResult{SentenceChinese: "x"}, usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 0}
 	h := NewHandler(tr, ledger, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
+	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[{"word":"bank"}]}`)
 
 	if w.Code != http.StatusPaymentRequired {
 		t.Fatalf("status: got %d want 402, body=%s", w.Code, w.Body.String())
@@ -380,28 +301,13 @@ func TestSentenceWithWordHandlerInsufficientBalance(t *testing.T) {
 	}
 }
 
-func TestSentenceWithWordHandlerNotConfigured(t *testing.T) {
+func TestSentenceWithWordsHandlerNotConfigured(t *testing.T) {
 	h := NewHandler(nil, &fakeTokenLedger{balance: 100}, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
+	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[{"word":"bank"}]}`)
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
 	}
-}
-
-func TestSentenceWithWordHandlerMissingFields(t *testing.T) {
-	h := NewHandler(&fakeTranslator{}, &fakeTokenLedger{balance: 100}, tokenTestPricing)
-	w := doPostSentenceWithWord(t, h, `{"sentence":"I deposited cash at the bank."}`)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status: got %d want 400, body=%s", w.Code, w.Body.String())
-	}
-}
-
-// --- TranslateSentenceWithWords (ADR-023 Decision 9) ----------------------
-
-func doPostSentenceWithWords(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
-	return doPostTo(t, "/api/translate/sentence-with-words", h.TranslateSentenceWithWords, body)
 }
 
 func TestSentenceWithWordsHandlerSuccess(t *testing.T) {

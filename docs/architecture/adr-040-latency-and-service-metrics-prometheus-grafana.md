@@ -82,7 +82,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 **AI**
 
-- `enx_ai_request_duration_seconds{provider, operation, outcome}` —— 直方图。`operation ∈ {translate_sentence, word_in_context, sentence_with_word, rephrase}`，`outcome ∈ {ok, error, timeout}`。桶：250ms, 500ms, 1s, 2s, 4s, 8s, 15s, 30s, 60s。
+- `enx_ai_request_duration_seconds{provider, operation, outcome}` —— 直方图。`operation ∈ {translate_sentence, word_in_context, sentence_with_words, rephrase}`（`sentence_with_word` 随单词版端点于 #1135 删除），`outcome ∈ {ok, error, timeout}`。桶：250ms, 500ms, 1s, 2s, 4s, 8s, 15s, 30s, 60s。
 - `enx_ai_tokens_total{provider, operation, direction}` —— 计数器，`direction ∈ {input, output}`，来源是 `Usage`。与 `token_ledger` 的关系：ledger 是**按用户计费的账**（留在库里），这个计数器只是**总量趋势图**，两者不互相替代。
 - 当前都是非流式，不做首 token 耗时。将来改流式时补 `enx_ai_time_to_first_token_seconds`——那才是用户感知的等待。
 

@@ -34,11 +34,6 @@ type wordInContextRequest struct {
 	DictionaryChinese string `json:"dictionaryChinese"`
 }
 
-type sentenceWithWordRequest struct {
-	Sentence string `json:"sentence" binding:"required"`
-	Word     string `json:"word" binding:"required"`
-}
-
 type sentenceWithWordsRequest struct {
 	Sentence string `json:"sentence"`
 	Words    []struct {
@@ -211,43 +206,12 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "chinese": res.WordChinese, "why": res.Why})
 }
 
-// TranslateSentenceWithWord handles POST /api/translate/sentence-with-word
-// (ADR-014): one LLM call returns both the whole-sentence translation and
-// `word`'s meaning in that sentence's context, so the Side Panel opened from
-// a word click needs just one AI round-trip instead of two. `wordChinese` in
-// the response may be an empty string if the model omitted it -- the client
-// falls back to a separate word-in-context call rather than the whole
-// request failing.
-func (h *Handler) TranslateSentenceWithWord(c *gin.Context) {
-	var req sentenceWithWordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpjson.Fail(c, http.StatusBadRequest, "sentence and word are required")
-		return
-	}
-
-	var res sentenceword.Result
-	ok := h.billedCall(c, "translate_sentence_with_word", func(ctx context.Context) (Usage, error) {
-		var u Usage
-		var err error
-		res, u, err = h.translator.TranslateSentenceWithWord(ctx, req.Sentence, req.Word)
-		return u, err
-	})
-	if !ok {
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
-		"chinese":     res.SentenceChinese,
-		"wordChinese": res.WordChinese,
-	})
-}
-
 // TranslateSentenceWithWords handles POST /api/translate/sentence-with-words
 // (ADR-023 Decision 9): one LLM call returns the sentence translation plus an
-// in-context gloss for every word the sentence card absorbed. It is a
-// separate endpoint so the legacy single-word contract above is untouched.
-// Words are deduplicated by normalized text (first occurrence kept), so the
-// response echoes them in request order. A gloss the model omitted comes back
+// in-context gloss for every word the sentence card absorbed. It replaced
+// ADR-014's single-word endpoint, which no released extension ever called
+// (#1135). Words are deduplicated by normalized text (first occurrence
+// kept), so the response echoes them in request order. A gloss the model omitted comes back
 // with empty chinese and why; the client falls back to an individual
 // word-in-context call for it. A missing sentence translation is a 502 and is
 // not billed.

@@ -1305,12 +1305,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             request.dictionaryChinese || ''
           )
 
-        case 'translateSentenceWithWord':
-          return await handleTranslateSentenceWithWord(
-            request.sentence || '',
-            request.word || ''
-          )
-
         case 'translateSentenceWithWords':
           return await handleTranslateSentenceWithWords(
             request.sentence || '',
@@ -1837,41 +1831,6 @@ const handleTranslateSentence = async (sentence: string) => {
 
   if (response.success && response.data?.chinese) {
     return { success: true, chinese: response.data.chinese as string }
-  }
-
-  return {
-    success: false,
-    error: response.error || 'Translation service unavailable',
-    ...sessionFlags(response),
-    status: response.status,
-  }
-}
-
-// Handle the combined "translate the whole sentence AND gloss the clicked
-// word in that sentence's context" call (ADR-014): one AI round-trip that
-// backs the Side Panel opened from a word click, replacing a separate
-// translateSentence + translateWordInContext pair. `wordChinese` comes back
-// empty if the model omitted it -- SidePanel.tsx then falls back to a
-// standalone translateWordInContext call.
-const handleTranslateSentenceWithWord = async (
-  sentence: string,
-  word: string
-) => {
-  if (!sentence || sentence.trim() === '' || !word || word.trim() === '') {
-    return { success: false, error: 'sentence and word are required' }
-  }
-
-  const response = await makeApiRequest('/api/translate/sentence-with-word', {
-    method: 'POST',
-    body: JSON.stringify({ sentence: sentence.trim(), word: word.trim() }),
-  })
-
-  if (response.success && response.data?.chinese) {
-    return {
-      success: true,
-      chinese: response.data.chinese as string,
-      wordChinese: (response.data.wordChinese as string) || '',
-    }
   }
 
   return {

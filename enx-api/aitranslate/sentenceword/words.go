@@ -1,3 +1,12 @@
+// Package sentenceword holds the contract for the combined "translate the
+// whole sentence AND gloss the words it absorbed, as used in that sentence"
+// call (ADR-023 Decision 9, which extends ADR-014's one-round-trip idea):
+// one LLM call returns the sentence translation plus an in-context gloss for
+// every word card the Side Panel's sentence card absorbed.
+//
+// It is a leaf package -- both aitranslate and the provider packages import
+// it, so a provider's TranslateSentenceWithWords method can name WordsResult
+// as its return type without an import cycle. Mirrors aitranslate/rephrase.
 package sentenceword
 
 import (
@@ -15,9 +24,9 @@ import (
 	"golang.org/x/text/language"
 )
 
-// The multi-word variant (ADR-023 Decision 9): one call translates the
-// sentence and glosses every word the Side Panel's sentence card absorbed,
-// each informed by its own dictionary meaning.
+// Temperature matches plain translation's 0.3 -- one most-natural rendering,
+// not creative variety.
+const Temperature = 0.3
 
 // WordsSystemPrompt asks for the sentence translation plus one gloss entry
 // per listed word, applying the same "why" rule as wordcontext.SystemPrompt

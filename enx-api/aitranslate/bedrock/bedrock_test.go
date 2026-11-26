@@ -24,6 +24,17 @@ func newTestBedrock(client converseClient) *Bedrock {
 	return &Bedrock{client: client, modelID: "anthropic.claude-3-5-haiku-20241022-v1:0"}
 }
 
+func bedrockTextOutput(text string) *bedrockruntime.ConverseOutput {
+	return &bedrockruntime.ConverseOutput{
+		Output: &types.ConverseOutputMemberMessage{
+			Value: types.Message{
+				Role:    types.ConversationRoleAssistant,
+				Content: []types.ContentBlock{&types.ContentBlockMemberText{Value: text}},
+			},
+		},
+	}
+}
+
 func TestTranslateSentenceSuccess(t *testing.T) {
 	fake := &fakeConverseClient{
 		output: &bedrockruntime.ConverseOutput{

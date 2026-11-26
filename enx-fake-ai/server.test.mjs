@@ -46,7 +46,7 @@ test('rephrase returns structured idiomatic wording rather than a translation', 
   })
 })
 
-test('multi-word sentence prompt returns one gloss per listed word, not the single-word fixture', async t => {
+test('multi-word sentence prompt returns one gloss per listed word', async t => {
   const server = spawn(process.execPath, ['server.mjs'], {
     cwd: import.meta.dirname, env: { ...process.env, PORT: '0', HOST: '127.0.0.1' },
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -71,7 +71,6 @@ test('multi-word sentence prompt returns one gloss per listed word, not the sing
 })
 
 for (const scenario of [
-  { name: 'sentence with word', prompt: '{"sentence": "translation", "word": "meaning"}', answer: { sentence: '[fake] 这只猫在读书。', word: '猫' } },
   { name: 'word context', prompt: '{"word": "meaning", "why": "explanation"}', answer: { word: '猫', why: '' } },
   { name: 'word definition', prompt: '{"is_word": true, "quality": 9, "senses": []}', answer: { is_word: true, quality: 9, senses: [{ pos: 'n.', zh: '很有魅力的人' }] } },
 ]) {

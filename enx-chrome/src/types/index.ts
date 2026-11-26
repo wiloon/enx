@@ -70,7 +70,6 @@ export interface ContentMessage {
     | 'openSentencePanel'
     | 'translateSentence'
     | 'translateWordInContext'
-    | 'translateSentenceWithWord'
     | 'translateSentenceWithWords'
     | 'recordPageWordLookup'
     | 'reportReadingProgress'
@@ -203,14 +202,6 @@ export interface BackgroundResponse {
   panelOpened?: boolean
   // Set by the 'translateSentence' handler on success.
   chinese?: string
-  // Set by the 'translateSentenceWithWord' handler (ADR-014) on success: the
-  // clicked word's meaning in the sentence's context, returned in the SAME
-  // call as `chinese` (the whole-sentence translation). May be an empty
-  // string if the model omitted it. Not currently sent by the Side Panel --
-  // word context lookups always go through 'translateWordInContext' instead
-  // (dictionary-first, so the model has a definition to compare against) --
-  // but the endpoint stays available for a future caller.
-  wordChinese?: string
   // Set by the 'translateSentenceWithWords' handler on success: one gloss per
   // requested word, in request order. An empty `chinese` means the model gave
   // none and that word needs an individual translateWordInContext call.

@@ -274,7 +274,6 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		apiGroup.POST("/dictionary/ai-word", lookupHandler.AIWord)
 		apiGroup.POST("/translate/sentence", sentenceHandler.TranslateSentence)
 		apiGroup.POST("/translate/word-in-context", sentenceHandler.TranslateWordInContext)
-		apiGroup.POST("/translate/sentence-with-word", sentenceHandler.TranslateSentenceWithWord)
 		apiGroup.POST("/translate/sentence-with-words", sentenceHandler.TranslateSentenceWithWords)
 		apiGroup.POST("/rephrase", rephraseHandler.Rephrase)
 	}
