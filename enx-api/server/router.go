@@ -193,7 +193,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 				adapters.AIDefiner{Definer: definer},
 				adapters.TokenBilling{
 					Pricing: tokenPricing(cfg.Stripe.Costs.DefineWord),
-					Feature: "lookup_word_ai",
+					Feature: dictionary.AIFeature,
 				},
 				ailimit.NewMemoryLimiter(ailimit.Limits{
 					CallsPerMinute:    cfg.AIWord.CallsPerMinute,

@@ -3,11 +3,17 @@ package dictionary
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/utils/logger"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type fakeDefiner struct {
@@ -36,13 +42,16 @@ type fakeBilling struct {
 	settled    []AIUsage
 }
 
+// fakeCost is the charge fakeBilling computes for every call.
+const fakeCost = int64(7)
+
 func (b *fakeBilling) Priced() bool { return !b.unpriced }
 func (b *fakeBilling) Balance(context.Context, string) (int64, error) {
 	return b.balance, b.balanceErr
 }
-func (b *fakeBilling) Settle(_ context.Context, _ string, u AIUsage) error {
+func (b *fakeBilling) Settle(_ context.Context, _ string, u AIUsage) (int64, error) {
 	b.settled = append(b.settled, u)
-	return b.settleErr
+	return fakeCost, b.settleErr
 }
 
 type fakeLimiter struct {
@@ -189,8 +198,11 @@ func TestDefineWithAINotAWordIsBilledAndNotStored(t *testing.T) {
 	assertAIWordOutcome(t, env.recorder, "not_a_word")
 }
 
-func TestDefineWithAIUnusableReplyIsNotBilled(t *testing.T) {
+// ADR-094: a model call that used tokens is billed even when its reply is
+// unusable or the call failed, and is logged so a log review can find it.
+func TestDefineWithAIUnusableReplyIsBilled(t *testing.T) {
 	env := newAIEnv()
+	logs := observeLogs(t)
 	env.definer.err = errors.Join(ErrInvalidAIReply, errors.New("no JSON"))
 	env.definer.usage = AIUsage{PromptTokens: 150, CompletionTokens: 9}
 
@@ -198,25 +210,167 @@ func TestDefineWithAIUnusableReplyIsNotBilled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an unusable reply is a miss, not an error: %v", err)
 	}
-	if res.Source != SourceAIMiss || len(env.words.added) != 0 {
-		t.Fatalf("got %+v added=%v", res, env.words.added)
+	if res != (Result{English: "rizzler", Source: SourceAIMiss}) {
+		t.Fatalf("got %+v, want an AI miss", res)
 	}
-	if len(env.billing.settled) != 0 {
-		t.Fatalf("billed %v for a reply the user can't use", env.billing.settled)
+	if len(env.words.added) != 0 {
+		t.Fatalf("cached %v from an unusable reply", env.words.added)
 	}
+	assertSettledOnce(t, env.billing, env.definer.usage)
+	assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(env.definer.usage, true, env.definer.err))
+	assertLogLines(t, logs, 1)
 	assertAIWordOutcome(t, env.recorder, "invalid_reply")
+}
+
+// A provider can report usage on a response that holds no reply (an HTTP 200
+// with no choices), which is a plain error, not ErrInvalidAIReply.
+func TestDefineWithAIFailedCallWithUsageIsBilled(t *testing.T) {
+	for name, usage := range map[string]AIUsage{
+		"prompt and completion tokens": {PromptTokens: 150, CompletionTokens: 9},
+		"prompt tokens only":           {PromptTokens: 150},
+		"completion tokens only":       {CompletionTokens: 9},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := newAIEnv()
+			logs := observeLogs(t)
+			env.definer.err = errors.New("no choices")
+			env.definer.usage = usage
+
+			res, err := env.define("rizzler")
+			if !errors.Is(err, ErrAIFailed) || res != (Result{}) {
+				t.Fatalf("got %+v, %v, want ErrAIFailed", res, err)
+			}
+			if len(env.words.added) != 0 {
+				t.Fatalf("cached %v from a failed call", env.words.added)
+			}
+			assertSettledOnce(t, env.billing, usage)
+			assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(usage, true, env.definer.err))
+			assertLogLines(t, logs, 1)
+			assertAIWordOutcome(t, env.recorder, "failed")
+		})
+	}
 }
 
 func TestDefineWithAIFailedCallIsNotBilled(t *testing.T) {
 	env := newAIEnv()
+	logs := observeLogs(t)
 	env.definer.err = errors.New("provider down")
+	env.definer.usage = AIUsage{}
 
-	if _, err := env.define("rizzler"); !errors.Is(err, ErrAIFailed) {
-		t.Fatalf("err = %v, want ErrAIFailed", err)
+	res, err := env.define("rizzler")
+	if !errors.Is(err, ErrAIFailed) || res != (Result{}) {
+		t.Fatalf("got %+v, %v, want ErrAIFailed", res, err)
 	}
 	if len(env.billing.settled) != 0 {
-		t.Fatalf("billed %v for a failed call", env.billing.settled)
+		t.Fatalf("billed %v for a call that used no tokens", env.billing.settled)
 	}
+	assertErrorEvent(t, logs, "ai_call_failed_unbilled", unbilledFields(env.definer.err))
+	assertLogLines(t, logs, 1)
+	assertAIWordOutcome(t, env.recorder, "failed")
+}
+
+func TestDefineWithAIUnusableReplyWithoutUsageIsNotBilled(t *testing.T) {
+	env := newAIEnv()
+	logs := observeLogs(t)
+	env.definer.err = errors.Join(ErrInvalidAIReply, errors.New("no JSON"))
+	env.definer.usage = AIUsage{}
+
+	res, err := env.define("rizzler")
+	if err != nil || res != (Result{English: "rizzler", Source: SourceAIMiss}) {
+		t.Fatalf("got %+v, %v, want an AI miss", res, err)
+	}
+	if len(env.billing.settled) != 0 || len(env.words.added) != 0 {
+		t.Fatalf("billed %v, cached %v, want neither", env.billing.settled, env.words.added)
+	}
+	assertErrorEvent(t, logs, "ai_call_failed_unbilled", unbilledFields(env.definer.err))
+	assertLogLines(t, logs, 1)
+	assertAIWordOutcome(t, env.recorder, "invalid_reply")
+}
+
+// A charge that cannot be written changes nothing for the user; the event
+// still reports the attempted cost.
+func TestDefineWithAIReportsAFailedChargeForAFailedCall(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		callErr error
+		wantErr error
+		source  Source
+		outcome string
+	}{
+		{"unusable reply", ErrInvalidAIReply, nil, SourceAIMiss, "invalid_reply"},
+		{"failed call", errors.New("no choices"), ErrAIFailed, "", "failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAIEnv()
+			logs := observeLogs(t)
+			env.definer.err = tc.callErr
+			env.billing.settleErr = errors.New("ledger down")
+
+			res, err := env.define("rizzler")
+			if !errors.Is(err, tc.wantErr) || res.Source != tc.source {
+				t.Fatalf("got %+v, %v, want source %q and error %v", res, err, tc.source, tc.wantErr)
+			}
+			assertSettledOnce(t, env.billing, env.definer.usage)
+			assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(env.definer.usage, false, tc.callErr))
+			want := "dictionary: could not bill user u1 for an AI lookup (150+40 tokens): ledger down"
+			if got := logs.FilterMessage(want).FilterLevelExact(zapcore.ErrorLevel).Len(); got != 1 {
+				t.Errorf("%q Error lines = %d, want 1; log: %+v", want, got, logs.All())
+			}
+			assertLogLines(t, logs, 2)
+			assertAIWordOutcome(t, env.recorder, tc.outcome)
+		})
+	}
+}
+
+func observeLogs(t *testing.T) *observer.ObservedLogs {
+	t.Helper()
+	core, logs := observer.New(zap.DebugLevel)
+	t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+	return logs
+}
+
+func assertSettledOnce(t *testing.T, billing *fakeBilling, usage AIUsage) {
+	t.Helper()
+	if len(billing.settled) != 1 || billing.settled[0] != usage {
+		t.Fatalf("billed %+v, want %+v once", billing.settled, usage)
+	}
+}
+
+// assertLogLines checks how many lines were logged, so a failure is not
+// reported a second time beside its event.
+func assertLogLines(t *testing.T, logs *observer.ObservedLogs, want int) {
+	t.Helper()
+	if logs.Len() != want {
+		t.Errorf("log lines = %d, want %d; log: %+v", logs.Len(), want, logs.All())
+	}
+}
+
+// assertErrorEvent checks that exactly one entry has msg, at Error level with
+// exactly these fields.
+func assertErrorEvent(t *testing.T, logs *observer.ObservedLogs, msg string, fields map[string]any) {
+	t.Helper()
+	entries := logs.FilterMessage(msg).All()
+	if len(entries) != 1 {
+		t.Fatalf("%s entries = %d, want 1; log: %+v", msg, len(entries), logs.All())
+	}
+	if entries[0].Level != zapcore.ErrorLevel {
+		t.Errorf("%s level = %s, want error", msg, entries[0].Level)
+	}
+	if got := entries[0].ContextMap(); !reflect.DeepEqual(got, fields) {
+		t.Errorf("%s fields = %#v, want %#v", msg, got, fields)
+	}
+}
+
+func billedFields(usage AIUsage, settled bool, callErr error) map[string]any {
+	return map[string]any{
+		"feature": "lookup_word_ai", "user_id": "u1",
+		"prompt_tokens": int64(usage.PromptTokens), "completion_tokens": int64(usage.CompletionTokens),
+		"cost": fakeCost, "settled": settled, "error": callErr.Error(),
+	}
+}
+
+func unbilledFields(callErr error) map[string]any {
+	return map[string]any{"feature": "lookup_word_ai", "user_id": "u1", "error": callErr.Error()}
 }
 
 func TestDefineWithAIStillAnswersWhenBillingFails(t *testing.T) {

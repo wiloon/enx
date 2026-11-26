@@ -141,10 +141,11 @@ func (TokenBilling) Balance(ctx context.Context, userID string) (int64, error) {
 	return credit.Balance(ctx, userID)
 }
 
-func (b TokenBilling) Settle(ctx context.Context, userID string, usage dictionary.AIUsage) error {
+// Settle returns the cost even when the ledger write fails.
+func (b TokenBilling) Settle(ctx context.Context, userID string, usage dictionary.AIUsage) (int64, error) {
 	cost := b.Pricing.Cost(usage.PromptTokens, usage.CompletionTokens)
 	logger.Infof("dictionary: %s billed user=%s cost=%d", b.Feature, userID, cost)
-	return credit.Settle(ctx, userID, b.Feature, cost)
+	return cost, credit.Settle(ctx, userID, b.Feature, cost)
 }
 
 // AIPolicy tells the lookup response what the AI fallback offers a user who
