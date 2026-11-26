@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted（Decision 2 的步骤顺序由 adr-095 修订）
 date: 2026-10-03
 revised: 2026-11-24
 related: adr-046（角标状态）、adr-027（Home 的 OnboardingChecklist，本 ADR 与它共用步骤模型）、adr-019 / adr-020（网页 → 扩展通道与登录回跳，本 ADR 加一个消息类型）、adr-039（站点自动启用）、adr-044（服务端偏好，存 `onboardingCompleted`）、adr-048（免费用户试用 AI 积分）

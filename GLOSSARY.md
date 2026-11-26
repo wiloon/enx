@@ -56,6 +56,14 @@ _Avoid_: 订阅档（只买过充值的用户也在这一档）、付费用户�
 按用户限制已登录请求的**速度**，所有已登录接口共用一条宽松规则，不分套餐，只拦脚本、不拦正常阅读的人。超出时返回 429、`Retry-After`，错误码 `too_many_requests`。见 adr-060。
 _Avoid_: 配额、quota（那是上面的每日查词配额）、throttling
 
+**匿名查词（anonymous lookup）**：
+未登录时的点击查词：只显示词典释义，不记查词次数，不产生单词高亮，不进生词本，也不调用 AI。只在从未登录过的浏览器上出现；登录过之后未登录就是「请登录」。有自己的每日额度，按匿名设备标识和 IP 各算一层，与每日查词配额无关；不算活跃用户。见 adr-095。
+_Avoid_: 游客模式、试用（试用专指试用积分）、免登录查词配额（它不是每日查词配额的一档）
+
+**匿名设备标识（anonymous device ID）**：
+扩展为匿名查词随机生成的标识，存在扩展本地，重装即更换。只用来让共用一个 IP 的多台设备各有各的匿名额度，不与任何本地用户身份关联。见 adr-095。
+_Avoid_: 设备指纹（它是随机数，不从设备特征推导）、匿名用户 ID
+
 ### Reader documents
 
 **Reader document**: A user's saved passage in Reader. Editing continues the same document; New starts a separate document.
