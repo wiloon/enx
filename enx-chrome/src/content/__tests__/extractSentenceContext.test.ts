@@ -427,6 +427,100 @@ describe('WordProcessor.extractSentenceContext', () => {
       )
     })
 
+    // #1137: under a newline-preserving white-space a source newline is a
+    // visible line break. jsdom doesn't inherit white-space, so the style
+    // goes on the text's parent element.
+    describe('under a newline-preserving white-space (#1137)', () => {
+      const LIST = [
+        '- Arrow mark: an arrow always points at the line of the latest reading position.',
+        '  - A click on the text moves it to that line.',
+        '  - A spread turn moves it to the first line of the new spread.',
+        '  - Reopening the book keeps it where it was.',
+      ].join('\n')
+
+      const paragraph = (html: string, whiteSpace: string) => {
+        document.body.innerHTML = `<p style="white-space: ${whiteSpace}">${html}</p>`
+        return document.querySelector('p')!
+      }
+
+      const lookupAt = (el: Element, word: string) => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const offset = node.textContent!.indexOf(word)
+          if (offset >= 0) {
+            return WordProcessor.extractSentenceContext(
+              collapsedRangeInText(node, offset),
+              word
+            )!
+          }
+        }
+        throw new Error(`missing word ${word}`)
+      }
+
+      it('merges list lines under white-space: normal', () => {
+        const p = paragraph(LIST, 'normal')
+
+        expect(lookupAt(p, 'spread').sentence).toBe(
+          LIST.replace(/\s+/g, ' ')
+        )
+      })
+
+      it('returns only the clicked list line, with its marker, under pre-wrap', () => {
+        const p = paragraph(LIST, 'pre-wrap')
+        const expected =
+          '- A spread turn moves it to the first line of the new spread.'
+
+        const ctx = lookupAt(p, 'spread')
+
+        expect(ctx.sentence).toBe(expected)
+        expect(ctx.range?.toString()).toBe(expected)
+      })
+
+      it('returns only the clicked line of an unpunctuated list', () => {
+        const p = paragraph('- Open the book\n- Turn a page', 'pre-wrap')
+
+        expect(lookupAt(p, 'Turn').sentence).toBe('- Turn a page')
+      })
+
+      it('keeps a hard-wrapped sentence whole', () => {
+        const p = paragraph(
+          'The quick brown fox\njumps over the lazy dog. It runs.',
+          'pre-wrap'
+        )
+
+        expect(lookupAt(p, 'fox').sentence).toBe(
+          'The quick brown fox jumps over the lazy dog.'
+        )
+      })
+
+      it('sees a sentence end across an inline element boundary', () => {
+        const p = paragraph('<b>First line.</b>\nsecond line.', 'pre-wrap')
+
+        expect(lookupAt(p, 'second').sentence).toBe('second line.')
+      })
+
+      it('keeps or folds a CRLF pair as one break', () => {
+        // Set as a text node: innerHTML would turn CRLF into LF.
+        const p = paragraph('', 'pre-wrap')
+        p.textContent = '- Open the\r\nBlue Book\r\n- Turn a page'
+
+        expect(lookupAt(p, 'Blue').sentence).toBe('- Open the Blue Book')
+        expect(lookupAt(p, 'Turn').sentence).toBe('- Turn a page')
+      })
+
+      it('reads white-space from the element holding each text node', () => {
+        const p = paragraph(
+          'Read this\nfirst <span style="white-space: pre-wrap">- Open the book\n- Turn a page</span>',
+          'normal'
+        )
+
+        expect(lookupAt(p, 'Turn').sentence).toBe('- Turn a page')
+        expect(lookupAt(p, 'first').sentence).toBe(
+          'Read this first - Open the book'
+        )
+      })
+    })
+
     describe('without sentence segmentation', () => {
       const originalSegmenter = Intl.Segmenter
 

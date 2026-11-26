@@ -1,4 +1,5 @@
 import { WordData } from '@/types'
+import { keepsLineBreak, preservesNewlines } from '@/lib/lineBreaks'
 import { platformRulesOn } from '@/lib/platformSelectors'
 import { nearestElement } from '@/lib/rangeUtils'
 import {
@@ -418,7 +419,7 @@ export class WordProcessor {
   // UAX #29 breaks a sentence after every one of these (rule SB4), yet with
   // `white-space: normal` the browser renders them as plain spaces, so
   // hard-wrapped page source would split prose at every source line.
-  private static readonly LINE_SEPARATORS = /[\n\r\x85\u2028\u2029]/g
+  private static readonly LINE_SEPARATORS = /\r\n|[\n\r\x85\u2028\u2029]/g
   // `\s` and String.prototype.trim() don't treat NEL (U+0085) as whitespace.
   private static readonly SEPARATOR_RUN = /[\s\x85]+/g
   private static readonly LEADING_SEPARATORS = /^[\s\x85]*/
@@ -547,9 +548,10 @@ export class WordProcessor {
   // LOOKUP_EXCLUDED_TAGS span (code, pre, ...) is replaced with a neutral
   // letter. Segment boundaries computed from this string index directly into
   // `fullText` unchanged, since lengths match; only the punctuation the
-  // segmenter sees is different. Every LINE_SEPARATORS character is also
-  // replaced with a space, one for one. Falls back to `fullText` (with the
-  // same separator replacement) if the walked length ever disagrees with it
+  // segmenter sees is different. LINE_SEPARATORS are also replaced with a
+  // space, one for one, except the newlines keepsLineBreak() keeps where the
+  // white-space preserves them (#1137). Falls back to `fullText` (with the
+  // container's own white-space) if the walked length ever disagrees with it
   // (shouldn't happen -- textContent is defined as the concatenation of the
   // same text nodes -- but a mismatch would silently corrupt every offset
   // downstream, so it's worth guarding).
@@ -557,17 +559,46 @@ export class WordProcessor {
     container: Element,
     fullText: string
   ): string {
+    const preservingElements = new Map<Element, boolean>()
+    const preserves = (element: Element): boolean => {
+      let result = preservingElements.get(element)
+      if (result === undefined) {
+        result = preservesNewlines(getComputedStyle(element))
+        preservingElements.set(element, result)
+      }
+      return result
+    }
+    // [start, end) offsets of the text nodes whose newlines are rendered.
+    const preservedRanges: [number, number][] = []
+
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
     let masked = ''
     let node: Node | null
     while ((node = walker.nextNode())) {
       const text = (node as Text).data
+      if (preserves(node.parentElement!)) {
+        preservedRanges.push([masked.length, masked.length + text.length])
+      }
       masked += this.isInExcludedSubtree(node, container)
         ? 'x'.repeat(text.length)
         : text
     }
-    const segmentable = masked.length === fullText.length ? masked : fullText
-    return segmentable.replace(this.LINE_SEPARATORS, ' ')
+
+    const walked = masked.length === fullText.length
+    const segmentable = walked ? masked : fullText
+    const isPreserved = (offset: number): boolean =>
+      walked
+        ? preservedRanges.some(([from, to]) => offset >= from && offset < to)
+        : preserves(container)
+
+    // `\r\n` matches as one break, so both characters are decided together.
+    return segmentable.replace(this.LINE_SEPARATORS, (separator, offset) =>
+      /[\r\n]/.test(separator) &&
+      isPreserved(offset) &&
+      keepsLineBreak(segmentable, offset)
+        ? separator
+        : ' '.repeat(separator.length)
+    )
   }
 
   // The whole container as the sentence, normalized and with its range
