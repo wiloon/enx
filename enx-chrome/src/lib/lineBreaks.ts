@@ -25,7 +25,13 @@ const HORIZONTAL = /[ \t]/
 const CLOSERS = /["')\]}”’»›]/
 const SENTENCE_END = /[.!?]/
 const LINE_BREAK = /[\r\n]/
-const LIST_ITEM = /[ \t]*(?:[-*•]|\d+[.)])[ \t]/y
+// A numbered list marker without its surrounding whitespace, shared with
+// sentence segmentation.
+export const NUMBERED_MARKER = String.raw`\d+[.)]`
+const LIST_ITEM = new RegExp(
+  String.raw`[ \t]*(?:[-*•]|${NUMBERED_MARKER})[ \t]`,
+  'y'
+)
 const BLANK_REST_OF_LINE = /[ \t]*(?:[\r\n]|$)/y
 
 const matchesAt = (pattern: RegExp, text: string, index: number): boolean => {
