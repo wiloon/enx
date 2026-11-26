@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440" role="img" aria-labelledby="t">
+  <title id="t">A full-page translator turns the whole page into Chinese; Catglish keeps the page in English and translates only the one sentence you ask for</title>
+  <style>
+    /* Brand values match globals.css; the wash colour matches enx-chrome wordHighlight.ts. */
+    svg { --brand: oklch(0.55 0.13 200); --brand-muted: oklch(0.95 0.03 200); --fg: oklch(0.145 0 0); --sub: oklch(0.45 0 0); --faint: oklch(0.9 0 0); --border: oklch(0.88 0 0); --bg: oklch(0.97 0 0); --card: #fff; --wash: hsl(45 95% 55% / 45%); }
+    text { font-family: system-ui, sans-serif; fill: var(--fg); }
+    .serif { font-family: Georgia, serif; }
+    .sub { fill: var(--sub); }
+    .brand { fill: var(--brand); }
+  </style>
+  <rect width="720" height="440" rx="14" fill="var(--bg)"/>
+  <!-- column: full-page translator -->
+  <text x="188" y="46" font-size="15" font-weight="700" text-anchor="middle" class="sub">A full-page translator</text>
+  <rect x="24" y="64" width="328" height="352" rx="10" fill="var(--card)" stroke="var(--border)"/>
+  <text x="44" y="100" font-size="18" font-weight="700">珊瑚礁如何恢复</text>
+  <text x="44" y="134" font-size="14">科学家发现，一些珊瑚礁的恢复能力</text>
+  <text x="44" y="158" font-size="14">出人意料，十年之内就能复原。</text>
+  <text x="44" y="190" font-size="14">这项研究追踪了太平洋上的四十处</text>
+  <text x="44" y="214" font-size="14">礁区，记录每一次白化之后的变化。</text>
+  <text x="44" y="246" font-size="14">研究人员说，水温是最关键的因素，</text>
+  <text x="44" y="270" font-size="14">其次是附近的捕鱼强度。</text>
+  <rect x="44" y="296" width="280" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="44" y="314" width="240" height="8" rx="4" fill="var(--faint)"/>
+  <text x="44" y="384" font-size="14" class="sub">You end up reading Chinese.</text>
+  <!-- column: Catglish -->
+  <text x="532" y="46" font-size="15" font-weight="700" text-anchor="middle" class="brand">Catglish</text>
+  <rect x="368" y="64" width="328" height="352" rx="10" fill="var(--card)" stroke="var(--brand)" stroke-width="1.5"/>
+  <text x="388" y="100" class="serif" font-size="18" font-weight="bold">How coral reefs bounce back</text>
+  <text x="388" y="134" class="serif" font-size="14">Scientists found that some reefs are</text>
+  <text x="388" y="158" class="serif" font-size="14">surprisingly resilient.</text>
+  <!-- the one sentence the reader asked about -->
+  <rect x="382" y="174" width="300" height="48" rx="4" fill="var(--wash)" opacity="0.6"/>
+  <text x="388" y="194" class="serif" font-size="14">The study tracked forty sites across</text>
+  <text x="388" y="214" class="serif" font-size="14">the Pacific after each bleaching.</text>
+  <rect x="388" y="232" width="288" height="52" rx="8" fill="var(--brand-muted)" stroke="var(--brand)"/>
+  <text x="400" y="254" font-size="13">这项研究追踪了太平洋上的四十处礁区，</text>
+  <text x="400" y="273" font-size="13">记录每次白化之后的变化。</text>
+  <text x="388" y="312" class="serif" font-size="14">Water temperature mattered most,</text>
+  <text x="388" y="336" class="serif" font-size="14">followed by nearby fishing.</text>
+  <text x="388" y="384" font-size="14" font-weight="600">You keep reading English.</text>
+</svg>

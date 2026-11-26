@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440" role="img" aria-labelledby="t">
+  <title id="t">A clicked word in a sentence, and the side panel picking the one dictionary meaning that fits this sentence</title>
+  <style>
+    /* Brand values match globals.css; the wash colour matches enx-chrome wordHighlight.ts. */
+    svg { --brand: oklch(0.55 0.13 200); --brand-muted: oklch(0.95 0.03 200); --fg: oklch(0.145 0 0); --sub: oklch(0.45 0 0); --faint: oklch(0.9 0 0); --border: oklch(0.88 0 0); --bg: oklch(0.97 0 0); --card: #fff; --wash: hsl(45 95% 55% / 45%); }
+    text { font-family: system-ui, sans-serif; fill: var(--fg); }
+    .serif { font-family: Georgia, serif; }
+    .sub { fill: var(--sub); }
+    .brand { fill: var(--brand); }
+  </style>
+  <rect width="720" height="440" rx="14" fill="var(--bg)"/>
+  <!-- article -->
+  <rect x="24" y="24" width="372" height="392" rx="10" fill="var(--card)" stroke="var(--border)"/>
+  <text x="48" y="68" class="serif" font-size="20" font-weight="bold">A table for two</text>
+  <rect x="48" y="92" width="320" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="110" width="290" height="8" rx="4" fill="var(--faint)"/>
+  <!-- the sentence, washed; the clicked word washed darker -->
+  <rect x="42" y="136" width="336" height="56" rx="4" fill="var(--wash)" opacity="0.45"/>
+  <rect x="158" y="140" width="44" height="24" rx="3" fill="var(--wash)"/>
+  <text x="48" y="158" class="serif" font-size="16">She decided to <tspan font-weight="bold">book</tspan> a table for two</text>
+  <text x="48" y="182" class="serif" font-size="16">before the restaurant filled up.</text>
+  <rect x="48" y="216" width="310" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="234" width="322" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="252" width="260" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="286" width="318" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="304" width="296" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="322" width="312" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="48" y="340" width="180" height="8" rx="4" fill="var(--faint)"/>
+  <!-- side panel -->
+  <rect x="412" y="24" width="284" height="392" rx="10" fill="var(--card)" stroke="var(--border)"/>
+  <text x="432" y="60" font-size="20" font-weight="700">book</text>
+  <text x="486" y="60" font-size="13" class="sub">/bʊk/</text>
+  <path d="M432 76h244" stroke="var(--border)"/>
+  <text x="432" y="102" font-size="11" font-weight="600" class="sub" letter-spacing="0.6">DICTIONARY</text>
+  <text x="432" y="128" font-size="14" class="sub">n. 书；书籍；账簿</text>
+  <text x="432" y="152" font-size="14" class="sub">v. 预订；登记</text>
+  <!-- the meaning in this sentence -->
+  <rect x="424" y="180" width="260" height="112" rx="8" fill="var(--brand-muted)" stroke="var(--brand)" stroke-width="1.5"/>
+  <text x="438" y="206" font-size="11" font-weight="600" class="brand" letter-spacing="0.6">IN THIS SENTENCE</text>
+  <text x="438" y="240" font-size="22" font-weight="700">预订</text>
+  <text x="438" y="270" font-size="13" class="sub">这里是动词，指预订餐位</text>
+  <!-- link from the dictionary line to the chosen meaning -->
+  <path d="M540 148 q44 2 40 26" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <path d="M575 169 l5 7 l5 -7" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="432" y="320" width="230" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="432" y="338" width="200" height="8" rx="4" fill="var(--faint)"/>
+  <rect x="432" y="356" width="216" height="8" rx="4" fill="var(--faint)"/>
+</svg>
