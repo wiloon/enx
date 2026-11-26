@@ -597,7 +597,12 @@ describe('SidePanel', () => {
       wordId: 'great-id',
     })
     await act(async () =>
-      finish({ success: false, status: 429, code: 'lookup_quota_exceeded' })
+      finish({
+        success: false,
+        status: 429,
+        code: 'lookup_quota_exceeded',
+        upgrade: true,
+      })
     )
     expect(definition).toBeInTheDocument()
     expect(
@@ -680,67 +685,51 @@ describe('SidePanel', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows an upgrade link (not the raw error) when the dictionary lookup hits the daily quota (429)', async () => {
-    seedSession({
-      [PENDING_SENTENCE_STORAGE_KEY]: {
-        sentence: 'Cats are great pets.',
-        word: '',
-        createdAt: 1,
-        eventId: nextEventId(),
-      },
-    })
-    mockSendMessage.mockImplementation(async (message: { type: string }) => {
-      if (message.type === 'translateSentence') {
-        return { success: true, chinese: '猫是很棒的宠物。' }
-      }
-      if (message.type === 'translateWordInContext') {
-        return { success: true, chinese: '很棒的' }
-      }
-      if (message.type === 'getOneWord') {
-        return {
-          success: false,
+  // ADR-029 Decision 5: only a quota refusal enx-api marks `upgrade: true` is
+  // a free user's. ADR-060 Decision 4: the request rate limit's 429 is not the
+  // quota at all.
+  const SUPPORT_MESSAGE =
+    'Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support.'
+
+  describe.each(['getOneWord', 'recordWordLookup'])('a 429 on %s', refused => {
+    it.each([
+      [
+        'a free user',
+        {
+          code: 'lookup_quota_exceeded',
+          upgrade: true,
           error:
-            'Daily dictionary lookup limit reached. Upgrade to enx Pro for unlimited lookups.',
-          status: 429,
-        }
-      }
-      return { success: false }
-    })
-
-    render(<SidePanel />)
-    await screen.findByTestId('sidepanel-sentence')
-    selectWord('great')
-
-    const errorRow = await screen.findByTestId(
-      'sidepanel-dictionary-error-great'
-    )
-    expect(errorRow).toHaveTextContent("You've used up today's free lookups")
-    expect(errorRow).not.toHaveTextContent('Upgrade to enx Pro')
-    expect(
-      within(errorRow).getByText('Subscribe / add credit')
-    ).toHaveAttribute('href', 'http://localhost:3000/billing')
-  })
-
-  // ADR-060 Decision 4: the request rate limit's 429 is not the quota. It
-  // says to slow down, and does not send the user to billing.
-  it.each([
-    [
-      'the request rate limit',
-      'too_many_requests',
-      'Too many requests. Please slow down and try again in a moment.',
-      'Too many requests. Please slow down and try again in a moment.',
-      false,
-    ],
-    [
-      'the daily quota, by its code',
-      'lookup_quota_exceeded',
-      'Daily dictionary lookup limit reached.',
-      "You've used up today's free lookups",
-      true,
-    ],
-  ])(
-    'tells a 429 from %s by its code',
-    async (_name, code, error, shown, upgrade) => {
+            'Daily dictionary lookup limit reached. Upgrade to Catglish Pro.',
+        },
+        "You've used up today's free lookups",
+      ],
+      [
+        'a subscriber',
+        { code: 'lookup_quota_exceeded', error: SUPPORT_MESSAGE },
+        SUPPORT_MESSAGE,
+      ],
+      [
+        'a refusal with no code or flag',
+        { error: 'Daily lookup limit reached on this server.' },
+        'Daily lookup limit reached on this server.',
+      ],
+      [
+        'a refusal that came with no message',
+        {
+          code: 'lookup_quota_exceeded',
+          error: 'Daily dictionary lookup limit reached.',
+        },
+        'Daily dictionary lookup limit reached.',
+      ],
+      [
+        'the request rate limit',
+        {
+          code: 'too_many_requests',
+          error: 'Too many requests. Please slow down.',
+        },
+        'Too many requests. Please slow down.',
+      ],
+    ])('is worded for %s', async (_name, refusal, shown) => {
       seedSession({
         [PENDING_SENTENCE_STORAGE_KEY]: {
           sentence: 'Cats are great pets.',
@@ -750,16 +739,20 @@ describe('SidePanel', () => {
         },
       })
       mockSendMessage.mockImplementation(async (message: { type: string }) => {
-        if (message.type === 'translateSentence') {
-          return { success: true, chinese: '猫是很棒的宠物。' }
-        }
-        if (message.type === 'translateWordInContext') {
-          return { success: true, chinese: '很棒的' }
-        }
-        if (message.type === 'getOneWord') {
-          return { success: false, error, status: 429, code }
-        }
-        return { success: false }
+        if (message.type === refused)
+          return { success: false, status: 429, ...refusal }
+        if (message.type === 'getOneWord')
+          return {
+            success: true,
+            ecp: {
+              Id: 'great-id',
+              English: 'great',
+              Chinese: '伟大的',
+              Pronunciation: '',
+              WordType: 0,
+            },
+          }
+        return { success: true, chinese: '很棒的' }
       })
 
       render(<SidePanel />)
@@ -771,11 +764,16 @@ describe('SidePanel', () => {
       )
       expect(errorRow).toHaveTextContent(shown)
       expect(errorRow).not.toHaveTextContent(/session expired/i)
-      expect(
-        within(errorRow).queryByText('Subscribe / add credit') !== null
-      ).toBe(upgrade)
-    }
-  )
+      const link = within(errorRow).queryByText('Subscribe / add credit')
+      if ('upgrade' in refusal) {
+        expect(errorRow).not.toHaveTextContent('Catglish Pro')
+        expect(link).toHaveAttribute('href', 'http://localhost:3000/billing')
+      } else {
+        expect(errorRow).not.toHaveTextContent('free lookups')
+        expect(link).toBeNull()
+      }
+    })
+  })
 
   it('appends word cards on click instead of replacing the previous one, newest on top (spec §3.9/§4.5)', async () => {
     seedSession({

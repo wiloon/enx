@@ -141,6 +141,64 @@ it('passes a quota refusal of the QUERY through without falling back', async () 
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 
+describe.each([
+  ['getOneWord', { type: 'getOneWord', word: 'cat' }],
+  ['recordWordLookup', { type: 'recordWordLookup', wordId: 'cat-id' }],
+])('a refused %s', (_type, message) => {
+  const refuse = (status: number, body: unknown) => {
+    ;(fetch as jest.Mock).mockResolvedValue(reply(status, body))
+    return send(message)
+  }
+
+  it("hands the caller the server's upgrade flag", async () => {
+    expect(
+      await refuse(429, { code: 'lookup_quota_exceeded', upgrade: true })
+    ).toMatchObject({ success: false, upgrade: true })
+  })
+
+  it.each(['true', 1, false, undefined])(
+    'hands on no upgrade flag for %p',
+    async upgrade => {
+      const result = await refuse(429, {
+        code: 'lookup_quota_exceeded',
+        upgrade,
+      })
+      expect(result.success).toBe(false)
+      expect(result.upgrade).toBeUndefined()
+    }
+  )
+
+  it.each([
+    ['a quota 429', { code: 'lookup_quota_exceeded' }],
+    ['a 429 with no code', {}],
+  ])('words %s that carries no message', async (_name, body) => {
+    expect(await refuse(429, body)).toMatchObject({
+      error: 'Daily dictionary lookup limit reached.',
+    })
+  })
+
+  it('words a 429 whose body is not JSON', async () => {
+    ;(fetch as jest.Mock).mockResolvedValue({
+      ...reply(429, {}),
+      json: async () => {
+        throw new SyntaxError('not JSON')
+      },
+    })
+    expect(await send(message)).toMatchObject({
+      error: 'Daily dictionary lookup limit reached.',
+    })
+  })
+
+  it.each([
+    [429, { code: 'too_many_requests' }],
+    [403, {}],
+  ])('keeps the status text for a %i with %p', async (status, body) => {
+    expect(await refuse(status, body)).toMatchObject({
+      error: expect.stringContaining(`HTTP ${status}`),
+    })
+  })
+})
+
 it('answers a word no dictionary knows with its AI offer and does not cache it', async () => {
   ;(fetch as jest.Mock).mockResolvedValue(
     reply(200, [

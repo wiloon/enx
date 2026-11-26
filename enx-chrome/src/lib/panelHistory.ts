@@ -33,12 +33,14 @@ export interface WordCardData {
   loadCount?: number
   dictionaryChinese?: string
   dictionaryStatus: FetchStatus | 'none'
-  // Set when dictionaryStatus is 'error'. The status and code tell the
-  // daily lookup quota (TASK-SPEC §4.2; rendered with an upgrade link) from
-  // the request rate limit (ADR-060; the server's own message) -- both 429.
+  // Set when dictionaryStatus is 'error'. The status, code and upgrade flag
+  // tell a free user's daily lookup quota (TASK-SPEC §4.2; rendered with an
+  // upgrade link) from every other 429, shown in the server's own words
+  // (lib/rateLimit.ts).
   dictionaryError?: string
   dictionaryErrorHttpStatus?: number
   dictionaryErrorCode?: string
+  dictionaryErrorUpgrade?: boolean
   // The failure was a lost session (#236): the row offers Sign in.
   dictionarySessionExpired?: boolean
   // The failure was an unverified session (#686): Retry and Sign in.
@@ -274,6 +276,7 @@ export const supersedeSessionRows = (
             dictionaryError: message,
             dictionaryErrorHttpStatus: undefined,
             dictionaryErrorCode: undefined,
+            dictionaryErrorUpgrade: undefined,
           }),
         }
       : c
@@ -368,6 +371,7 @@ const timedOutCard = <C extends WordCardData>(
           dictionaryError: PANEL_TIMEOUT_ERROR_MESSAGE,
           dictionaryErrorHttpStatus: undefined,
           dictionaryErrorCode: undefined,
+          dictionaryErrorUpgrade: undefined,
         }
       : {}),
     ...(card.contextStatus === 'loading'

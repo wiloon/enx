@@ -46,7 +46,7 @@ import {
 } from '@/lib/panelHistoryStore'
 import { runDictionaryLookup } from '@/lib/dictionaryLookup'
 import { createAccountScope } from '@/lib/accountSession'
-import { isLookupQuotaExceeded } from '@/lib/rateLimit'
+import { offersUpgrade } from '@/lib/rateLimit'
 import { config } from '@/config/env'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import SignedOutNotice from '@/components/SignedOutNotice'
@@ -326,9 +326,10 @@ function WordCard({
           ? SESSION_UNVERIFIED_MESSAGE
           : contextErrorDisplay(card.contextError, card.contextErrorHttpStatus)
       : undefined
-  const quotaExceeded = isLookupQuotaExceeded({
+  const upgradeOffered = offersUpgrade({
     status: card.dictionaryErrorHttpStatus,
     code: card.dictionaryErrorCode,
+    upgrade: card.dictionaryErrorUpgrade,
   })
   const dictionaryErrorText =
     card.dictionaryStatus === 'error'
@@ -336,7 +337,7 @@ function WordCard({
         ? SIGNED_OUT_MESSAGE
         : card.dictionarySessionUnverified
           ? SESSION_UNVERIFIED_MESSAGE
-          : quotaExceeded
+          : upgradeOffered
             ? "You've used up today's free lookups"
             : card.dictionaryError
       : undefined
@@ -498,7 +499,7 @@ function WordCard({
             data-testid={`sidepanel-dictionary-error-${card.word}`}
           >
             <span className="flex-1">{dictionaryErrorText}</span>
-            {quotaExceeded && (
+            {upgradeOffered && (
               <UpgradeLink className="text-destructive hover:text-destructive/80 font-medium whitespace-nowrap underline" />
             )}
           </div>
@@ -1192,6 +1193,7 @@ function SidePanelContent() {
           dictionaryError: response.error || 'Dictionary lookup failed',
           dictionaryErrorHttpStatus: response.status,
           dictionaryErrorCode: response.code,
+          dictionaryErrorUpgrade: response.upgrade,
           dictionarySessionExpired: isSignedOutFailure(response),
           dictionarySessionUnverified: isUnverifiedFailure(response),
         })
@@ -1247,6 +1249,7 @@ function SidePanelContent() {
                     dictionaryError: undefined,
                     dictionaryErrorHttpStatus: undefined,
                     dictionaryErrorCode: undefined,
+                    dictionaryErrorUpgrade: undefined,
                     dictionarySessionExpired: false,
                     dictionarySessionUnverified: false,
                   })
@@ -1276,6 +1279,7 @@ function SidePanelContent() {
               dictionaryError: 'Dictionary lookup failed',
               dictionaryErrorHttpStatus: undefined,
               dictionaryErrorCode: undefined,
+              dictionaryErrorUpgrade: undefined,
               dictionarySessionExpired: false,
               dictionarySessionUnverified: false,
             })

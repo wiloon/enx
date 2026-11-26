@@ -389,6 +389,11 @@ export async function mockBackendFetch(
      * A small value refuses the prefetch batch but lets a click through.
      */
     dailyQuotaLeft?: number
+    /**
+     * false: the quota 429 omits `upgrade`, as enx-api's does for anyone but a
+     * confirmed free user (ADR-029 Decision 5). Defaults to true.
+     */
+    quotaUpgrade?: boolean
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -417,6 +422,7 @@ export async function mockBackendFetch(
   const lookupPostDelayMs = options.lookupPostDelayMs ?? 0
   const lookupPostStatus = options.lookupPostStatus ?? 200
   const dailyQuotaLeft = options.dailyQuotaLeft ?? null
+  const quotaUpgrade = options.quotaUpgrade ?? true
 
   await sw.evaluate(
     ({
@@ -429,22 +435,28 @@ export async function mockBackendFetch(
       lookupPostDelayMs,
       lookupPostStatus,
       dailyQuotaLeft,
+      quotaUpgrade,
     }) => {
       let quotaLeft = dailyQuotaLeft ?? Number.MAX_SAFE_INTEGER
       ;(self as unknown as Record<string, unknown>).__enxTranslatePosts = []
-      // Spends `cost`, or answers the refusal enx-api sends when it can't.
+      // The quota refusal enx-api sends a free user.
+      const quotaResponse = (status: number) =>
+        new Response(
+          JSON.stringify({
+            code: 'lookup_quota_exceeded',
+            message:
+              'Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit.',
+            ...(quotaUpgrade ? { upgrade: true } : {}),
+          }),
+          { status, headers: { 'Content-Type': 'application/json' } }
+        )
+      // Spends `cost`, or answers that refusal when it can't.
       const quotaRefusal = (cost: number) => {
         if (cost <= quotaLeft) {
           quotaLeft -= cost
           return null
         }
-        return new Response(
-          JSON.stringify({
-            code: 'lookup_quota_exceeded',
-            message: "You've used up today's free lookups",
-          }),
-          { status: 429, headers: { 'Content-Type': 'application/json' } }
-        )
+        return quotaResponse(429)
       }
       const realFetch = self.fetch.bind(self)
       self.fetch = async (input, init) => {
@@ -517,17 +529,7 @@ export async function mockBackendFetch(
           posts.push(body)
           if (lookupPostDelayMs)
             await new Promise(resolve => setTimeout(resolve, lookupPostDelayMs))
-          if (lookupPostStatus !== 200)
-            return new Response(
-              JSON.stringify({
-                code: 'lookup_quota_exceeded',
-                message: "You've used up today's free lookups",
-              }),
-              {
-                status: lookupPostStatus,
-                headers: { 'Content-Type': 'application/json' },
-              }
-            )
+          if (lookupPostStatus !== 200) return quotaResponse(lookupPostStatus)
           const refused = quotaRefusal(1)
           if (refused) return refused
           return new Response(
@@ -620,6 +622,7 @@ export async function mockBackendFetch(
       lookupPostDelayMs,
       lookupPostStatus,
       dailyQuotaLeft,
+      quotaUpgrade,
     }
   )
 }

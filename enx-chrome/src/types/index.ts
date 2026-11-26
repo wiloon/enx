@@ -189,6 +189,8 @@ export interface BackgroundResponse {
   // The failed response's `code`: which 429 it is (lib/rateLimit.ts,
   // ADR-060 Decision 4).
   code?: string
+  // The failed response said `upgrade: true`: a free user's quota refusal.
+  upgrade?: boolean
   // How long the server asked us to wait before retrying (Retry-After).
   retryAfterMs?: number
   // Set by the 'openSentencePanel' handler: true when the Side Panel is

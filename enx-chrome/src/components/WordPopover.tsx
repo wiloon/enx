@@ -12,7 +12,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { billingUrl } from '@/lib/aiLookup'
 import { splitDefinition } from '@/lib/definitionParts'
 import { externalDictionaryUrl } from '@/lib/externalDictionary'
-import { isLookupQuotaExceeded } from '@/lib/rateLimit'
+import { offersUpgrade } from '@/lib/rateLimit'
 import { lookupCountLabel } from '@/lib/lookupCount'
 import {
   currentWordAtom,
@@ -309,10 +309,10 @@ export default function WordPopover({
                   data-testid="word-popover-lookup-notice"
                   className="p-2 rounded-sm bg-warning-muted border border-warning text-warning-foreground text-sm"
                 >
-                  {isLookupQuotaExceeded(lookupNotice)
+                  {offersUpgrade(lookupNotice)
                     ? "You've used up today's free lookups"
                     : lookupNotice.error}
-                  {isLookupQuotaExceeded(lookupNotice) && (
+                  {offersUpgrade(lookupNotice) && (
                     <a
                       href={billingUrl('lookup-miss')}
                       target="_blank"
