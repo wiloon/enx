@@ -73,9 +73,8 @@ export default function RefundPolicyPage() {
         </p>
         <p>
           If credits were consumed by something that clearly went wrong on our
-          side — a failed request that still charged you, a duplicate call, a
-          bug — that is not a refund question. Tell us and we will put the
-          credits back.
+          side — a duplicate call, a bug — that is not a refund question. Tell
+          us and we will put the credits back.
         </p>
       </Section>
 

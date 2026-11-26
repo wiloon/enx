@@ -50,7 +50,8 @@ export default function RephraseHelpPage() {
         </p>
         <p className="text-muted-foreground">
           Rephrase only re-expresses what you wrote; it does not add details.
-          Each rephrase uses AI credits, and a failed request is never charged.
+          Like every AI feature (sentence translation, in-context meanings,
+          ...), rephrase uses AI credits.
         </p>
       </section>
     </article>

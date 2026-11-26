@@ -17,5 +17,8 @@ it('explains how to rephrase Chinese or rough English and links to the tool', ()
     screen.getByText(/Type what you want to say in Chinese/)
   ).toHaveTextContent('200 characters')
   expect(screen.getByText(/one or two alternatives/)).toBeInTheDocument()
-  expect(screen.getByText(/uses AI credits/)).toBeInTheDocument()
+  expect(screen.getByText(/uses AI credits/)).toHaveTextContent(
+    'Like every AI feature (sentence translation, in-context meanings, ...), rephrase uses AI credits.'
+  )
+  expect(screen.queryByText(/never charged/)).not.toBeInTheDocument()
 })

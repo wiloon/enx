@@ -406,6 +406,30 @@ describe('Refund Policy', () => {
     expect(screen.queryByText(/we will refund that\s+part/)).toBeNull()
   })
 
+  // ADR-094: a failed AI call that reached the model is billed, so being
+  // charged for a failed request is no longer listed as our mistake.
+  it.each([
+    [
+      'English',
+      RefundPolicyPage,
+      /something that clearly went wrong on our side/,
+      'If credits were consumed by something that clearly went wrong on our side — a duplicate call, a bug — that is not a refund question. Tell us and we will put the credits back.',
+    ],
+    [
+      'Chinese route',
+      RefundPolicyZhPage,
+      /被我们这边明显出错的情况消耗掉的/,
+      '如果积分是被我们这边明显出错的情况消耗掉的 —— 重复调用、程序缺陷 —— 那不是退款问题。告诉我们，我们把积分补回去。',
+    ],
+  ])(
+    'does not list a charged failed request as our mistake, on the %s page',
+    (_locale, Page, passage, text) => {
+      render(<Page />)
+
+      expect(screen.getByText(passage)).toHaveTextContent(text)
+    }
+  )
+
   it('does not claim to override local consumer law', () => {
     render(<RefundPolicyPage />)
 
