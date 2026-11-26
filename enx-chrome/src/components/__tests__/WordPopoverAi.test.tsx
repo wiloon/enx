@@ -186,6 +186,21 @@ it('on a rate-limited error, shows the server message when there is one', () => 
   expect(screen.getByTestId('word-popover-ai-error')).toHaveTextContent(message)
 })
 
+// A 502 says whether ENX or the AI service failed (#1153).
+it('on an unavailable error, shows the server message and the retry button', () => {
+  const message =
+    'The AI service is having trouble right now. Please try again.'
+  const { onAiLookup } = renderPopover({
+    ai: { status: 'error', reason: 'unavailable', message },
+  })
+
+  const error = screen.getByTestId('word-popover-ai-error')
+  expect(error).toHaveTextContent(message)
+  expect(error).not.toHaveTextContent("AI lookup isn't available right now.")
+  fireEvent.click(screen.getByTestId('word-popover-ai-lookup'))
+  expect(onAiLookup).toHaveBeenCalledTimes(1)
+})
+
 describe('a definition', () => {
   it('has no AI badge when it came from the dictionary', () => {
     renderPopover({ current: word({ Chinese: 'v. 跑', Origin: 'ecdict' }) })

@@ -85,7 +85,6 @@ describe('lookupWithAi', () => {
   it.each([
     [402, 'credit'],
     [403, 'not-entitled'],
-    [502, 'unavailable'],
     [503, 'unavailable'],
     [undefined, 'unavailable'],
   ])('maps HTTP %s to %s', async (status, reason) => {
@@ -105,6 +104,28 @@ describe('lookupWithAi', () => {
       kind: 'error',
       reason: 'rate-limited',
       message,
+    })
+  })
+
+  // A 502 says whether ENX or the AI service failed (#1153).
+  it('keeps the server message on a 502', async () => {
+    const message =
+      'The AI service is having trouble right now. Please try again.'
+    send.mockResolvedValue({ success: false, status: 502, error: message })
+
+    expect(await lookupWithAi('rizzler')).toEqual({
+      kind: 'error',
+      reason: 'unavailable',
+      message,
+    })
+  })
+
+  it('has no message for a 502 that brought none', async () => {
+    send.mockResolvedValue({ success: false, status: 502 })
+
+    expect(await lookupWithAi('rizzler')).toEqual({
+      kind: 'error',
+      reason: 'unavailable',
     })
   })
 
