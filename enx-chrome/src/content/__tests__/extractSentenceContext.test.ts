@@ -590,6 +590,99 @@ describe('WordProcessor.extractSentenceContext', () => {
     })
   })
 
+  describe('numbered list markers (#1150)', () => {
+    const NBSP = String.fromCharCode(0xa0)
+
+    // The container's first text node, which holds the item(s).
+    const item = (text: string, whiteSpace = 'normal') => {
+      document.body.innerHTML = `<p style="white-space: ${whiteSpace}"></p>`
+      const p = document.querySelector('p')!
+      p.textContent = text
+      return p.firstChild!
+    }
+
+    const lookupAt = (node: Node, offset: number, word: string) =>
+      WordProcessor.extractSentenceContext(
+        collapsedRangeInText(node, offset),
+        word
+      )!
+
+    const lookupWord = (node: Node, word: string) =>
+      lookupAt(node, node.textContent!.indexOf(word), word)
+
+    const expectItem = (
+      ctx: ReturnType<typeof lookupAt>,
+      node: Node,
+      sentence: string,
+      original = sentence
+    ) => {
+      expect(ctx.sentence).toBe(sentence)
+      expect(ctx.range?.toString()).toBe(original)
+      expect(ctx.range?.startContainer).toBe(node)
+      expect(ctx.range?.startOffset).toBe(node.textContent!.indexOf(original))
+    }
+
+    it('keeps the number of the clicked item, its range covering the marker', () => {
+      const node = item('1. Open the book.')
+
+      expectItem(lookupWord(node, 'book'), node, '1. Open the book.')
+    })
+
+    it('gives the whole item for a click on the marker itself', () => {
+      const node = item('1. Open the book.')
+
+      expectItem(lookupAt(node, 0, '1'), node, '1. Open the book.')
+    })
+
+    it.each([
+      ['a two-digit number', '10. Open the book.', '10. Open the book.'],
+      ['a tab after the marker', '1.\tOpen the book.', '1. Open the book.'],
+      [
+        'an NBSP after the marker',
+        `1.${NBSP}Open the book.`,
+        '1. Open the book.',
+      ],
+    ])('gives the whole item with %s', (_name, text, sentence) => {
+      const node = item(text)
+
+      expectItem(lookupWord(node, 'book'), node, sentence, text)
+    })
+
+    it('numbers each line of a pre-wrap list, leaving the heading line alone', () => {
+      const node = item(
+        'Steps:\n1. Open the book.\n2. Read it.',
+        'pre-wrap'
+      )
+
+      expectItem(lookupWord(node, 'book'), node, '1. Open the book.')
+      expectItem(lookupWord(node, 'Read'), node, '2. Read it.')
+      expectItem(lookupWord(node, 'Steps'), node, 'Steps:')
+    })
+
+    it('does not merge a marker whose line ends right after it', () => {
+      const node = item('1.\nOpen the book.', 'pre-wrap')
+
+      expect(lookupWord(node, 'book').sentence).toBe('Open the book.')
+    })
+
+    it('still ends a sentence after a number inside it', () => {
+      const node = item('I counted to 3. Then I left.')
+
+      expectItem(lookupWord(node, 'left'), node, 'Then I left.')
+      expectItem(lookupWord(node, 'counted'), node, 'I counted to 3.')
+    })
+
+    it.each([
+      ['a number that is not alone', 'Chapter 1. The Beginning.', 'Beginning'],
+      ['a letter marker', 'a. Open the book.', 'book'],
+    ])('leaves %s as split by the segmenter', (_name, text, word) => {
+      const node = item(text)
+      const expected = text.slice(text.indexOf('. ') + 2)
+
+      expectItem(lookupWord(node, word), node, expected)
+    })
+  })
+
   it('takes the nearest block for a sentence of 20 characters or less (Standard Ebooks byline)', () => {
     document.body.innerHTML = `
       <main><section id="titlepage">

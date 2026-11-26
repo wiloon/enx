@@ -1,5 +1,9 @@
 import { WordData } from '@/types'
-import { keepsLineBreak, preservesNewlines } from '@/lib/lineBreaks'
+import {
+  keepsLineBreak,
+  NUMBERED_MARKER,
+  preservesNewlines,
+} from '@/lib/lineBreaks'
 import { platformRulesOn } from '@/lib/platformSelectors'
 import { nearestElement } from '@/lib/rangeUtils'
 import {
@@ -425,6 +429,31 @@ export class WordProcessor {
   private static readonly LEADING_SEPARATORS = /^[\s\x85]*/
   private static readonly TRAILING_SEPARATORS = /[\s\x85]*$/
 
+  // A segment holding only a numbered list marker: Intl.Segmenter ends a
+  // sentence after `1. ` when an uppercase word follows (#1150). A segment
+  // ending in a line break doesn't match.
+  private static readonly MARKER_ONLY = new RegExp(
+    String.raw`^[ \t ]*${NUMBERED_MARKER}[ \t ]+$`
+  )
+
+  // Intl.Segmenter's sentences as [start, end) offsets into `text`, each
+  // marker-only segment joined with the one after it.
+  private static sentenceSpans(text: string): { start: number; end: number }[] {
+    const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' })
+    const spans: { start: number; end: number }[] = []
+    let markerStart: number | null = null
+    for (const { segment, index } of segmenter.segment(text)) {
+      const end = index + segment.length
+      if (this.MARKER_ONLY.test(segment) && end < text.length) {
+        markerStart ??= index
+        continue
+      }
+      spans.push({ start: markerStart ?? index, end })
+      markerStart = null
+    }
+    return spans
+  }
+
   // The sentence as rendered: every whitespace or separator run is one space.
   private static normalizeSentence(text: string): string {
     return text.replace(this.SEPARATOR_RUN, ' ').trim()
@@ -674,22 +703,18 @@ export class WordProcessor {
 
     if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
       try {
-        const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' })
-        const segments = [...segmenter.segment(textToSegment)]
-
-        for (let i = 0; i < segments.length; i++) {
-          const segment = segments[i]
-          const segmentEnd = segment.index + segment.segment.length
-          if (baseOffset >= segment.index && baseOffset < segmentEnd) {
-            const start = windowStart + segment.index
-            const end = windowStart + segmentEnd
-            result = {
-              sentence: this.normalizeSentence(fullText.slice(start, end)),
-              sentenceIndex: i,
-              start,
-              end,
-            }
-            break
+        const spans = this.sentenceSpans(textToSegment)
+        const i = spans.findIndex(
+          span => baseOffset >= span.start && baseOffset < span.end
+        )
+        if (i >= 0) {
+          const start = windowStart + spans[i].start
+          const end = windowStart + spans[i].end
+          result = {
+            sentence: this.normalizeSentence(fullText.slice(start, end)),
+            sentenceIndex: i,
+            start,
+            end,
           }
         }
       } catch (error) {
