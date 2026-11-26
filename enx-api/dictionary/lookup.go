@@ -38,11 +38,6 @@ type LookupEventStore interface {
 	Add(ctx context.Context, e LookupEvent) error
 }
 
-// Subscriptions says whether a user is on the subscribed quota tier.
-type Subscriptions interface {
-	IsActiveSubscriber(ctx context.Context, userID string) (bool, error)
-}
-
 // QuotaStore is the daily lookup quota's counter: the dictionary_quota_usage
 // table, one row per user and UTC day.
 type QuotaStore interface {
@@ -58,13 +53,13 @@ type QuotaStore interface {
 // counter, not in lookup events.
 type QuotaMeter struct {
 	store  QuotaStore
-	subs   Subscriptions
+	tiers  QuotaTierSource
 	limits config.StripeQuota
 	now    func() time.Time
 }
 
-func NewQuotaMeter(store QuotaStore, subs Subscriptions, limits config.StripeQuota, now func() time.Time) *QuotaMeter {
-	return &QuotaMeter{store: store, subs: subs, limits: limits, now: now}
+func NewQuotaMeter(store QuotaStore, tiers QuotaTierSource, limits config.StripeQuota, now func() time.Time) *QuotaMeter {
+	return &QuotaMeter{store: store, tiers: tiers, limits: limits, now: now}
 }
 
 // Charge charges n against userID's quota for today (UTC): all n are
@@ -91,15 +86,14 @@ func (m *QuotaMeter) Charge(ctx context.Context, userID string, n int) error {
 // limit is userID's daily lookup ceiling. Both tiers have one (ADR-059
 // Decision 6), and config validation keeps them positive.
 func (m *QuotaMeter) limit(ctx context.Context, userID string) int64 {
-	subscribed, err := m.subs.IsActiveSubscriber(ctx, userID)
+	tier, err := QuotaTierOf(ctx, m.tiers, userID)
 	if err != nil {
 		// #18: a DB blip must never downgrade a paying user into a 429, so
-		// an unreadable subscription resolves to the highest tier.
-		logger.Warnf("dictionary: subscriber check failed for user %s, using the subscribed limit: %v", userID, err)
-		subscribed = true
+		// an unknown tier gets the paid ceiling.
+		logger.Warnf("dictionary: quota tier unknown for user %s, using the paid limit: %v", userID, err)
 	}
-	if subscribed {
-		return m.limits.DictionaryLookupDailySubscribed
+	if tier == TierFree {
+		return m.limits.DictionaryLookupDailyFree
 	}
-	return m.limits.DictionaryLookupDailyFree
+	return m.limits.DictionaryLookupDailyPaid
 }

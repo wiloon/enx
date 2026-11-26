@@ -28,21 +28,21 @@ type WordLookupRecorder interface {
 
 // WordLookupHandler serves POST /api/me/word-lookups.
 type WordLookupHandler struct {
-	lookups       WordLookupRecorder
-	subscriptions dictionary.Subscriptions
+	lookups WordLookupRecorder
+	tiers   dictionary.QuotaTierSource
 }
 
 func NewWordLookupHandler(lookups WordLookupRecorder) *WordLookupHandler {
-	return NewWordLookupHandlerWithSubscriptions(lookups, entadapters.Billing{})
+	return NewWordLookupHandlerWithQuotaTiers(lookups, entadapters.Billing{})
 }
 
-func (h *WordLookupHandler) WithSubscriptions(subs dictionary.Subscriptions) *WordLookupHandler {
-	h.subscriptions = subs
+func (h *WordLookupHandler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *WordLookupHandler {
+	h.tiers = tiers
 	return h
 }
 
-func NewWordLookupHandlerWithSubscriptions(lookups WordLookupRecorder, subs dictionary.Subscriptions) *WordLookupHandler {
-	return &WordLookupHandler{lookups: lookups, subscriptions: subs}
+func NewWordLookupHandlerWithQuotaTiers(lookups WordLookupRecorder, tiers dictionary.QuotaTierSource) *WordLookupHandler {
+	return &WordLookupHandler{lookups: lookups, tiers: tiers}
 }
 
 // Record handles POST /api/me/word-lookups: the caller looked up the word
@@ -73,7 +73,7 @@ func (h *WordLookupHandler) Record(c *gin.Context) {
 		httpjson.Fail(c, http.StatusNotFound, "Word not found")
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
+		dictionaryhttp.RespondQuotaExceeded(c, userId, h.tiers)
 		return
 	case err != nil:
 		logger.Errorf("RecordWordLookup: record %s for %s: %v", req.WordID, userId, err)

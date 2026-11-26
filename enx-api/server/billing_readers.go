@@ -11,13 +11,15 @@ import (
 )
 
 type billingReaders struct {
-	subscriptions dictionary.Subscriptions
-	entitlements  *entitlement.Service
-	admin         adminuser.Store
+	quotaTiers   dictionary.QuotaTierSource
+	entitlements *entitlement.Service
+	admin        adminuser.Store
 }
 
 func newBillingReaders() billingReaders {
-	var subscriptions dictionary.Subscriptions = repo.AcceptedSubscriptions{}
+	// One source for the quota tier and the entitlement, so both keep the
+	// accepted-subscription rule (ADR-067).
+	billing := entadapters.Billing{Subscriptions: repo.AcceptedSubscriptions{}}
 	admin := repo.AcceptedAdminUsers{AdminUsers: repo.AdminUsers{Now: time.Now}}
-	return billingReaders{subscriptions: subscriptions, entitlements: entitlement.NewService(entadapters.Billing{Subscriptions: subscriptions}), admin: admin}
+	return billingReaders{quotaTiers: billing, entitlements: entitlement.NewService(billing), admin: admin}
 }

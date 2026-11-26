@@ -40,6 +40,7 @@ func (stubPolicy) Fallback(context.Context, string) (bool, bool) { return true, 
 type freeTier struct{}
 
 func (freeTier) IsActiveSubscriber(context.Context, string) (bool, error) { return false, nil }
+func (freeTier) TopupBalance(context.Context, string) (int64, error)      { return 0, nil }
 
 var resolved = stubResolver{
 	"ran":      {ID: "w-run", English: "run", Pronunciation: "ræn", Chinese: "v. 跑", Source: dictionary.SourceEcdict, Origin: dictionary.OriginECDICT},
@@ -159,6 +160,53 @@ type unknownTier struct{}
 func (unknownTier) IsActiveSubscriber(context.Context, string) (bool, error) {
 	return false, errors.New("db down")
 }
+func (unknownTier) TopupBalance(context.Context, string) (int64, error) { return 0, nil }
+
+// topupTier is a user with no subscription: only the top-up balance read
+// decides the tier.
+type topupTier struct {
+	balance int64
+	err     error
+}
+
+func (topupTier) IsActiveSubscriber(context.Context, string) (bool, error) { return false, nil }
+func (s topupTier) TopupBalance(context.Context, string) (int64, error) {
+	return s.balance, s.err
+}
+
+// ADR-093: a top-up balance puts a user on the paid tier, and an unreadable
+// one leaves the tier unknown. Neither is upsold.
+func TestQuotaRefusalByTopupBalance(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		tier        topupTier
+		wantMessage string
+		wantUpgrade bool
+	}{
+		{"top-up only", topupTier{balance: 1}, "Daily dictionary lookup limit reached. That is unusually high for a paid account -- please contact support.", false},
+		{"overdrawn", topupTier{balance: -1}, "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit.", true},
+		{"balance read fails", topupTier{err: errors.New("db down")}, "Daily dictionary lookup limit reached. Please try again tomorrow.", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			RespondQuotaExceeded(c, "u1", tc.tier)
+
+			var body map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode body %q: %v", w.Body.String(), err)
+			}
+			if body["message"] != tc.wantMessage {
+				t.Errorf("message = %q, want %q", body["message"], tc.wantMessage)
+			}
+			if _, upgrade := body["upgrade"]; upgrade != tc.wantUpgrade {
+				t.Errorf("upgrade present = %v, want %v (body=%s)", upgrade, tc.wantUpgrade, w.Body)
+			}
+		})
+	}
+}
 
 // A failed subscription check leaves the tier unknown: no upsell (ADR-029
 // Decision 5).
@@ -167,7 +215,7 @@ func TestQuotaRefusalWithAnUnknownTierDoesNotUpsell(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 
-	RespondQuotaExceededWithSubscriptions(c, "u1", unknownTier{})
+	RespondQuotaExceeded(c, "u1", unknownTier{})
 
 	var body map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {

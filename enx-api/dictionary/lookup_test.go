@@ -41,10 +41,17 @@ func (f *fakeQuotaStore) Charge(_ context.Context, userID string, day time.Time,
 	return true, nil
 }
 
-// fakeSubscriptions says which users have an active subscription.
+// fakeSubscriptions says which users have an active subscription and what
+// their top-up balance is.
 type fakeSubscriptions struct {
-	active map[string]bool
-	err    error
+	active   map[string]bool
+	err      error
+	topup    int64
+	topupErr error
+}
+
+func (f fakeSubscriptions) TopupBalance(context.Context, string) (int64, error) {
+	return f.topup, f.topupErr
 }
 
 func (f fakeSubscriptions) IsActiveSubscriber(_ context.Context, userID string) (bool, error) {
@@ -52,7 +59,7 @@ func (f fakeSubscriptions) IsActiveSubscriber(_ context.Context, userID string) 
 }
 
 func quotaLimits(free, subscribed int64) config.StripeQuota {
-	return config.StripeQuota{DictionaryLookupDailyFree: free, DictionaryLookupDailySubscribed: subscribed}
+	return config.StripeQuota{DictionaryLookupDailyFree: free, DictionaryLookupDailyPaid: subscribed}
 }
 
 var noon = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
@@ -96,6 +103,9 @@ func TestQuotaMeterPicksTheLimitByTier(t *testing.T) {
 		{"subscribed", fakeSubscriptions{active: map[string]bool{"u1": true}}, 3},
 		// #18: an unreadable subscription must not demote a paying user.
 		{"subscription check fails", fakeSubscriptions{err: errors.New("db locked")}, 3},
+		// ADR-093: a top-up balance puts a user on the paid tier.
+		{"top-up only", fakeSubscriptions{topup: 1}, 3},
+		{"top-up balance read fails", fakeSubscriptions{topupErr: errors.New("db locked")}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newFakeQuotaStore()

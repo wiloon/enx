@@ -38,25 +38,25 @@ type AIPolicy interface {
 
 // Handler serves the word lookup endpoints.
 type Handler struct {
-	subscriptions dictionary.Subscriptions
-	dict          dictionary.Resolver
-	meter         dictionary.Meter
-	reviews       ReviewLog
-	ai            AIDefiner
-	policy        AIPolicy
+	tiers   dictionary.QuotaTierSource
+	dict    dictionary.Resolver
+	meter   dictionary.Meter
+	reviews ReviewLog
+	ai      AIDefiner
+	policy  AIPolicy
 }
 
 func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
-	return NewHandlerWithSubscriptions(dict, meter, reviews, entadapters.Billing{})
+	return NewHandlerWithQuotaTiers(dict, meter, reviews, entadapters.Billing{})
 }
 
-func (h *Handler) WithSubscriptions(subs dictionary.Subscriptions) *Handler {
-	h.subscriptions = subs
+func (h *Handler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *Handler {
+	h.tiers = tiers
 	return h
 }
 
-func NewHandlerWithSubscriptions(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog, subs dictionary.Subscriptions) *Handler {
-	return &Handler{dict: dict, meter: meter, reviews: reviews, subscriptions: subs}
+func NewHandlerWithQuotaTiers(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog, tiers dictionary.QuotaTierSource) *Handler {
+	return &Handler{dict: dict, meter: meter, reviews: reviews, tiers: tiers}
 }
 
 // WithAI sets up the AI word fallback: ai answers POST /api/dictionary/ai-word
@@ -97,7 +97,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	// ADR-079 Decision 7: one word, one charge, before it is resolved; no
 	// lookup event (POST /api/me/word-lookups writes that).
 	if err := h.meter.Charge(c.Request.Context(), userId, 1); errors.Is(err, dictionary.ErrQuotaExceeded) {
-		dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, userId, h.subscriptions)
+		dictionaryhttp.RespondQuotaExceeded(c, userId, h.tiers)
 		return
 	} else if err != nil {
 		logger.Warnf("lookup quota charge failed for user %s, allowing lookup: %v", userId, err)

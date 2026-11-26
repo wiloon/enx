@@ -21,7 +21,7 @@ type SubscriptionReader interface {
 type Billing struct{ Subscriptions SubscriptionReader }
 
 // IsActiveSubscriber reports whether userID has a subscription whose status
-// is "active" (the same rule dictionary uses for its quota tiers).
+// is "active". Billing is also dictionary's quota tier source (ADR-093).
 func (b Billing) IsActiveSubscriber(ctx context.Context, userID string) (bool, error) {
 	if b.Subscriptions != nil {
 		return b.Subscriptions.IsActiveSubscriber(ctx, userID)

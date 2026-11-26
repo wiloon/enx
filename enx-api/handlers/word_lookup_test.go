@@ -26,7 +26,7 @@ type wordLookupResponse struct {
 }
 
 // defaultLookupQuota is generous enough that no test reaches it by accident.
-var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, DictionaryLookupDailySubscribed: 20000}
+var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, DictionaryLookupDailyPaid: 20000}
 
 // sendWordLookup sends POST /api/me/word-lookups with body as userID to the
 // production wiring, metered with limits, and returns the recorder.
@@ -245,7 +245,7 @@ func TestWordLookupOverQuotaIs429WithoutACountOrAnEvent(t *testing.T) {
 	id := seedKnownWord(t, "serendipity")
 	seedReview(t, "u1", id, 3, false)
 	useQuota(t, "u1", 1)
-	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
+	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailyPaid: 20000}
 
 	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`"}`)
 
@@ -264,18 +264,18 @@ func TestWordLookupOverQuotaIs429WithoutACountOrAnEvent(t *testing.T) {
 }
 
 // The extension handles both 429s alike, so the body must be the lookup
-// GET's (dictionary.RespondQuotaExceeded).
+// GET's (dictionaryhttp.RespondQuotaExceeded).
 func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")
 	useQuota(t, "u1", 1)
-	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
+	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailyPaid: 20000}
 
 	w := sendWordLookup(t, limits, "u1", `{"wordId":"`+id+`"}`)
 
 	want := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(want)
-	dictionaryhttp.RespondQuotaExceededWithSubscriptions(c, "u1", entadapters.Billing{})
+	dictionaryhttp.RespondQuotaExceeded(c, "u1", entadapters.Billing{})
 	if w.Code != want.Code || w.Body.String() != want.Body.String() {
 		t.Fatalf("got %d %s, want %d %s", w.Code, w.Body.String(), want.Code, want.Body.String())
 	}
@@ -295,8 +295,14 @@ func (r errRecorder) Record(context.Context, string, string) (int, bool, error) 
 }
 
 type quotaSubscriber struct {
-	active bool
-	err    error
+	active   bool
+	err      error
+	topup    int64
+	topupErr error
+}
+
+func (s quotaSubscriber) TopupBalance(context.Context, string) (int64, error) {
+	return s.topup, s.topupErr
 }
 
 func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, error) {
@@ -305,7 +311,7 @@ func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, erro
 
 func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 	const upgradeMessage = "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
-	const supportMessage = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
+	const supportMessage = "Daily dictionary lookup limit reached. That is unusually high for a paid account -- please contact support."
 	const neutralMessage = "Daily dictionary lookup limit reached. Please try again tomorrow."
 	for _, tc := range []struct {
 		name   string
@@ -316,8 +322,10 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		{"subscriber", quotaSubscriber{active: true}, supportMessage, false},
 		{"free", quotaSubscriber{}, upgradeMessage, true},
 		{"lookup error", quotaSubscriber{err: errors.New("db down")}, neutralMessage, false},
+		{"top-up only", quotaSubscriber{topup: 1}, supportMessage, false},
+		{"balance read error", quotaSubscriber{topupErr: errors.New("db down")}, neutralMessage, false},
 	} {
-		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(tc.sub)
+		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithQuotaTiers(tc.sub)
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)

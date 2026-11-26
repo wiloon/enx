@@ -250,8 +250,9 @@ claim-window-hours = 24
 # costs 2, a looked-up word costs none on QUERY. `-free` is 2000 for the
 # internal beta (2026-11-11, Linear WIL-498). /pricing reads the effective
 # free ceiling at request time via GET /api/dictionary/free-daily-lookup-limit
-# (including env overrides). `-subscribed` is a backstop against scripts,
-# not a product tier: normal use never reaches it, and pricing omits it.
+# (including env overrides). `-subscribed` is the paid-tier ceiling (an active
+# subscription or a top-up balance above 0, ADR-093): a backstop against
+# scripts that normal use never reaches, and pricing omits it.
 # Both are tuned from dictionary_quota_usage after launch (Linear WIL-176).
 dictionary-lookup-daily-free = 2000
 dictionary-lookup-daily-subscribed = 20000

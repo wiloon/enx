@@ -17,6 +17,7 @@ import (
 type freeUser struct{}
 
 func (freeUser) IsActiveSubscriber(context.Context, string) (bool, error) { return false, nil }
+func (freeUser) TopupBalance(context.Context, string) (int64, error)      { return 0, nil }
 
 var quotaNoon = time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 
@@ -31,7 +32,7 @@ func setupQuotaUsageDB(t *testing.T) {
 }
 
 func newSQLiteMeter(freeLimit int64) *dictionary.QuotaMeter {
-	limits := config.StripeQuota{DictionaryLookupDailyFree: freeLimit, DictionaryLookupDailySubscribed: 20000}
+	limits := config.StripeQuota{DictionaryLookupDailyFree: freeLimit, DictionaryLookupDailyPaid: 20000}
 	return dictionary.NewQuotaMeter(QuotaUsage{}, freeUser{}, limits, func() time.Time { return quotaNoon })
 }
 
@@ -87,7 +88,7 @@ func TestQuotaMeterCountsEachUserAndDayApart(t *testing.T) {
 	setupQuotaUsageDB(t)
 	ctx := context.Background()
 	now := quotaNoon
-	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000}
+	limits := config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailyPaid: 20000}
 	m := dictionary.NewQuotaMeter(QuotaUsage{}, freeUser{}, limits, func() time.Time { return now })
 
 	if err := m.Charge(ctx, "u1", 1); err != nil {

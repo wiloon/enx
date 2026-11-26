@@ -212,6 +212,7 @@ type subscriberForQuota bool
 func (s subscriberForQuota) IsActiveSubscriber(context.Context, string) (bool, error) {
 	return bool(s), nil
 }
+func (subscriberForQuota) TopupBalance(context.Context, string) (int64, error) { return 0, nil }
 
 func TestQuotaResponseUsesInjectedSubscription(t *testing.T) {
 	for _, tc := range []struct {
@@ -219,7 +220,7 @@ func TestQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		want   string
 	}{{true, "contact support"}, {false, "Upgrade"}} {
 		c, w := translateCtx("run", "u1")
-		h := NewHandler(fakeResolver{}, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}).WithSubscriptions(subscriberForQuota(tc.active))
+		h := NewHandler(fakeResolver{}, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}).WithQuotaTiers(subscriberForQuota(tc.active))
 		h.Translate(c)
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())

@@ -471,8 +471,10 @@ type TokenPrice struct {
 // ADR-059 Decision 6). Both must be positive: there is no "never block"
 // value any more.
 type StripeQuota struct {
-	DictionaryLookupDailyFree       int64 `mapstructure:"dictionary-lookup-daily-free"`
-	DictionaryLookupDailySubscribed int64 `mapstructure:"dictionary-lookup-daily-subscribed"`
+	DictionaryLookupDailyFree int64 `mapstructure:"dictionary-lookup-daily-free"`
+	// DictionaryLookupDailyPaid is the paid-tier ceiling (ADR-093). The key
+	// keeps its older "subscribed" name so deployed config does not change.
+	DictionaryLookupDailyPaid int64 `mapstructure:"dictionary-lookup-daily-subscribed"`
 }
 
 // AIWord tunes the AI word fallback (ADR-045). The per-user ceilings use
@@ -795,7 +797,7 @@ func (c *Config) Validate() error {
 	}
 	q := c.Stripe.Quota
 	positive("stripe.quota.dictionary-lookup-daily-free", q.DictionaryLookupDailyFree > 0)
-	positive("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailySubscribed > 0)
+	positive("stripe.quota.dictionary-lookup-daily-subscribed", q.DictionaryLookupDailyPaid > 0)
 
 	wh := c.Stripe.Webhook
 	for _, kv := range []struct {
