@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 | --- | --- |
-| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 **2026-11-07** Amended by [ADR-071](adr-071-adapter-whole-page-on-miss.md)：`contentSelector` 未命中默认仍是空正文，适配器可显式选择退回整页。 **2026-11-09** Amended by [ADR-076](adr-076-user-feedback.md)：页面上报成为用户反馈的一种类型，存进 `feedback` 表；决定 9 的 90 天过期和每人 50 条上限取消，改为每人每天 50 条（所有反馈类型合计）。 **2026-11-25** 修订（#1137）：Decision 5 增补保留换行的 `white-space` 下的分句换行规则（原因：Reader 里 `pre-wrap` 的列表行被合并成一句）；`<br>` 切句仍 defer。 |
+| **状态** | Proposed — 2026-08-29（同日据评审意见把范围从"主推文 + 评论区"收窄为"仅主推文正文"，影响见 Context 边界 2）。**2026-09-20** Decision 8 页面上报已落地。**2026-09-21** 补 Decision 11–13（admin 列表 + 邮件通知管理员；`email/` 改用于此）。 **2026-11-07** Amended by [ADR-071](adr-071-adapter-whole-page-on-miss.md)：`contentSelector` 未命中默认仍是空正文，适配器可显式选择退回整页。 **2026-11-09** Amended by [ADR-076](adr-076-user-feedback.md)：页面上报成为用户反馈的一种类型，存进 `feedback` 表；决定 9 的 90 天过期和每人 50 条上限取消，改为每人每天 50 条（所有反馈类型合计）。 **2026-11-25** 修订（#1137）：Decision 5 增补保留换行的 `white-space` 下的分句换行规则（原因：Reader 里 `pre-wrap` 的列表行被合并成一句）；`<br>` 切句仍 defer。 **2026-11-26** 修订（#1150）：Decision 5 增补编号列表标记并入后一段的规则（原因：`1. Open the book.` 展开句子时丢掉编号）。 |
 | **日期** | 2026-08-29 |
 | **关联 Spec** | 无独立 TASK-SPEC；Decision 即实现依据（同 adr-012 Decision 10）。历史 TASK-SPEC 文件若存在只作参考，不是编码门禁。 |
 | **关联 ADR** | [`adr-007-drag-select-sentence-translation.md`](adr-007-drag-select-sentence-translation.md)（划词整句翻译，本决策不改其分级逻辑，只需确认 `mouseup` 在 X 上不被抢）、[`adr-008-phrase-selection-context-translation.md`](adr-008-phrase-selection-context-translation.md)（短语查询依赖"选区内能找到 `.enx-word` 锚点"这个前提，本决策必须保持该前提成立）、[`adr-002-word-popup-react-shadow-dom.md`](adr-002-word-popup-react-shadow-dom.md)（Shadow DOM + Popover 弹窗，在 X 上无需改动，见 Consequences） |
@@ -287,6 +287,13 @@ flex 容器修复（`content.tsx:563-577`）在 `inPlace` 分支保留：它只�
 > - 折行的普通句子因此仍是一句；既无标点也无列表标记的相邻行仍会合并（上面的 "KARDASHEV 2 IS THE REAL ENDGAME" 即属此类）。
 >
 > 本节的 `<br>` / 块级边界方案**仍然 defer**：上述规则只处理文本节点里的换行字符，X 用什么标记推文换行（前提 §2.3）仍未实测。
+
+> **2026-11-26 增补（#1150）：编号列表标记并入后一段**。`Intl.Segmenter` 在 `<数字>. ` 后接大写字母时断句，`1. Open the book.` 的编号单独成段，展开句子时丢失。列表项的句子包含它在 DOM 文本里的标记。规则同样适用于所有站点，与 `white-space` 无关：
+>
+> - 只含编号标记的段与下一段合并：整段匹配"可选水平空白 + `\d+[.)]` + 至少一个水平空白，直到段尾"。点击标记本身也得到合并后的句子。
+> - 这里的水平空白是空格、制表符和 `U+00A0`（`[ \t ]`）：分段器在 `1.&nbsp;` 后同样断句。以换行结尾的段不合并。
+> - `\d+[.)]` 与上面换行规则的列表项标记共用 `lineBreaks.ts` 里的同一定义；换行规则的空白字符集不变。
+> - 不处理（维持原行为）：标记不是单独成段的情况（`Chapter 1. The Beginning.`、写在同一行的 `Steps: 1. Open the book.`）和字母标记（`a. Open the book.`），本规则无法把它们与真正的句末区分开。
 
 ### 6. 点击冲突（采用 F1：维持现状，依赖前提 §2.5）
 
