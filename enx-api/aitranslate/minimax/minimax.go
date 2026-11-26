@@ -3,6 +3,11 @@
 // MiniMax's older ChatCompletion Pro API required a group_id query parameter;
 // the current OpenAI-compatible endpoint does not, so GroupID below is kept
 // optional for forward/backward compatibility rather than required.
+//
+// Deprecated: MiniMax is not used in production or in the China edition
+// launch. The code is kept until after launch, when its future is decided
+// (ADR-035, #1152). Do not extend it, and do not add MiniMax-specific tests or
+// behaviour in other work.
 package minimax
 
 import (
@@ -25,6 +30,12 @@ const (
 	defaultBaseURL = "https://api.minimax.io/v1"
 )
 
+// MiniMax is the MiniMax provider client.
+//
+// Deprecated: MiniMax is not used in production or in the China edition
+// launch. The code is kept until after launch, when its future is decided
+// (ADR-035, #1152). Do not extend it, and do not add MiniMax-specific tests or
+// behaviour in other work.
 type MiniMax struct {
 	apiKey  string
 	model   string
@@ -37,6 +48,11 @@ type MiniMax struct {
 // and the MINIMAX_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = minimax"
 // misconfiguration is caught at startup rather than on the first request.
+//
+// Deprecated: MiniMax is not used in production or in the China edition
+// launch. The code is kept until after launch, when its future is decided
+// (ADR-035, #1152). Do not extend it, and do not add MiniMax-specific tests or
+// behaviour in other work.
 func New(c config.MiniMax, timeout time.Duration) (*MiniMax, error) {
 	apiKey := c.APIKey.Reveal()
 	if apiKey == "" {
