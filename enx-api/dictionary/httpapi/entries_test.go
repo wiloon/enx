@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -150,6 +151,34 @@ func TestEntriesOverQuotaAnswersTheLookupQuota429(t *testing.T) {
 	const wantMessage = "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
 	if body["message"] != wantMessage {
 		t.Fatalf("message = %q, want %q", body["message"], wantMessage)
+	}
+}
+
+type unknownTier struct{}
+
+func (unknownTier) IsActiveSubscriber(context.Context, string) (bool, error) {
+	return false, errors.New("db down")
+}
+
+// A failed subscription check leaves the tier unknown: no upsell (ADR-029
+// Decision 5).
+func TestQuotaRefusalWithAnUnknownTierDoesNotUpsell(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	RespondQuotaExceededWithSubscriptions(c, "u1", unknownTier{})
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
+	const wantMessage = "Daily dictionary lookup limit reached. Please try again tomorrow."
+	if w.Code != http.StatusTooManyRequests || body["code"] != "lookup_quota_exceeded" || body["message"] != wantMessage {
+		t.Fatalf("got %d %s, want 429 lookup_quota_exceeded and message %q", w.Code, w.Body, wantMessage)
+	}
+	if _, present := body["upgrade"]; present {
+		t.Fatalf("upgrade present: %s", w.Body)
 	}
 }
 

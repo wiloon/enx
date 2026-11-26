@@ -317,4 +317,5 @@ dictionary-lookup-daily-subscribed = 0
 
 - 2026-11-19，issue #282：Decision 5 增加服务端升级信号，让 `/lookup` 只向已确认的免费用户显示升级入口，并沿用订阅档的支持提示。
 - 2026-11-20，issue #1082：按用户决定修订 ADR-079、ADR-080 的定价文案约定，免费档展示生效配置，避免部署覆盖后显示旧值；付费方案展示省略仅用于保护 API 的上限。
+- 2026-11-26，issue #1041：档位未知（订阅查询失败）时，429 不引导付费，也不带 `upgrade`；`message` 改为中性的 “Daily dictionary lookup limit reached. Please try again tomorrow.”。enx-chrome 与 `/lookup` 一样只在 `upgrade: true` 时显示升级入口。
 - **Out of Scope「按 plan 细分四档」**：仍不做，付费档差异用 AI 积分体现（ADR-059 Decision 6）。

@@ -306,6 +306,7 @@ func (s quotaSubscriber) IsActiveSubscriber(context.Context, string) (bool, erro
 func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 	const upgradeMessage = "Daily dictionary lookup limit reached. Upgrade to Catglish Pro for a much higher daily limit."
 	const supportMessage = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
+	const neutralMessage = "Daily dictionary lookup limit reached. Please try again tomorrow."
 	for _, tc := range []struct {
 		name   string
 		sub    quotaSubscriber
@@ -314,7 +315,7 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 	}{
 		{"subscriber", quotaSubscriber{active: true}, supportMessage, false},
 		{"free", quotaSubscriber{}, upgradeMessage, true},
-		{"lookup error", quotaSubscriber{err: errors.New("db down")}, upgradeMessage, false},
+		{"lookup error", quotaSubscriber{err: errors.New("db down")}, neutralMessage, false},
 	} {
 		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithSubscriptions(tc.sub)
 		r := gin.New()

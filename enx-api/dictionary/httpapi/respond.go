@@ -32,7 +32,11 @@ func RespondQuotaExceededWithSubscriptions(c *gin.Context, userID string, subs d
 		ctx = c.Request.Context()
 	}
 	subscribed, err := subs.IsActiveSubscriber(ctx, userID)
-	if err == nil && subscribed {
+	switch {
+	case err != nil:
+		// The tier is unknown, so there is nothing to upsell.
+		message = "Daily dictionary lookup limit reached. Please try again tomorrow."
+	case subscribed:
 		message = "Daily dictionary lookup limit reached. That is unusually high for a subscription -- please contact support."
 	}
 	// The code tells the clients this 429 from the request rate limit's
