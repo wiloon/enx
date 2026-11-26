@@ -2,11 +2,17 @@ package aitranslate
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"enx-api/aitranslate/deepseek"
 	"enx-api/config"
+	"enx-api/utils/logger"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // provider is a sentence-translate config selecting name, with no provider
@@ -72,5 +78,45 @@ func TestNewBuildsTheSelectedProviderFromItsConfig(t *testing.T) {
 	}
 	if _, ok := got.(*deepseek.DeepSeek); !ok {
 		t.Fatalf("New() = %T, want *deepseek.DeepSeek", got)
+	}
+}
+
+// observeLogs captures everything logged for the rest of the test.
+func observeLogs(t *testing.T) *observer.ObservedLogs {
+	t.Helper()
+	core, logs := observer.New(zap.DebugLevel)
+	t.Cleanup(logger.Swap(zap.New(core).Sugar()))
+	return logs
+}
+
+func TestNewMiniMaxWarnsItIsDeprecatedEvenWhenConstructionFails(t *testing.T) {
+	logs := observeLogs(t)
+
+	if _, err := New(context.Background(), provider("minimax")); err == nil {
+		t.Fatal("expected error when MINIMAX_API_KEY is not set")
+	}
+
+	warns := logs.FilterLevelExact(zapcore.WarnLevel).All()
+	if len(warns) != 1 {
+		t.Fatalf("got %d Warn entries, want 1: %v", len(warns), warns)
+	}
+	for _, want := range []string{"deprecated", "#1152"} {
+		if !strings.Contains(warns[0].Message, want) {
+			t.Errorf("Warn message %q does not contain %q", warns[0].Message, want)
+		}
+	}
+}
+
+func TestNewDeepSeekDoesNotWarn(t *testing.T) {
+	logs := observeLogs(t)
+	cfg := provider("deepseek")
+	cfg.DeepSeek.APIKey = "test-key"
+
+	if _, err := New(context.Background(), cfg); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if warns := logs.FilterLevelExact(zapcore.WarnLevel).All(); len(warns) != 0 {
+		t.Fatalf("got Warn entries, want none: %v", warns)
 	}
 }
