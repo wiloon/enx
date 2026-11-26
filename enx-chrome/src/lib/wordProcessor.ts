@@ -433,7 +433,7 @@ export class WordProcessor {
   // sentence after `1. ` when an uppercase word follows (#1150). A segment
   // ending in a line break doesn't match.
   private static readonly MARKER_ONLY = new RegExp(
-    String.raw`^[ \t ]*${NUMBERED_MARKER}[ \t ]+$`
+    String.raw`^[ \t\xa0]*${NUMBERED_MARKER}[ \t\xa0]+$`
   )
 
   // Intl.Segmenter's sentences as [start, end) offsets into `text`, each
