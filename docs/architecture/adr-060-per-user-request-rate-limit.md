@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted（Decision 2 的未登录路由部分由 adr-095 修订）
 date: 2026-10-16
 related: adr-018（查词唯一入口、反滥用另立 ADR）、adr-029（每日查词配额是产品规则，失败放行）、adr-040（Prometheus 指标、标签基数红线）、adr-045 / adr-048（`ailimit` 的 AI 花费安全阀）、adr-059（记查词次数的 POST 不扣配额，滥用防护靠本 ADR）、issue #185（本 ADR）、#136、#17 / #18
 ---
