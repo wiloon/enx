@@ -1,5 +1,7 @@
 # ADR-014：从查词弹窗打开 Side Panel 时，默认高亮点击的词 + 把「整句翻译」与「该词本句含义」合并成**一次** AI 调用（新增结构化 `sentence-with-word` 端点）；同时把 `aitranslate` 的三个翻译功能全部迁到**按 token 精确计费**
 
+> 2026-11-25（ADR-094）：`billedCall`「失败不扣费」的惯例已被推翻。只要真实调用了模型（拿到了 token 用量），结果不可用也按实际 token 扣费；失败在日志里醒目标记，由管理员手动补偿。见 [ADR-094](adr-094-bill-ai-calls-that-reached-the-model.md)。
+
 | 字段 | 值 |
 | --- | --- |
 | **状态** | Accepted — 2026-09-03。已实现（enx-api + enx-chrome）：新叶子包 `aitranslate/sentenceword` + `aitranslate/aiusage`，`Translator` 三方法改返回 `Usage`，三 provider（kimi / minimax / bedrock）补 `TranslateSentenceWithWord`，`Handler` 从 `Consume/Refund` 改为 `Balance/Settle`（复用 ADR-012 的 `TokenLedger`），新增 `POST /api/translate/sentence-with-word`；Side Panel 高亮点击词 + 打开即自动查词。`go test ./aitranslate/...`、`tsc`、`jest`（chrome 151 项）、`vite build` 均通过。<br>**2026-11-25 更新（#1135）**：单词版合并端点 `POST /api/translate/sentence-with-word`、`Translator.TranslateSentenceWithWord` 及扩展的 `translateSentenceWithWord` 消息已删除——自 2026-09-15（ADR-024）起无调用方，且没有任何已发布的扩展版本调用过它；整句+词义合并改由 [ADR-023 Decision 9](adr-023-sidepanel-unified-history-list-nested-sentence-words.md) 的多词端点 `POST /api/translate/sentence-with-words` 承担。本 ADR「一次 AI 调用拿整句翻译 + 词义」的思路仍然有效，按 token 计费部分不受影响；计费键 `translate_sentence_with_word` 保留，多词端点仍用它结算。 |
