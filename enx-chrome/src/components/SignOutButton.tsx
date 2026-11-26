@@ -4,13 +4,7 @@ import { signingOutAtom } from '@/store/atoms'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useSetAtom } from 'jotai'
 
-/**
- * The popup's sign-out button.
- *
- * Passing signOut() a callback skips navigation that would reload popup.html
- * and force the auth SDK to start over. The session updates in place and
- * <Login> re-renders signed out.
- */
+/** The popup's sign-out button. */
 export default function SignOutButton() {
   const signOut = useAuthSignOut()
   const setSigningOut = useSetAtom(signingOutAtom)
@@ -18,7 +12,7 @@ export default function SignOutButton() {
   const handleClick = async () => {
     setSigningOut(true)
     try {
-      await signOut(() => {})
+      await signOut()
       await sendRuntimeMessage({ type: 'accountSignedOut' })
     } finally {
       setSigningOut(false)

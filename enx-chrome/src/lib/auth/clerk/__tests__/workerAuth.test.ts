@@ -5,6 +5,25 @@ jest.mock('@clerk/chrome-extension/client', () => ({
   createClerkClient: jest.fn(),
 }))
 
+it('creates a background Clerk client synced with the configured host', async () => {
+  jest.mocked(createClerkClient).mockResolvedValue({
+    session: null,
+  } as unknown as Awaited<ReturnType<typeof createClerkClient>>)
+  const adapter = createClerkWorkerAuth({
+    provider: 'clerk',
+    publishableKey: 'pk_test_x',
+    syncHost: 'https://clerk.example',
+  })
+
+  await adapter.createClient()
+
+  expect(createClerkClient).toHaveBeenLastCalledWith({
+    publishableKey: 'pk_test_x',
+    syncHost: 'https://clerk.example',
+    background: true,
+  })
+})
+
 it('acquires tokens normally and bypasses the Clerk cache only for forced refresh', async () => {
   const getToken = jest
     .fn()

@@ -13,7 +13,7 @@ function setSession(next: Session) {
   listeners.forEach(l => l())
 }
 let finishSignOut: () => void = () => {}
-const mockSignOut = jest.fn((_callback?: unknown) => {
+const mockSignOut = jest.fn((..._args: unknown[]) => {
   setSession({ isLoaded: false, isSignedIn: false })
   return new Promise<void>(resolve => {
     finishSignOut = () => {
@@ -57,14 +57,14 @@ describe('SignOutButton', () => {
     mockSignOut.mockClear()
   })
 
-  it('signs out without navigating, so the popup does not reload', () => {
+  it('asks the auth adapter to sign out, passing it no arguments', () => {
     renderPopup()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(mockSignOut).toHaveBeenCalledTimes(1)
-    // A callback instead of a redirectUrl: the adapter then skips navigate().
-    expect(typeof mockSignOut.mock.calls[0][0]).toBe('function')
+    // How to stay on popup.html is the adapter's business.
+    expect(mockSignOut.mock.calls[0]).toEqual([])
   })
 
   it('says "Signing out…" rather than "Loading…" while the sign-out runs', () => {
