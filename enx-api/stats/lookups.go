@@ -13,9 +13,9 @@ import (
 // RollupLookupEvents keeps up to date. Only allowed events count; a 429 is
 // not a lookup the user made.
 
-// localDayOfEvent is an event's local date: its UTC instant shifted by the
+// LocalDayOfEvent is an event's local date: its UTC instant shifted by the
 // offset the caller had at the time.
-const localDayOfEvent = `date(at / 1000 + tz_offset_minutes * 60, 'unixepoch')`
+const LocalDayOfEvent = `date(at / 1000 + tz_offset_minutes * 60, 'unixepoch')`
 
 // UTC offsets run from -12:00 to +14:00, so a local day's events lie between
 // its UTC midnight minus 14 hours and its next UTC midnight plus 12 hours.
@@ -57,7 +57,7 @@ func liveLookups(ctx context.Context, userID, from, to string) (map[string]int64
 	}
 	var rows []row
 	err = sqlitex.DB.WithContext(ctx).Raw(
-		`SELECT `+localDayOfEvent+` AS day, COUNT(*) AS count
+		`SELECT `+LocalDayOfEvent+` AS day, COUNT(*) AS count
 		 FROM lookup_events
 		 WHERE user_id = ? AND at >= ? AND at < ? AND outcome = 'allowed'
 		 GROUP BY day
@@ -127,7 +127,7 @@ func RollupLookupEvents(ctx context.Context, now time.Time, retentionDays int) (
 		atFrom, atTo := eventWindow(first, last)
 		err := sqlitex.DB.WithContext(ctx).Exec(
 			`INSERT INTO daily_stats (user_id, date, utc_offset_minutes, word_lookups)
-			 SELECT user_id, `+localDayOfEvent+` AS day, MAX(tz_offset_minutes), COUNT(*)
+			 SELECT user_id, `+LocalDayOfEvent+` AS day, MAX(tz_offset_minutes), COUNT(*)
 			 FROM lookup_events
 			 WHERE at >= ? AND at < ? AND outcome = 'allowed'
 			 GROUP BY user_id, day

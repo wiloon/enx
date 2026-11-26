@@ -23,6 +23,9 @@ import (
 	"enx-api/enx"
 	"enx-api/feedback"
 	feedbackadapters "enx-api/feedback/adapters"
+	"enx-api/funnel"
+	funneladapters "enx-api/funnel/adapters"
+	funnelhttp "enx-api/funnel/httpapi"
 	"enx-api/handlers"
 	"enx-api/metrics"
 	"enx-api/middleware"
@@ -402,6 +405,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		adminDict.GET("/users", adminUsers.List)
 		adminDict.GET("/users/:id", adminUsers.Detail)
 		adminDict.GET("/users/:id/transactions", adminUsers.Transactions)
+		// The sign-up funnel: counts per weekly cohort, allowlisted admins
+		// left out of every one.
+		funnelhttp.Register(adminDict, funnel.NewService(
+			funneladapters.Repo{DB: sqlitex.DB}, admins.Contains, time.Now))
 		// ADR-062 Decision 4-7: the admin's account actions. An account in
 		// ADMIN_AUTH_SUBJECTS can be neither disabled nor deleted.
 		adminDict.POST("/users/:id/revoke-sessions", accountHandler.RevokeSessions)
