@@ -21,6 +21,7 @@ import InstallCTA from '../InstallCTA'
 import HowItWorks from '../HowItWorks'
 import SiteFooter from '../SiteFooter'
 import SiteHeader from '../SiteHeader'
+import { dynamic, metadata } from '@/app/page'
 
 jest.mock('@/lib/site', () => {
   const actual = jest.requireActual('@/lib/site')
@@ -80,6 +81,18 @@ describe('HeaderAuthLinks', () => {
 })
 
 describe('Hero', () => {
+  it('leads with reading English in English, and help only where stuck', () => {
+    render(<Hero />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Read English in English'
+    )
+    expect(
+      screen.getByText(
+        "Get help only where you're stuck. Looked-up words come back underlined."
+      )
+    ).toBeInTheDocument()
+  })
+
   it('links the primary CTA to the Chrome Web Store', () => {
     render(<Hero />)
     const cta = screen.getByRole('link', { name: /add to chrome/i })
@@ -105,7 +118,7 @@ describe('Hero', () => {
     ).toHaveAttribute('href', '/reader/sample')
   })
 
-  it('keeps the subtitle to the two core actions, one short line', () => {
+  it('keeps the subtitle to one short line', () => {
     render(<Hero />)
     expect(screen.getByText(SITE.subtitle).textContent!.length).toBeLessThan(80)
   })
@@ -203,72 +216,106 @@ describe('DemoVideo', () => {
 })
 
 describe('FeatureSection', () => {
-  it('leads with click-to-look-up and covers only the reading features', () => {
+  it('leads with what sets Catglish apart and covers only the reading features', () => {
     render(<FeatureSection />)
     expect(
       screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     ).toEqual([
+      'Looked-up words come back underlined',
+      'What a word means in this sentence',
       'Click any word for its meaning',
       'Select a sentence to translate it',
-      'Word highlight while you read',
     ])
     // Rephrase is a writing tool; it is explained in Help, not here.
     expect(screen.queryByText(/idiomatic/i)).not.toBeInTheDocument()
-    // Real screenshots, not the empty placeholder boxes.
     expect(
       screen.getAllByRole('img').map((img) => img.getAttribute('src'))
     ).toEqual([
+      '/landing/word-highlight.png',
+      '/landing/in-context-meaning.svg',
       '/landing/click-word.png',
       '/landing/translate-sentence.png',
-      '/landing/word-highlight.png',
     ])
+  })
+
+  it('explains the meaning in this sentence, with its illustration', () => {
+    render(<FeatureSection />)
+    expect(
+      screen.getByText(
+        "A dictionary entry lists every meaning a word can have. Click a word and Catglish also tells you which one fits the sentence you are reading, so you don't have to guess."
+      )
+    ).toBeInTheDocument()
+    const img = screen.getByRole('img', {
+      name: 'A clicked word in a sentence, and the side panel showing the one meaning that fits this sentence',
+    })
+    expect(img).toHaveAttribute('src', '/landing/in-context-meaning.svg')
+    expect(img).toHaveAttribute('width', '720')
+    expect(img).toHaveAttribute('height', '440')
   })
 })
 
 describe('Comparison', () => {
-  it('lists similar apps, including Sentiaread', () => {
+  it('says how Catglish differs from two categories of tool', () => {
+    render(<Comparison />)
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
+      'How Catglish is different'
+    )
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    ).toEqual(['Not a lookup extension', 'Not a full-page translator'])
+    expect(
+      screen.getByText(
+        'A lookup extension shows a definition and forgets the word when the popup closes. Catglish remembers every word you look up and underlines it the next time it appears, on any page.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'A full-page translator hands you a Chinese page, and you stop reading English. Catglish has no full-page translation, on purpose: the page stays in English and you translate only the sentence you are stuck on.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('illustrates each difference', () => {
     render(<Comparison />)
     expect(
-      screen.getByRole('link', { name: 'Immersive Translate' })
-    ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Sentiaread' })).toBeInTheDocument()
+      screen
+        .getAllByRole('img')
+        .map((img) => [img.getAttribute('src'), img.getAttribute('alt')])
+    ).toEqual([
+      [
+        '/landing/vs-lookup-extension.svg',
+        'With a lookup extension the word looks like any other next time; with Catglish it comes back underlined',
+      ],
+      [
+        '/landing/vs-full-page-translator.svg',
+        'A full-page translator turns the page into Chinese; Catglish keeps it in English and translates one sentence',
+      ],
+    ])
   })
 
-  it('ranks apps by users/stars descending', () => {
+  it('lists no other apps and sends nobody away', () => {
     render(<Comparison />)
-    const names = screen.getAllByRole('link').map((a) => a.textContent)
-    expect(names.indexOf('Immersive Translate')).toBeLessThan(
-      names.indexOf('Sentiaread')
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByText(/users|ranked by/i)).not.toBeInTheDocument()
+  })
+
+  it('is the #compare target the header links to', () => {
+    const { container } = render(<Comparison />)
+    expect(container.querySelector('section')).toHaveAttribute('id', 'compare')
+  })
+})
+
+describe('landing page', () => {
+  it('describes reading English in English in its metadata', () => {
+    expect(metadata.title).toBe('Catglish — Read English in English')
+    expect(metadata.description).toBe(
+      'Catglish keeps you reading English. Get help with the one word or sentence you are stuck on, see what a word means in this sentence, and find the words you looked up underlined wherever they come back. No full-page translation.'
     )
   })
 
-  it('links open-source apps to their own website, in a new tab', () => {
-    render(<Comparison />)
-    const link = screen.getByRole('link', { name: 'Saladict' })
-    expect(link).toHaveAttribute('href', 'https://saladict.crimx.com')
-    expect(link).toHaveAttribute('target', '_blank')
-  })
-
-  it('lists Catglish itself, ranked by users like the others', () => {
-    render(<Comparison />)
-    const names = screen.getAllByRole('link').map((a) => a.textContent)
-    expect(names.at(-1)).toBe('Catglish')
-    expect(screen.getByRole('link', { name: 'Catglish' })).toHaveAttribute(
-      'href',
-      SITE.chromeWebStoreUrl
-    )
-  })
-
-  it('shows Catglish as New instead of a user count', () => {
-    render(<Comparison />)
-    const row = screen.getByRole('link', { name: 'Catglish' }).closest('li')!
-    expect(row).toHaveTextContent(/\bNew\b/)
-    expect(row).not.toHaveTextContent(/users/)
-  })
-
-  it('shows the data-freshness disclaimer', () => {
-    render(<Comparison />)
-    expect(screen.getByText(/approximate as of/i)).toBeInTheDocument()
+  it('stays statically rendered', () => {
+    expect(dynamic).toBe('force-static')
   })
 })
 
@@ -388,7 +435,18 @@ describe('SiteHeader', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent)
-    ).toEqual(['Features', 'How it works', 'Pricing', 'Similar apps', 'Help'])
+    ).toEqual(['Features', 'How it works', 'Pricing', 'Why Catglish', 'Help'])
+  })
+
+  it('points "Why Catglish" at the comparison section, in the bar and the menu', () => {
+    render(<SiteHeader />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    for (const name of ['Main', 'Menu']) {
+      const nav = screen.getByRole('navigation', { name })
+      expect(
+        within(nav).getByRole('link', { name: 'Why Catglish' })
+      ).toHaveAttribute('href', '/#compare')
+    }
   })
 
   describe('mobile menu', () => {
@@ -412,7 +470,7 @@ describe('SiteHeader', () => {
         'Features',
         'How it works',
         'Pricing',
-        'Similar apps',
+        'Why Catglish',
         'Help',
         'GitHub',
         // The bar has no room for the CTA on a phone, so the menu carries it.

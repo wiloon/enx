@@ -38,7 +38,7 @@ for (const width of [375, 768]) {
 
     await page.getByRole('button', { name: 'Open menu' }).click()
     const menu = page.getByRole('navigation', { name: 'Menu' })
-    await expect(menu.getByRole('link', { name: 'Similar apps' })).toBeVisible()
+    await expect(menu.getByRole('link', { name: 'Why Catglish' })).toBeVisible()
     await menu.getByRole('link', { name: 'Features' }).click()
     await expect(menu).toBeHidden()
     await expect(page).toHaveURL(/#features$/)
