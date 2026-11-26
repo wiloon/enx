@@ -404,7 +404,11 @@ describe('landing page', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Reader' })
     ).toBeInTheDocument()
-    expect(screen.getByText(/an AI chat\s+reply, a PDF/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Paste any English text you can copy: an article, a news story, or paragraphs from a PDF, a Word or text file, or an e-book. It also works for web pages where the extension doesn't work well. Paste it below and read it with Catglish."
+      )
+    ).toBeInTheDocument()
   })
 
   it('links to the sample article, and hides the link once there is text', async () => {
