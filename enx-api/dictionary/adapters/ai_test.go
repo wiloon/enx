@@ -59,9 +59,13 @@ func TestAIDefinerTellsAnUnusableReplyFromAFailedCall(t *testing.T) {
 	}
 
 	boom := errors.New("provider down")
-	failed := AIDefiner{Definer: stubDefiner{err: boom}}
-	if _, _, err := failed.DefineWord(context.Background(), "rizzler"); !errors.Is(err, boom) || errors.Is(err, dictionary.ErrInvalidAIReply) {
+	failed := AIDefiner{Definer: stubDefiner{err: boom, usage: aitranslate.Usage{PromptTokens: 150, CompletionTokens: 3}}}
+	_, usage, err = failed.DefineWord(context.Background(), "rizzler")
+	if !errors.Is(err, boom) || errors.Is(err, dictionary.ErrInvalidAIReply) {
 		t.Fatalf("err = %v, want the provider error, not ErrInvalidAIReply", err)
+	}
+	if usage != (dictionary.AIUsage{PromptTokens: 150, CompletionTokens: 3}) {
+		t.Fatalf("usage should survive a failed call, so it can be billed (ADR-094): %+v", usage)
 	}
 }
 
@@ -94,8 +98,8 @@ func TestTokenBillingChargesTheLedgerByTokens(t *testing.T) {
 		t.Fatalf("Balance = %d, %v", balance, err)
 	}
 	// ceil((150*1 + 40*3) / 100) = 3
-	if err := billing.Settle(ctx, "u1", dictionary.AIUsage{PromptTokens: 150, CompletionTokens: 40}); err != nil {
-		t.Fatal(err)
+	if cost, err := billing.Settle(ctx, "u1", dictionary.AIUsage{PromptTokens: 150, CompletionTokens: 40}); err != nil || cost != 3 {
+		t.Fatalf("Settle = %d, %v, want a cost of 3", cost, err)
 	}
 	if balance, _ := billing.Balance(ctx, "u1"); balance != 7 {
 		t.Fatalf("balance after settling = %d, want 7", balance)
@@ -103,6 +107,21 @@ func TestTokenBillingChargesTheLedgerByTokens(t *testing.T) {
 	var feature string
 	if err := sqlitex.DB.Raw("SELECT feature FROM credit_transactions WHERE user_id = ?", "u1").Scan(&feature).Error; err != nil || feature != "lookup_word_ai" {
 		t.Fatalf("ledger feature = %q, %v", feature, err)
+	}
+}
+
+// The cost is what the failure log reports (ADR-094), so it comes back even
+// when the ledger write does not happen.
+func TestTokenBillingReturnsTheCostWhenTheLedgerWriteFails(t *testing.T) {
+	setupBillingDB(t)
+	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.CreditAccount{}, &sqlitex.CreditTransaction{}); err != nil {
+		t.Fatal(err)
+	}
+	billing := TokenBilling{Pricing: credit.TokenPricing{WeightIn: 1, WeightOut: 3, Divisor: 100}, Feature: "lookup_word_ai"}
+
+	cost, err := billing.Settle(context.Background(), "u1", dictionary.AIUsage{PromptTokens: 150, CompletionTokens: 40})
+	if err == nil || cost != 3 {
+		t.Fatalf("Settle = %d, %v, want the attempted cost of 3 and an error", cost, err)
 	}
 }
 

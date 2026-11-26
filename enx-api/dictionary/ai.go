@@ -15,6 +15,9 @@ import (
 // Only the word goes to the model -- no sentence -- and a confident answer is
 // cached in the words table for everyone with AI.
 
+// AIFeature names the AI word fallback in the credit ledger and the logs.
+const AIFeature = "lookup_word_ai"
+
 // What DefineWithAI answers with, beyond the sources Resolve reports.
 const (
 	// SourceAI: the AI defined the word.
@@ -39,7 +42,8 @@ var (
 	ErrTrialLimitedPerMinute = errors.New("dictionary: trial per-minute AI limit reached")
 	// ErrInsufficientCredit: the user has no credit left to spend.
 	ErrInsufficientCredit = errors.New("dictionary: insufficient credit for an AI lookup")
-	// ErrAIFailed: the model call itself failed. Nothing is charged.
+	// ErrAIFailed: the model call itself failed. Tokens it reported using are
+	// still charged (ADR-094).
 	ErrAIFailed = errors.New("dictionary: AI lookup failed")
 	// ErrInvalidAIReply is returned by a WordDefiner when the model answered
 	// but not with a usable definition.
@@ -76,8 +80,9 @@ type Definition struct {
 }
 
 // WordDefiner asks a model to define one word with no sentence. It returns an
-// error wrapping ErrInvalidAIReply when the model answered unusably (the usage
-// is still reported), and any other error when the call itself failed.
+// error wrapping ErrInvalidAIReply when the model answered unusably, and any
+// other error when the call itself failed. Either way it reports the usage the
+// provider did.
 type WordDefiner interface {
 	DefineWord(ctx context.Context, word string) (Definition, AIUsage, error)
 }
@@ -88,7 +93,9 @@ type AIBilling interface {
 	// must not run, or it would be free.
 	Priced() bool
 	Balance(ctx context.Context, userID string) (int64, error)
-	Settle(ctx context.Context, userID string, usage AIUsage) error
+	// Settle charges usage and returns the computed charge, also when the
+	// charge could not be written.
+	Settle(ctx context.Context, userID string, usage AIUsage) (cost int64, err error)
 }
 
 // AILimiter is the safety valve on AI spend and on writes to the shared cache.
@@ -239,9 +246,9 @@ func (s *Service) AIConfigured() bool {
 // and is cached even if the client has gone, so "was I charged?" has no
 // in-between answer and the user's next lookup of the word is instant.
 //
-// Charging: a successful model call is billed by its tokens, including the
-// answer "not a word". A call that fails, and a reply that cannot be used,
-// are not billed -- those are not the user's doing.
+// Charging (ADR-094): a model call is billed by the tokens it used, whether it
+// answered, said "not a word", gave an unusable reply or failed. A failure
+// that reports no tokens is not billed.
 func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Result, error) {
 	res, outcome, err := s.defineWithAI(ctx, english, userID)
 	if s.aiRecorder != nil {
@@ -305,27 +312,50 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 	defer cancel()
 
 	def, usage, err := s.ai.definer.DefineWord(callCtx, english)
-	switch {
-	case errors.Is(err, ErrInvalidAIReply):
-		logger.Warnf("dictionary: unusable AI reply for %q (user %s, %d+%d tokens, not billed): %v",
-			english, userID, usage.PromptTokens, usage.CompletionTokens, err)
-		return Result{English: english, Source: SourceAIMiss}, outcomeInvalidReply, nil
-	case err != nil:
-		logger.Errorf("dictionary: AI lookup of %q failed for user %s: %v", english, userID, err)
+	if err != nil {
+		s.settleFailedAICall(callCtx, userID, usage, err)
+		if errors.Is(err, ErrInvalidAIReply) {
+			return Result{English: english, Source: SourceAIMiss}, outcomeInvalidReply, nil
+		}
 		return Result{}, outcomeFailed, ErrAIFailed
 	}
 
-	if err := s.ai.billing.Settle(callCtx, userID, usage); err != nil {
-		// The user still gets the answer they waited for.
-		logger.Errorf("dictionary: could not bill user %s for an AI lookup (%d+%d tokens): %v",
-			userID, usage.PromptTokens, usage.CompletionTokens, err)
-	}
+	// The user still gets the answer they waited for if the charge fails.
+	_, _ = s.settleAIUsage(callCtx, userID, usage)
 
 	if !def.IsWord {
 		return Result{English: english, Source: SourceAIMiss}, outcomeNotAWord, nil
 	}
 	res, outcome := s.keepAIDefinition(callCtx, english, userID, def)
 	return res, outcome, nil
+}
+
+// settleAIUsage charges userID for usage, logging a charge that could not be
+// written.
+func (s *Service) settleAIUsage(ctx context.Context, userID string, usage AIUsage) (int64, error) {
+	cost, err := s.ai.billing.Settle(ctx, userID, usage)
+	if err != nil {
+		logger.Errorf("dictionary: could not bill user %s for an AI lookup (%d+%d tokens): %v",
+			userID, usage.PromptTokens, usage.CompletionTokens, err)
+	}
+	return cost, err
+}
+
+// settleFailedAICall bills and logs a model call that returned callErr
+// (ADR-094). With nonzero usage the model ran, so its tokens are settled and
+// ai_call_billed_on_failure tells a log review whom to compensate. With zero
+// usage nothing is charged and ai_call_failed_unbilled alerts ops.
+func (s *Service) settleFailedAICall(ctx context.Context, userID string, usage AIUsage, callErr error) {
+	// Test the tokens, not the cost: a cost floors at 1 even for no tokens.
+	if usage.PromptTokens <= 0 && usage.CompletionTokens <= 0 {
+		logger.Errorw("ai_call_failed_unbilled", "feature", AIFeature, "user_id", userID, "error", callErr.Error())
+		return
+	}
+	cost, settleErr := s.settleAIUsage(ctx, userID, usage)
+	logger.Errorw("ai_call_billed_on_failure",
+		"feature", AIFeature, "user_id", userID,
+		"prompt_tokens", usage.PromptTokens, "completion_tokens", usage.CompletionTokens,
+		"cost", cost, "settled", settleErr == nil, "error", callErr.Error())
 }
 
 // answerFromCandidate answers from the AI candidate table (ADR-091): a pending
