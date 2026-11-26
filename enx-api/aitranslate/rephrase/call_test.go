@@ -37,18 +37,28 @@ func TestCallSendsPromptAndAttachesUsage(t *testing.T) {
 	}
 }
 
-func TestCallReturnsChatError(t *testing.T) {
-	f := &llmtest.Fake{Err: errors.New("boom")}
+// A failed call still hands back its usage, so the caller can bill it
+// (ADR-094).
+func TestCallReturnsChatErrorWithItsUsage(t *testing.T) {
+	f := &llmtest.Fake{Err: errors.New("boom"), Usage: aiusage.Usage{PromptTokens: 80, CompletionTokens: 30, TotalTokens: 110}}
 
-	if _, err := rephrase.Call(context.Background(), f.Chat, "x"); err == nil || err.Error() != "boom" {
+	res, err := rephrase.Call(context.Background(), f.Chat, "x")
+	if err == nil || err.Error() != "boom" {
 		t.Fatalf("error: got %v, want boom", err)
+	}
+	if res.Usage != (rephrase.Usage{PromptTokens: 80, CompletionTokens: 30, TotalTokens: 110}) {
+		t.Fatalf("usage: got %+v", res.Usage)
 	}
 }
 
-func TestCallRejectsReplyThatDoesNotParse(t *testing.T) {
-	f := &llmtest.Fake{Reply: "no json here"}
+func TestCallRejectsReplyThatDoesNotParseWithItsUsage(t *testing.T) {
+	f := &llmtest.Fake{Reply: "no json here", Usage: aiusage.Usage{PromptTokens: 80, CompletionTokens: 30, TotalTokens: 110}}
 
-	if _, err := rephrase.Call(context.Background(), f.Chat, "x"); err == nil {
+	res, err := rephrase.Call(context.Background(), f.Chat, "x")
+	if err == nil {
 		t.Fatal("want a parse error")
+	}
+	if res.Usage != (rephrase.Usage{PromptTokens: 80, CompletionTokens: 30, TotalTokens: 110}) {
+		t.Fatalf("usage: got %+v", res.Usage)
 	}
 }

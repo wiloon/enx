@@ -66,6 +66,25 @@ func TestChatSendsThePromptAndReturnsTheReplyWithItsUsage(t *testing.T) {
 	}
 }
 
+// The model ran, so its usage comes back with the error and the caller can
+// bill it (ADR-094).
+func TestChatReturnsTheUsageOfAReplyWithNoChoices(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`))
+	}))
+	defer srv.Close()
+
+	_, u, err := Chat(context.Background(), resty.New(), Endpoint{Provider: "acme", BaseURL: srv.URL, APIKey: "k"}, Prompt{User: "Hello"})
+
+	if err == nil || err.Error() != "acme: empty response" {
+		t.Errorf("err = %v, want acme: empty response", err)
+	}
+	if want := (aiusage.Usage{PromptTokens: 3, CompletionTokens: 2, TotalTokens: 5}); u != want {
+		t.Errorf("usage = %+v, want %+v", u, want)
+	}
+}
+
 func TestChatErrorsNameTheProvider(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -46,7 +46,8 @@ type rephraseRequest struct {
 // Rephrase turns Chinese / mixed / rough English into idiomatic workplace
 // American English. Billing is post-hoc by actual token usage: a Balance
 // pre-check gates the call, and on success Settle charges the real cost
-// (ADR-012 Decision 5). A failed provider call is never charged.
+// (ADR-012 Decision 5). A call that reached the model is charged even when it
+// fails (ADR-094, see settleFailedCall).
 func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	var req rephraseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -90,7 +91,7 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 
 	result, err := h.rephraser.Rephrase(c.Request.Context(), req.Input)
 	if err != nil {
-		logger.Errorf("aitranslate: Rephrase failed: %v", err)
+		settleFailedCall(c.Request.Context(), h.ledger, h.pricing, feature, userID, result.Usage.PromptTokens, result.Usage.CompletionTokens, err)
 		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
 		return
 	}

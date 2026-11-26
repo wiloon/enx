@@ -20,6 +20,9 @@ type Logger interface {
 
 	Errorf(format string, args ...interface{})
 
+	// Errorw logs msg at Error level with alternating key/value fields.
+	Errorw(msg string, keysAndValues ...interface{})
+
 	Fatal(args ...interface{})
 
 	Fatalf(format string, args ...interface{})

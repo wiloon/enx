@@ -72,10 +72,10 @@ export default function RefundPolicyPage() {
           credits went on the Billing page.
         </p>
         <p>
-          If credits were consumed by something that clearly went wrong on our
-          side — a failed request that still charged you, a duplicate call, a
-          bug — that is not a refund question. Tell us and we will put the
-          credits back.
+          If credits are wrongly deducted because of a problem on {SITE.name}
+          &rsquo;s side — a bug or a duplicate call, for example — we will give
+          you the credits back as compensation, the same way we make up for
+          downtime. That is not a refund question; just tell us.
         </p>
       </Section>
 

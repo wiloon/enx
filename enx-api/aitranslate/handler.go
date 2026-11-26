@@ -3,6 +3,7 @@ package aitranslate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -107,9 +108,10 @@ func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenP
 // (translator configured, feature priced, caller has a positive balance),
 // invokes fn to do the AI work, then settles the real token cost. It writes
 // the error response itself and returns false when the caller should stop;
-// on true the caller renders the success body. A failed provider call is
-// never charged; a failed Settle write never costs the user their result
-// (ADR-014, same convention as rephrase).
+// on true the caller renders the success body. A call that reached the model
+// is charged even when fn fails (ADR-094, see settleFailedCall); a failed
+// Settle write never costs the user their result (ADR-014, same convention
+// as rephrase).
 func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context.Context) (Usage, error)) bool {
 	if h.translator == nil {
 		httpjson.Fail(c, http.StatusBadGateway, "sentence translation is not configured")
@@ -139,7 +141,7 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 
 	usage, err := fn(c.Request.Context())
 	if err != nil {
-		logger.Errorf("aitranslate: %s failed: %v", feature, err)
+		settleFailedCall(c.Request.Context(), h.ledger, h.pricing, feature, userID, usage.PromptTokens, usage.CompletionTokens, err)
 		httpjson.Fail(c, http.StatusBadGateway, "translation service unavailable")
 		return false
 	}
@@ -150,6 +152,35 @@ func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context
 	}
 	logger.Infof("aitranslate: %s billed user=%s cost=%d", feature, userID, cost)
 	return true
+}
+
+// settleFailedCall bills and logs a model call that returned callErr
+// (ADR-094). With nonzero usage the model ran, so its tokens are settled and
+// ai_call_billed_on_failure tells a log review whom to compensate. With zero
+// usage nothing is charged and ai_call_failed_unbilled alerts ops, unless
+// the client cancelled the request.
+func settleFailedCall(ctx context.Context, ledger TokenLedger, pricing credit.TokenPricing, feature, userID string, promptTokens, completionTokens int, callErr error) {
+	// Test the tokens, not the cost: Cost floors at 1 even for no tokens.
+	if promptTokens <= 0 && completionTokens <= 0 {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			logger.Infof("aitranslate: %s cancelled by the client (user=%s): %v", feature, userID, callErr)
+			return
+		}
+		logger.Errorw("ai_call_failed_unbilled", "feature", feature, "user_id", userID, "error", callErr.Error())
+		return
+	}
+
+	cost := pricing.Cost(promptTokens, completionTokens)
+	// The tokens are spent whether or not the client is still there, and the
+	// ledger writes nothing on a cancelled context.
+	settleErr := ledger.Settle(context.WithoutCancel(ctx), userID, feature, cost)
+	if settleErr != nil {
+		logger.Errorf("aitranslate: Settle after %s failed (user=%s cost=%d): %v", feature, userID, cost, settleErr)
+	}
+	logger.Errorw("ai_call_billed_on_failure",
+		"feature", feature, "user_id", userID,
+		"prompt_tokens", promptTokens, "completion_tokens", completionTokens,
+		"cost", cost, "settled", settleErr == nil, "error", callErr.Error())
 }
 
 // TranslateSentence handles POST /api/translate/sentence. It never returns a 200 with an empty/partial
@@ -214,7 +245,7 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 // kept), so the response echoes them in request order. A gloss the model omitted comes back
 // with empty chinese and why; the client falls back to an individual
 // word-in-context call for it. A missing sentence translation is a 502 and is
-// not billed.
+// still billed for the tokens it used (ADR-094).
 func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
 	var req sentenceWithWordsRequest
 	dec := json.NewDecoder(c.Request.Body)

@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"enx-api/ailimit"
+	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/llm"
+	"enx-api/aitranslate/llm/llmtest"
 	"enx-api/aitranslate/rephrase"
 	"enx-api/billing/credit"
 
@@ -233,19 +236,66 @@ func TestRephraseHandlerBalanceLookupError(t *testing.T) {
 	}
 }
 
-func TestRephraseHandlerProviderError(t *testing.T) {
+func TestRephraseHandlerProviderErrorWithoutUsageIsNotBilled(t *testing.T) {
+	logs := observeLogs(t)
 	rp := &fakeRephraser{err: errors.New("provider timeout")}
 	ledger := &fakeRephraseLedger{balance: 100}
 	h := NewRephraseHandler(rp, ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d", w.Code)
+	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "rephrase_to_english", "provider timeout")
+}
+
+// chatRephraser is a provider's Rephrase: rephrase.Call on its chat.
+type chatRephraser struct{ chat llm.Chat }
+
+func (r chatRephraser) Rephrase(ctx context.Context, input string) (rephrase.Result, error) {
+	return rephrase.Call(ctx, r.chat, input)
+}
+
+func TestRephraseHandlerFailedCallWithUsageIsBilled(t *testing.T) {
+	usage := aiusage.Usage{PromptTokens: 600, CompletionTokens: 900}
+	_, parseErr := rephrase.ParseResult("no json here")
+	for _, tc := range []struct {
+		name      string
+		fake      llmtest.Fake
+		wantError string
+	}{
+		{"reply that does not parse", llmtest.Fake{Reply: "no json here", Usage: usage}, parseErr.Error()},
+		{"chat error carrying usage", llmtest.Fake{Err: errors.New("bedrock: no text content in response"), Usage: usage}, "bedrock: no text content in response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := observeLogs(t)
+			ledger := &fakeRephraseLedger{balance: 100}
+			h := NewRephraseHandler(chatRephraser{tc.fake.Chat}, ledger, testPricing)
+
+			w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
+
+			assertBilledOnFailure(t, w, ledger.settleCalls, logs, "rephrase_to_english", tc.wantError)
+		})
 	}
-	if len(ledger.settleCalls) != 0 {
-		t.Fatal("a failed provider call must not be charged")
-	}
+}
+
+func TestRephraseHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
+	logs := observeLogs(t)
+	rp := &fakeRephraser{err: errors.New("unusable reply"), result: rephrase.Result{Usage: rephrase.Usage{PromptTokens: 600, CompletionTokens: 900}}}
+	ledger := &fakeRephraseLedger{balance: 100, settleErr: errors.New("db write failed")}
+	h := NewRephraseHandler(rp, ledger, testPricing)
+
+	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
+
+	assertUnsettledOnFailure(t, w, ledger.settleCalls, logs, "rephrase_to_english", "unusable reply")
+}
+
+func TestRephraseHandlerCancelledRequestWithoutUsageIsNotAnOpsAlert(t *testing.T) {
+	logs := observeLogs(t)
+	ledger := &fakeRephraseLedger{balance: 100}
+	h := NewRephraseHandler(&fakeRephraser{err: context.Canceled}, ledger, testPricing)
+
+	w := doPostWithContext(t, cancelledContext(), "/api/rephrase", h.Rephrase, `{"input":"帮我看下这个"}`)
+
+	assertCancelledUnbilled(t, w, ledger.settleCalls, logs, "rephrase_to_english")
 }
 
 func TestRephraseHandlerSettleErrorStillReturnsResult(t *testing.T) {

@@ -7,6 +7,7 @@ import TermsZhPage from '../zh/terms/page'
 import RefundPolicyZhPage from '../zh/refund/page'
 import SiteFooter from '@/components/site/SiteFooter'
 import { AI_PROVIDER, LEGAL, SUBPROCESSORS } from '@/lib/legal'
+import { SITE } from '@/lib/site'
 
 // SiteHeader renders HeaderAuthLinks, which reads the auth context.
 jest.mock('@/auth/context', () => ({
@@ -405,6 +406,31 @@ describe('Refund Policy', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/we will refund that\s+part/)).toBeNull()
   })
+
+  // Credits wrongly deducted by a fault of ours are given back as
+  // compensation, like downtime. ADR-094: a failed AI call that reached the
+  // model is billed, so a charged failed request is not listed as our fault.
+  it.each([
+    [
+      'English',
+      RefundPolicyPage,
+      /wrongly deducted/,
+      `If credits are wrongly deducted because of a problem on ${SITE.name}’s side — a bug or a duplicate call, for example — we will give you the credits back as compensation, the same way we make up for downtime. That is not a refund question; just tell us.`,
+    ],
+    [
+      'Chinese route',
+      RefundPolicyZhPage,
+      /误扣了积分/,
+      `如果因为 ${SITE.name} 系统的问题（程序缺陷、重复调用等）误扣了积分，我们会补发积分作为补偿，和长时间停机一样。那不是退款问题，告诉我们就行。`,
+    ],
+  ])(
+    'compensates wrongly deducted credits with credits, on the %s page',
+    (_locale, Page, passage, text) => {
+      render(<Page />)
+
+      expect(screen.getByText(passage)).toHaveTextContent(text)
+    }
+  )
 
   it('does not claim to override local consumer law', () => {
     render(<RefundPolicyPage />)

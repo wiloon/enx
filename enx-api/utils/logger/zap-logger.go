@@ -116,6 +116,12 @@ func Warnf(msg string, args ...interface{}) {
 func Infow(msg string, keysAndValues ...interface{}) {
 	GetLogger().Infow(msg, keysAndValues...)
 }
+
+// Errorw is Infow at Error level.
+func Errorw(msg string, keysAndValues ...interface{}) {
+	GetLogger().Errorw(msg, keysAndValues...)
+}
+
 func Sync() {
 	err := GetLogger().Sync()
 	if err != nil {
