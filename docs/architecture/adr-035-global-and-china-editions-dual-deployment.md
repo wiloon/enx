@@ -13,6 +13,7 @@
 
 ## 修订记录
 
+- **2026-11-25**（#1152）：首次上线时海外版和国内版**都不用 MiniMax**（owner 决定）。代码保留并标记为 deprecated，是否重新启用等首次上线后再定；第 3 条「AI provider」一行随之更新。
 - **2026-11-19**：国内版托管定为**阿里云华东1（杭州，`cn-hangzhou`）**，第 3 条的「托管」一行和「待定」里的云厂商选型随之更新。
   - **为什么是杭州**：用户分布在全国，网民集中在华东和华南，杭州到京、广深的延迟都在 30ms 左右，覆盖最均衡；杭州是阿里云产品最全的地域。地域选定后，VPC、ECS 和磁盘都没法搬，要换只能重建。
   - 云账号、基础设施代码和资质办理都归国内版运营主体，不在本仓库。
@@ -63,7 +64,7 @@
 | 运营主体 / 法律页 | 海外版运营方 | 国内版运营方 | `enx-ui/src/lib/legal.ts` 的 operator、AI provider、sub-processor 列表要变成**按版本的配置**，不能只有一份常量。`legal.test.tsx` 目前断言页面里不得出现「有限公司」——那是海外版的约束，要改成只对海外版生效 |
 | 身份认证 | Clerk（Google / GitHub） | 自托管 Logto（第一版只有微信扫码，不收集手机号） | 见 [`adr-036`](./adr-036-china-edition-authentication-logto.md) |
 | 收款 | Stripe | 微信支付 / 支付宝 | 另起 ADR；ADR-009 的积分 / 订阅领域模型（键在本地 `users.Id`）原则上复用，只换支付通道 |
-| AI provider | Bedrock（Claude） | **已完成大模型备案**的国内模型 API（如 DeepSeek / Kimi / MiniMax） | `aitranslate/` 已有这几个 provider 的实现，本来就是给境内部署留的 |
+| AI provider | Bedrock（Claude） | **已完成大模型备案**的国内模型 API（如 DeepSeek / Kimi） | `aitranslate/` 已有这几个 provider 的实现，本来就是给境内部署留的。MiniMax 首次上线不用（代码保留、已标记 deprecated，上线后再议；见「修订记录 2026-11-25」，#1152） |
 | 托管 | AWS 东京 EC2 | 阿里云华东1（杭州） | 必须能办 ICP 备案；见「修订记录 2026-11-19」 |
 | CDN / DNS | Cloudflare | 大陆 CDN | Cloudflare 免费档在大陆没有节点 |
 | 扩展分发 | Chrome Web Store | **Edge 加载项商店**（大陆可访问）+ 官网离线包 | 国内版扩展是独立的构建产物和独立的商店条目（不同扩展 id） |
