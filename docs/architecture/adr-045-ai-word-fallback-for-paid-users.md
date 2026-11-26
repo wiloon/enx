@@ -1,5 +1,7 @@
 # ADR-045：有资格的用户（订阅有效或有充值余额）点击查词在 `words` 与 ECDICT 都未命中时，把**单个词**（不带句子）发给 AI 兜底——AI 同时打质量分，高分结果直接写入 `words`（`source='ai'`），按 token 扣积分，AI 释义只对有资格的用户可见（管理员编辑过的除外）；仅充值用户的自动 AI 默认关、可手动「用 AI 查询」；免费用户点这个入口会被引导去订阅或充值；浮层显示 AI 状态、不提供取消
 
+> 2026-11-26（#1153）：第二个请求的错误码 `ai_failed` 拆成 `internal_error` 与 `ai_upstream_failed`（HTTP 状态仍是 502）。原因：用户要能分清是我方出错还是上游 AI 服务出错，尤其是扣了费的失败（ADR-094）。
+
 > 2026-11-25（ADR-094）：「计费细化」中「模型回了不合格的内容也不扣费」一条已被推翻。不合格回复照样按实际 token 扣费，并在日志里醒目标记，由管理员手动补偿；模型报错、拿不到用量时仍不扣。见 [ADR-094](adr-094-bill-ai-calls-that-reached-the-model.md)。
 
 > 2026-11-17（#960）：token 价格默认使用共享的 `[stripe.costs.default]`；功能覆盖必须设置全部三个键，部分设置即未定价。解析与校验规则见 [ADR-014「默认 token 价格与按功能覆盖」](adr-014-sidepanel-clicked-word-and-token-billing.md#默认-token-价格与按功能覆盖2026-11-17issue-960)，取代本文原有的逐功能部署配置要求。
@@ -231,7 +233,7 @@ ADR-030 早就把「AI 兜底」设计成链尾，但它的存储与计费方案
 实现时细化或偏离了上文的几处，以此为准：
 
 - **provider 范围**：先只做 **deepseek**（homelab）和 **openrouter**（生产）。`DefineWord` 是个**可选接口**（`aitranslate.WordDefiner`，经 `AsWordDefiner` 取用，能穿过指标包装 `Instrument`），不是给共享的 `Translator` 接口加方法，所以 bedrock、gemini、kimi、minimax 不用改。provider 不支持时整个 AI 兜底关闭，启动日志里有一条 warn。
-- **第二个请求的形状**：`POST /api/dictionary/ai-word`，body `{"word": "..."}`。成功是 200 `{"found": true, "word": {…与查词相同的 Word 载荷…}}`，AI 没有定义是 200 `{"found": false, "reason": "no_definition"}`。错误用状态码加稳定的 `code`：`invalid_word` 400、`not_entitled` 403、`insufficient_credit` 402、`rate_limited` 429、`ai_unavailable` 503、`ai_failed` 502。
+- **第二个请求的形状**：`POST /api/dictionary/ai-word`，body `{"word": "..."}`。成功是 200 `{"found": true, "word": {…与查词相同的 Word 载荷…}}`，AI 没有定义是 200 `{"found": false, "reason": "no_definition"}`。错误用状态码加稳定的 `code`：`invalid_word` 400、`not_entitled` 403、`insufficient_credit` 402、`rate_limited` 429、`ai_unavailable` 503、`internal_error` 502（调用模型之前我方出错）、`ai_upstream_failed` 502（上游 AI 服务出错）。
 - **第一个请求的字段**：未命中且已配置兜底时，响应里带 `AIFallback: { CanUse, Auto }`（首字母大写，与这个载荷里其他字段一致，不是 Decision 3 里写的小写）。命中时不带。
 - **计费细化**（Decision 7）：调用失败**不扣费**；模型回了**不合格的内容**（解析或校验失败）也**不扣费**，因为那不是用户的责任；调用成功才扣，包括「不是词」。
 - **服务端会重查**：第二个请求先看 `words` 和 ECDICT，已有就直接返回、不调模型、不扣费，所以重复点击或手写请求不会为已知的词付费。ECDICT 超时或没配置时**不**用 AI 顶上，原因见 Decision 1。
