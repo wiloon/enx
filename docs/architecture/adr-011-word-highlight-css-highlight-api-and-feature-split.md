@@ -265,6 +265,7 @@ contentVolatility: 'static' | 'spa' | 'streaming'
 - `getTextOffsetWithin(container, target)` 现在用 `range.setEndBefore(target)` 求偏移；改为 `range.setEnd(wordRange.startContainer, wordRange.startOffset)` —— 直接用点击词 Range 的起点，比原来「setEndBefore 元素」更准（不受包裹元素前后空白影响）。
 - 其余（`MAX_SEGMENT_LENGTH` 窗口截断、`Intl.Segmenter` 切句、找不到退回整段）完全不变。
 - **仍 defer**：ADR-010 Decision 5「切句侧」提出的问题——X 推文里跨行、无句末标点的两句会被 `Intl.Segmenter` 合并成一句（因为 `container.textContent` 和 `Range.toString()` 都忽略 `<br>`）——本 ADR 不解决，与本 Decision 的 Range 化正交。它需要按 `<br>` / 块级边界往 `textToSegment` 插 `\n` 并同步调整点击词偏移，留到 ADR-010 前提 §2.3（`<br>` vs 块级）实测后另做。在此之前 X 上跨行无标点的两句仍会合并送 AI（质量降级，非功能损坏）。
+  - 2026-11-25（#1137）：文本节点里的换行字符在保留换行的 `white-space` 下已有分句规则，见 [ADR-010 Decision 5](adr-010-x-tweet-page-support.md) 的增补；`<br>` / 块级边界仍按本条 defer。
 
 **`findPhraseAnchor` → `resolvePhraseSentenceRange`**（`content.tsx:776`）：
 
