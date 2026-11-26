@@ -153,10 +153,22 @@ describe('worker session calls reach the selected adapter', () => {
 
   it('creates the client and reads the subject through the adapter', async () => {
     const subject = jest.fn(() => 'user-a')
-    createClient.mockResolvedValue({ ...fakeSession('user-a'), subject })
-    await makeApiRequest('/api/me')
+    createClient.mockResolvedValue({
+      ...fakeSession('user-a', async () => 'clerk-session-jwt'),
+      subject,
+    })
+    const result = await makeApiRequest('/api/me')
     expect(createClient).toHaveBeenCalled()
     expect(subject).toHaveBeenCalled()
+    expect(result.success).toBe(true)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8090/api/me',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer clerk-session-jwt',
+        }),
+      })
+    )
   })
 })
 

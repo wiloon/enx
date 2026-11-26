@@ -34,7 +34,10 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
       isSignedIn: Boolean(isSignedIn),
       user: isSignedIn && user ? toAuthUser(user) : null,
       sessionId: sessionId ?? null,
-      signOut: (callback?: () => void) => clerk.signOut(callback),
+      // Passing clerk.signOut() a callback skips navigation that would reload
+      // popup.html and force Clerk to start over. The session updates in
+      // place and the popup re-renders signed out.
+      signOut: () => clerk.signOut(() => {}),
     }),
     [isLoaded, isSignedIn, user, sessionId, clerk]
   )

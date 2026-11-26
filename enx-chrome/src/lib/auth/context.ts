@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { AuthSessionView } from '@/lib/auth/types'
 
 export type AuthContextValue = AuthSessionView & {
-  signOut: (callback?: () => void) => Promise<void>
+  signOut: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
@@ -17,7 +17,7 @@ export function useAuthSession(): AuthSessionView {
   return value
 }
 
-export function useAuthSignOut(): (callback?: () => void) => Promise<void> {
+export function useAuthSignOut(): () => Promise<void> {
   const value = useContext(AuthContext)
   if (!value) {
     throw new Error(
