@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"unicode/utf8"
 
+	"enx-api/aitranslate/aifailure"
 	"enx-api/aitranslate/rephrase"
 	"enx-api/billing/credit"
 	"enx-api/middleware"
@@ -60,12 +61,12 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	}
 
 	if h.rephraser == nil {
-		httpjson.Fail(c, http.StatusBadGateway, "Rephrase is not configured.")
+		aifailure.Internal(c)
 		return
 	}
 	if !h.pricing.Priced() {
 		logger.Errorf("aitranslate: rephrase is unpriced (%+v)", h.pricing)
-		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
+		aifailure.Internal(c)
 		return
 	}
 
@@ -78,7 +79,7 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	balance, err := h.ledger.Balance(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("aitranslate: rephrase balance check failed: %v", err)
-		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
+		aifailure.Internal(c)
 		return
 	}
 	if balance < 1 {
@@ -92,7 +93,7 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 	result, err := h.rephraser.Rephrase(c.Request.Context(), req.Input)
 	if err != nil {
 		settleFailedCall(c.Request.Context(), h.ledger, h.pricing, feature, userID, result.Usage.PromptTokens, result.Usage.CompletionTokens, err)
-		httpjson.Fail(c, http.StatusBadGateway, "Rephrase service unavailable.")
+		aifailure.Upstream(c)
 		return
 	}
 

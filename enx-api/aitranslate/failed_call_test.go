@@ -36,16 +36,13 @@ func doPostWithContext(t *testing.T, ctx context.Context, route string, h gin.Ha
 	return w
 }
 
-// assertBadGateway checks the 502 and the message the feature's handler
-// returns: rephrase has its own, every translate feature shares one.
-func assertBadGateway(t *testing.T, w *httptest.ResponseRecorder, feature string) {
+// assertUpstreamFailed checks the 502 every feature answers when the model
+// call failed (#1153).
+func assertUpstreamFailed(t *testing.T, w *httptest.ResponseRecorder) {
 	t.Helper()
-	want := "translation service unavailable"
-	if feature == "rephrase_to_english" {
-		want = "Rephrase service unavailable."
-	}
+	const want = `"code":"ai_upstream_failed"`
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), want) {
-		t.Fatalf("response = %d %s, want 502 %q", w.Code, w.Body.String(), want)
+		t.Fatalf("response = %d %s, want 502 %s", w.Code, w.Body.String(), want)
 	}
 }
 
@@ -87,7 +84,7 @@ func assertSettledOnce(t *testing.T, calls []settleCall, feature string) {
 
 func assertBilledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w, feature)
+	assertUpstreamFailed(t, w)
 	assertSettledOnce(t, calls, feature)
 	assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(feature, true, errText))
 	if got := errorEntries(logs); len(got) != 1 {
@@ -97,7 +94,7 @@ func assertBilledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []s
 
 func assertUnsettledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w, feature)
+	assertUpstreamFailed(t, w)
 	assertSettledOnce(t, calls, feature)
 	assertErrorEvent(t, logs, "ai_call_billed_on_failure", billedFields(feature, false, errText))
 	want := "aitranslate: Settle after " + feature + " failed (user= cost=2): db write failed"
@@ -108,7 +105,7 @@ func assertUnsettledOnFailure(t *testing.T, w *httptest.ResponseRecorder, calls 
 
 func assertUnbilledFailure(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature, errText string) {
 	t.Helper()
-	assertBadGateway(t, w, feature)
+	assertUpstreamFailed(t, w)
 	if len(calls) != 0 {
 		t.Fatalf("settle calls = %+v, want none", calls)
 	}
@@ -120,7 +117,7 @@ func assertUnbilledFailure(t *testing.T, w *httptest.ResponseRecorder, calls []s
 
 func assertCancelledUnbilled(t *testing.T, w *httptest.ResponseRecorder, calls []settleCall, logs *observer.ObservedLogs, feature string) {
 	t.Helper()
-	assertBadGateway(t, w, feature)
+	assertUpstreamFailed(t, w)
 	if len(calls) != 0 {
 		t.Fatalf("settle calls = %+v, want none", calls)
 	}

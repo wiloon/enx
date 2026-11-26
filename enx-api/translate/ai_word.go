@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/aitranslate/aifailure"
 	"enx-api/dictionary"
 	dictionaryhttp "enx-api/dictionary/httpapi"
 	"enx-api/enx"
@@ -23,7 +24,8 @@ type aiWordRequest struct {
 // word fallback (ADR-045): the client sends it after a lookup missed and told
 // it the fallback is on. It answers 200 {"found": true, "word": {...}} with
 // the same word payload as a lookup, or 200 {"found": false, ...} when the AI
-// has no definition; everything else is a status code and a stable "code".
+// says it is not a word (or its candidate definition was rejected);
+// everything else is a status code and a stable "code".
 //
 // The lookup request already counted against the daily lookup quota, so this
 // one does not.
@@ -56,7 +58,7 @@ func (h *Handler) AIWord(c *gin.Context) {
 	switch res.Source {
 	case dictionary.SourceAI, dictionary.SourceLocal, dictionary.SourceEcdict:
 	default:
-		// The AI had no definition, or the dictionary could not answer.
+		// The AI had no definition.
 		c.JSON(http.StatusOK, gin.H{"found": false, "reason": "no_definition"})
 		return
 	}
@@ -113,10 +115,10 @@ func respondAIError(c *gin.Context, err error) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "ai_unavailable", "message": "AI lookup is not available right now."})
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
 		dictionaryhttp.RespondUnavailable(c)
-	case errors.Is(err, dictionary.ErrAIFailed):
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "code": "ai_failed", "message": "AI lookup failed. Please try again."})
+	case errors.Is(err, dictionary.ErrAIFailed), errors.Is(err, dictionary.ErrInvalidAIReply):
+		aifailure.Upstream(c)
 	default:
 		logger.Errorf("AI word lookup: %v", err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "code": "ai_failed", "message": "AI lookup failed. Please try again."})
+		aifailure.Internal(c)
 	}
 }

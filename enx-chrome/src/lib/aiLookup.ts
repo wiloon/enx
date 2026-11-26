@@ -18,8 +18,9 @@ export type AiLookupOutcome =
   | {
       kind: 'error'
       reason: 'credit' | 'rate-limited' | 'not-entitled' | 'unavailable'
-      // The server's own words, kept for a 429: it is either the AI lookup's
-      // rate limit or the sign-up trial's daily limit (ADR-048).
+      // The server's own words, kept for a 429 (the AI lookup's rate limit or
+      // the sign-up trial's daily limit, ADR-048) and for a 502 (whether ENX or
+      // the AI service failed, #1153).
       message?: string
     }
 
@@ -57,6 +58,10 @@ export const lookupWithAi = async (word: string): Promise<AiLookupOutcome> => {
         : { kind: 'error', reason: 'rate-limited' }
     case 403:
       return { kind: 'error', reason: 'not-entitled' }
+    case 502:
+      return response.error
+        ? { kind: 'error', reason: 'unavailable', message: response.error }
+        : { kind: 'error', reason: 'unavailable' }
     default:
       return { kind: 'error', reason: 'unavailable' }
   }

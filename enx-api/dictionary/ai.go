@@ -22,7 +22,8 @@ const AIFeature = "lookup_word_ai"
 const (
 	// SourceAI: the AI defined the word.
 	SourceAI Source = "ai"
-	// SourceAIMiss: the AI could not (not a word, or its reply was unusable).
+	// SourceAIMiss: there is no AI definition (the model says it is not a
+	// word, or its candidate definition was rejected).
 	SourceAIMiss Source = "ai_miss"
 )
 
@@ -48,6 +49,9 @@ var (
 	// ErrInvalidAIReply is returned by a WordDefiner when the model answered
 	// but not with a usable definition.
 	ErrInvalidAIReply = errors.New("dictionary: the AI's reply was not usable")
+	// ErrDictionaryFailed: ECDICT timed out or failed, so there is no telling
+	// whether the word is missing and the model is not called.
+	ErrDictionaryFailed = errors.New("dictionary: ECDICT could not answer")
 )
 
 // maxAIWordLen is the longest word sent to the AI; ECDICT's own word column
@@ -282,7 +286,7 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 	case SourceMiss:
 		// Only a clean miss can fall through to candidate and model lookups.
 	default:
-		return res, outcomeFailed, nil
+		return Result{}, outcomeFailed, ErrDictionaryFailed
 	}
 
 	if res, outcome, done, err := s.answerFromCandidate(ctx, english); done {
@@ -315,7 +319,7 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 	if err != nil {
 		s.settleFailedAICall(callCtx, userID, usage, err)
 		if errors.Is(err, ErrInvalidAIReply) {
-			return Result{English: english, Source: SourceAIMiss}, outcomeInvalidReply, nil
+			return Result{}, outcomeInvalidReply, ErrInvalidAIReply
 		}
 		return Result{}, outcomeFailed, ErrAIFailed
 	}
