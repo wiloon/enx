@@ -25,6 +25,10 @@ func (dl *defaultLogger) Infow(msg string, keysAndValues ...interface{}) {
 	sdkLog.Println(append([]interface{}{msg}, keysAndValues...)...)
 }
 
+func (dl *defaultLogger) Errorw(msg string, keysAndValues ...interface{}) {
+	sdkLog.Println(append([]interface{}{msg}, keysAndValues...)...)
+}
+
 func (dl *defaultLogger) Warn(args ...interface{}) {
 	sdkLog.Println(args...)
 }

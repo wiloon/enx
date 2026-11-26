@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"enx-api/ailimit"
 	"enx-api/aitranslate/sentenceword"
@@ -62,6 +63,9 @@ type fakeTokenLedger struct {
 	settleErr    error
 	settleCalls  []settleCall
 	balanceCalls int
+	// settleCtxErr is the state of the context the last Settle was given: the
+	// real ledger writes nothing on a cancelled one.
+	settleCtxErr error
 }
 
 func (f *fakeTokenLedger) Balance(ctx context.Context, userID string) (int64, error) {
@@ -71,6 +75,7 @@ func (f *fakeTokenLedger) Balance(ctx context.Context, userID string) (int64, er
 
 func (f *fakeTokenLedger) Settle(ctx context.Context, userID, feature string, cost int64) error {
 	f.settleCalls = append(f.settleCalls, settleCall{userID, feature, cost})
+	f.settleCtxErr = ctx.Err()
 	return f.settleErr
 }
 
@@ -123,17 +128,84 @@ func TestHandlerSuccess(t *testing.T) {
 	}
 }
 
-func TestHandlerTranslatorErrorNotBilled(t *testing.T) {
-	tr := &fakeTranslator{err: errors.New("upstream timeout"), usage: usageCosting2}
+func TestHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
+	logs := observeLogs(t)
+	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
 	h := NewHandler(tr, ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
+	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "unusable reply")
+}
+
+// Either token count alone is nonzero usage (ADR-094).
+func TestHandlerTranslatorErrorWithOneSidedUsageIsBilled(t *testing.T) {
+	for name, usage := range map[string]Usage{
+		"prompt only":     {PromptTokens: 600},
+		"completion only": {CompletionTokens: 900},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ledger := &fakeTokenLedger{balance: 100}
+			h := NewHandler(&fakeTranslator{err: errors.New("boom"), usage: usage}, ledger, tokenTestPricing)
+			doPost(t, h, `{"sentence":"Hello world"}`)
+
+			if len(ledger.settleCalls) != 1 {
+				t.Fatalf("settle calls = %+v, want one", ledger.settleCalls)
+			}
+		})
 	}
-	if len(ledger.settleCalls) != 0 {
-		t.Fatalf("a failed translation must not be billed, got: %+v", ledger.settleCalls)
+}
+
+func TestHandlerTranslatorErrorWithoutUsageIsNotBilled(t *testing.T) {
+	logs := observeLogs(t)
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(&fakeTranslator{err: errors.New("upstream timeout")}, ledger, tokenTestPricing)
+	w := doPost(t, h, `{"sentence":"Hello world"}`)
+
+	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "upstream timeout")
+}
+
+func TestHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
+	logs := observeLogs(t)
+	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
+	ledger := &fakeTokenLedger{balance: 100, settleErr: errors.New("db write failed")}
+	h := NewHandler(tr, ledger, tokenTestPricing)
+	w := doPost(t, h, `{"sentence":"Hello world"}`)
+
+	assertUnsettledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "unusable reply")
+}
+
+// A client that went away is not a model error, so it must not raise the ops
+// alert (ADR-094).
+func TestHandlerCancelledRequestWithoutUsageIsNotAnOpsAlert(t *testing.T) {
+	logs := observeLogs(t)
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(&fakeTranslator{err: context.Canceled}, ledger, tokenTestPricing)
+	w := doPostWithContext(t, cancelledContext(), "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
+
+	assertCancelledUnbilled(t, w, ledger.settleCalls, logs, "translate_sentence")
+}
+
+func TestHandlerTimedOutRequestWithoutUsageStillAlerts(t *testing.T) {
+	logs := observeLogs(t)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+	defer cancel()
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(&fakeTranslator{err: context.DeadlineExceeded}, ledger, tokenTestPricing)
+	w := doPostWithContext(t, ctx, "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
+
+	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "context deadline exceeded")
+}
+
+func TestHandlerCancelledRequestWithUsageIsStillBilled(t *testing.T) {
+	logs := observeLogs(t)
+	ledger := &fakeTokenLedger{balance: 100}
+	h := NewHandler(&fakeTranslator{err: context.Canceled, usage: usageCosting2}, ledger, tokenTestPricing)
+	w := doPostWithContext(t, cancelledContext(), "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
+
+	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "context canceled")
+	if ledger.settleCtxErr != nil {
+		t.Fatalf("Settle got a dead context: %v", ledger.settleCtxErr)
 	}
 }
 
@@ -249,18 +321,14 @@ func TestWordInContextHandlerNoDictionaryDefinition(t *testing.T) {
 	}
 }
 
-func TestWordInContextHandlerTranslatorErrorNotBilled(t *testing.T) {
-	tr := &fakeTranslator{err: errors.New("upstream timeout"), usage: usageCosting2}
+func TestWordInContextHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
+	logs := observeLogs(t)
+	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
 	h := NewHandler(tr, ledger, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
 
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
-	}
-	if len(ledger.settleCalls) != 0 {
-		t.Fatalf("a failed translation must not be billed, got: %+v", ledger.settleCalls)
-	}
+	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_word_in_context", "unusable reply")
 }
 
 func TestWordInContextHandlerNotConfigured(t *testing.T) {
@@ -383,18 +451,14 @@ func TestSentenceWithWordsHandlerInvalidInputIs400BeforeProvider(t *testing.T) {
 	}
 }
 
-func TestSentenceWithWordsHandlerMissingSentenceIs502Unbilled(t *testing.T) {
+func TestSentenceWithWordsHandlerMissingSentenceIs502Billed(t *testing.T) {
+	logs := observeLogs(t)
 	tr := &fakeTranslator{err: errors.New("sentenceword: reply has no sentence translation"), usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
 	h := NewHandler(tr, ledger, tokenTestPricing)
 	w := doPostSentenceWithWords(t, h, `{"sentence":"I bank.","words":[{"word":"bank"}]}`)
 
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
-	}
-	if len(ledger.settleCalls) != 0 {
-		t.Fatalf("a failed call must not be billed, got: %+v", ledger.settleCalls)
-	}
+	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence_with_word", "sentenceword: reply has no sentence translation")
 }
 
 type fakeGate struct {

@@ -55,7 +55,8 @@ type response struct {
 
 // Chat posts p to e's /chat/completions and returns the first choice's
 // content with the token usage the API reported. The usage comes back zero
-// when the request fails.
+// when the request fails; a 200 reply with no choices is an error that still
+// carries it, since the model ran (ADR-094).
 func Chat(ctx context.Context, client *resty.Client, e Endpoint, p Prompt) (string, aiusage.Usage, error) {
 	body := map[string]any{
 		"model": p.Model,
@@ -86,10 +87,6 @@ func Chat(ctx context.Context, client *resty.Client, e Endpoint, p Prompt) (stri
 	if resp.StatusCode() != 200 {
 		return "", aiusage.Usage{}, fmt.Errorf("%s: unexpected status %d: %s", e.Provider, resp.StatusCode(), resp.String())
 	}
-	if len(result.Choices) == 0 {
-		return "", aiusage.Usage{}, fmt.Errorf("%s: empty response", e.Provider)
-	}
-
 	u := aiusage.Usage{
 		PromptTokens:     result.Usage.PromptTokens,
 		CompletionTokens: result.Usage.CompletionTokens,
@@ -97,6 +94,10 @@ func Chat(ctx context.Context, client *resty.Client, e Endpoint, p Prompt) (stri
 	}
 	logger.Infof("aitranslate: usage provider=%s feature=%s model=%s input_chars=%d prompt_tokens=%d completion_tokens=%d total_tokens=%d",
 		e.Provider, p.Feature, p.Model, len(p.User), u.PromptTokens, u.CompletionTokens, u.TotalTokens)
+
+	if len(result.Choices) == 0 {
+		return "", u, fmt.Errorf("%s: empty response", e.Provider)
+	}
 
 	return result.Choices[0].Message.Content, u, nil
 }
