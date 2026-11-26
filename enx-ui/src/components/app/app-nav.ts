@@ -4,6 +4,7 @@ import {
   BookText,
   ClipboardCheck,
   FileText,
+  Filter,
   Gift,
   Globe,
   Home,
@@ -72,6 +73,8 @@ export const NAV_ADMIN: NavItem[] = [
   { label: 'Feedback', href: '/admin/feedback', icon: MessageSquare },
   // Accounts, balances and the credit ledger (ADR-049).
   { label: 'Users', href: '/admin/users', icon: Users },
+  // Sign-up to first payment, per weekly sign-up cohort.
+  { label: 'Funnel', href: '/admin/funnel', icon: Filter },
 ]
 
 export const ALL_NAV: NavItem[] = [

@@ -4,6 +4,7 @@ import {
   AdminCreditAdjustment,
   AdminEcdictRow,
   AdminFeedbackPage,
+  AdminFunnelPage,
   AdminLedgerPage,
   AdminUserDetail,
   AdminUserSort,
@@ -415,6 +416,11 @@ export class ApiService {
       method: 'POST',
       body: JSON.stringify({ host, selector }),
     })
+  }
+
+  // Counts per weekly sign-up cohort, from sign-up to first payment.
+  async adminGetFunnel(): Promise<ApiResponse<AdminFunnelPage>> {
+    return this.makeRequest('/api/admin/funnel')
   }
 
   // The users page (ADR-049 Decision 11): search by email, sort, page.
