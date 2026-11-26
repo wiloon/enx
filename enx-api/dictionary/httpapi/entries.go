@@ -22,12 +22,12 @@ type EntriesLookup interface {
 
 // Handler serves the batch definitions endpoint.
 type Handler struct {
-	entries       EntriesLookup
-	subscriptions dictionary.Subscriptions
+	entries EntriesLookup
+	tiers   dictionary.QuotaTierSource
 }
 
-func NewHandler(entries EntriesLookup, subs dictionary.Subscriptions) *Handler {
-	return &Handler{entries: entries, subscriptions: subs}
+func NewHandler(entries EntriesLookup, tiers dictionary.QuotaTierSource) *Handler {
+	return &Handler{entries: entries, tiers: tiers}
 }
 
 type entriesRequest struct {
@@ -91,7 +91,7 @@ func (h *Handler) Entries(c *gin.Context) {
 
 		return
 	case errors.Is(err, dictionary.ErrQuotaExceeded):
-		RespondQuotaExceededWithSubscriptions(c, userID, h.subscriptions)
+		RespondQuotaExceeded(c, userID, h.tiers)
 		return
 	case err != nil:
 		logger.Errorf("dictionary entries for %s: %v", userID, err)

@@ -126,7 +126,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// hides AI-made definitions from users who can't use AI, and for the
 	// preferences, whose editability follows the same rule.
 	readers := newBillingReaders()
-	subscriptions := readers.subscriptions
+	quotaTiers := readers.quotaTiers
 	entitlements := readers.entitlements
 
 	// Sign-up trial (ADR-048): every new account gets the trial credits, and
@@ -148,7 +148,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 
 	// The daily lookup quota (ADR-079 Decision 5): each caller charges it
 	// before it resolves; dictionaryService itself never does.
-	lookupQuota := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, subscriptions, cfg.Stripe.Quota, time.Now)
+	lookupQuota := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, quotaTiers, cfg.Stripe.Quota, time.Now)
 	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, entitlements)
 	if m != nil {
 		dictionaryService.RecordAIWordOutcomes(m)
@@ -159,11 +159,11 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// missed. The policy decides what that miss offers each user; the service
 	// itself is switched on below, once the AI provider exists.
 	aiPolicy := adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService}
-	lookupHandler := translate.NewHandlerWithSubscriptions(dictionaryService, lookupQuota, repo.ReviewLog{}, subscriptions).WithAI(
+	lookupHandler := translate.NewHandlerWithQuotaTiers(dictionaryService, lookupQuota, repo.ReviewLog{}, quotaTiers).WithAI(
 		dictionaryService, aiPolicy,
 	)
 	// Batch definitions (ADR-079 Decision 1): the quota, no lookup event.
-	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy, adapters.LookedUpWords{}), subscriptions)
+	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy, adapters.LookedUpWords{}), quotaTiers)
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
@@ -316,8 +316,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// against the quota, the query count +1 and one lookup event. By word
 	// id, so an inflection counts against the headword the lookup resolved
 	// to. Not idempotent: the extension never retries it.
-	wordLookupHandler := handlers.NewWordLookupHandlerWithSubscriptions(
-		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), subscriptions)
+	wordLookupHandler := handlers.NewWordLookupHandlerWithQuotaTiers(
+		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), quotaTiers)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
@@ -426,7 +426,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 
 	// Free-tier daily lookup ceiling for enx-ui's signed-out /pricing page
 	// (ADR-029). Not in apiGroup: visitors have no session. Config number
-	// only; the subscribed ceiling stays off the wire.
+	// only; the paid-tier ceiling stays off the wire.
 	router.GET("/api/dictionary/free-daily-lookup-limit",
 		dictionaryhttp.FreeDailyLookupLimit(cfg.Stripe.Quota.DictionaryLookupDailyFree))
 

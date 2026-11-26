@@ -74,7 +74,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"stripe.costs.rephrase.divisor", cfg.Stripe.Costs.Rephrase.Divisor, int64(0)},
 		// Both tiers have a real ceiling (ADR-059 Decision 6).
 		{"stripe.quota.dictionary-lookup-daily-free", cfg.Stripe.Quota.DictionaryLookupDailyFree, int64(2000)},
-		{"stripe.quota.dictionary-lookup-daily-subscribed", cfg.Stripe.Quota.DictionaryLookupDailySubscribed, int64(20000)},
+		{"stripe.quota.dictionary-lookup-daily-subscribed", cfg.Stripe.Quota.DictionaryLookupDailyPaid, int64(20000)},
 		// Webhook worker timing (ADR-067, #297).
 		{"stripe.webhook.poll-interval", cfg.Stripe.Webhook.PollInterval, 5 * time.Second},
 		{"stripe.webhook.lease-duration", cfg.Stripe.Webhook.LeaseDuration, 2 * time.Minute},

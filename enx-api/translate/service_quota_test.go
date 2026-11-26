@@ -39,7 +39,7 @@ func (noAI) CanUseAI(context.Context, string) (bool, error) { return false, nil 
 // lookup ceilings.
 func newTestHandler() *Handler {
 	return newTestHandlerWithQuota(config.StripeQuota{
-		DictionaryLookupDailyFree: 200, DictionaryLookupDailySubscribed: 20000,
+		DictionaryLookupDailyFree: 200, DictionaryLookupDailyPaid: 20000,
 	})
 }
 
@@ -63,7 +63,7 @@ func translateCtx(word, userID string) (*gin.Context, *httptest.ResponseRecorder
 // daily quota, and the GET writes no lookup event (ADR-079 Decision 7).
 func TestTranslateWordChargesOneAndAnswers429AtTheLimitWithoutEvents(t *testing.T) {
 	setupQuotaTestDB(t)
-	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailySubscribed: 20000})
+	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailyPaid: 20000})
 	gin.SetMode(gin.TestMode)
 
 	zh := "机缘巧合"
@@ -104,6 +104,32 @@ func TestTranslateWordChargesOneAndAnswers429AtTheLimitWithoutEvents(t *testing.
 	sqlitex.DB.Model(&sqlitex.LookupEvent{}).Count(&events)
 	if events != 0 {
 		t.Fatalf("%d lookup events, want none", events)
+	}
+}
+
+// ADR-093: a top-up balance alone puts a user on the paid tier, read from
+// credit_accounts; at that ceiling they are not told to upgrade.
+func TestTranslateQuotaRefusalForATopupOnlyUserDoesNotUpsell(t *testing.T) {
+	setupQuotaTestDB(t)
+	gin.SetMode(gin.TestMode)
+	h := newTestHandlerWithQuota(config.StripeQuota{DictionaryLookupDailyFree: 1, DictionaryLookupDailyPaid: 2})
+	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: "u-topup", TopupBalance: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatalf("seed credit account: %v", err)
+	}
+	if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: "u-topup", UTCDay: time.Now().UTC().Format("2006-01-02"), Used: 2}).Error; err != nil {
+		t.Fatalf("seed quota usage: %v", err)
+	}
+
+	c, w := translateCtx("serendipity", "u-topup")
+	h.translateWord(c, "serendipity")
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", w.Body.String(), err)
+	}
+	const want = "Daily dictionary lookup limit reached. That is unusually high for a paid account -- please contact support."
+	if _, upgrade := body["upgrade"]; w.Code != http.StatusTooManyRequests || body["message"] != want || upgrade {
+		t.Fatalf("got %d %s, want 429 with message %q and no upgrade", w.Code, w.Body, want)
 	}
 }
 

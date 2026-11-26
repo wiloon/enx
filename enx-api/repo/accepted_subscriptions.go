@@ -8,8 +8,8 @@ import (
 )
 
 // AcceptedSubscriptions reads stored entitlement from the Subscription-ID-keyed
-// schema. It implements dictionary.Subscriptions and, through
-// entitlement/adapters.Billing, the IsActiveSubscriber part of entitlement.Source.
+// schema. Through entitlement/adapters.Billing it is the IsActiveSubscriber part
+// of entitlement.Source and dictionary.QuotaTierSource.
 // Only the current accepted subscription grants entitlement.
 type AcceptedSubscriptions struct{}
 

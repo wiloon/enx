@@ -55,7 +55,7 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	cfg.Clerk = jwks.Config()
 
 	cfg.Stripe.Quota.DictionaryLookupDailyFree = 1
-	cfg.Stripe.Quota.DictionaryLookupDailySubscribed = 1
+	cfg.Stripe.Quota.DictionaryLookupDailyPaid = 1
 	sqlitex.Init(filepath.Join(t.TempDir(), "quota-route.db"))
 	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
 		t.Fatal(err)
@@ -69,15 +69,16 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w1", English: "example"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	useQuota := func() {
+	setUsed := func(userID string, n int64) {
 		t.Helper()
-		if err := sqlitex.DB.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", "target").Error; err != nil {
+		if err := sqlitex.DB.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", userID).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: "target", UTCDay: time.Now().UTC().Format("2006-01-02"), Used: 1}).Error; err != nil {
+		if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: userID, UTCDay: time.Now().UTC().Format("2006-01-02"), Used: n}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
+	useQuota := func() { setUsed("target", 1) }
 	useQuota()
 	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
 	defer server.Close()
@@ -87,10 +88,10 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 	if status != http.StatusOK || !ok || fallback["effective"] != false {
 		t.Fatalf("a conflict made AI fallback effective: %d %v", status, prefs)
 	}
-	cfg.Stripe.Quota.DictionaryLookupDailySubscribed = 5
+	cfg.Stripe.Quota.DictionaryLookupDailyPaid = 5
 	tierServer := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
+	defer tierServer.Close()
 	tierCode, tierBody := doJSON(t, http.MethodGet, tierServer.URL+"/api/translate?word=example", token)
-	tierServer.Close()
 	if tierCode != http.StatusTooManyRequests {
 		t.Fatalf("a conflict got the subscribed quota: %d %v", tierCode, tierBody)
 	}
@@ -110,5 +111,38 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 		if code != http.StatusTooManyRequests || !strings.Contains(message, "Upgrade") {
 			t.Fatalf("%s: %d %v", route, code, body)
 		}
+	}
+
+	// ADR-093: no accepted subscription and a top-up balance is the paid tier
+	// (free=1, paid=5 on tierServer).
+	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "topup", "clerk_topup", "topup@example.com").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: "topup", TopupBalance: 1, UpdatedAt: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	topupToken := jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_topup", "email": "topup@example.com"})
+	const paidMessage = "Daily dictionary lookup limit reached. That is unusually high for a paid account -- please contact support."
+	for _, route := range []string{"get", "post", "query"} {
+		setUsed("topup", 5)
+		var code int
+		var body map[string]any
+		switch route {
+		case "get":
+			code, body = doJSON(t, http.MethodGet, tierServer.URL+"/api/translate?word=example", topupToken)
+		case "post":
+			code, body = doJSONBody(t, http.MethodPost, tierServer.URL+"/api/me/word-lookups", topupToken, map[string]any{"wordId": "w1"})
+		default:
+			code, body = doJSONBody(t, http.MethodPost, tierServer.URL+"/api/dictionary/entries/query", topupToken, map[string]any{"words": []string{"example"}})
+		}
+		if _, upgrade := body["upgrade"]; code != http.StatusTooManyRequests || body["message"] != paidMessage || upgrade {
+			t.Errorf("top-up user, %s: %d %v, want 429 with the paid-tier message and no upgrade", route, code, body)
+		}
+	}
+	// The free ceiling does not hold them. Last: an allowed translate may
+	// record the word as looked up, which makes the entries query free.
+	setUsed("topup", 1)
+	if code, body := doJSON(t, http.MethodGet, tierServer.URL+"/api/translate?word=example", topupToken); code == http.StatusTooManyRequests {
+		t.Errorf("a top-up user was held to the free ceiling: %d %v", code, body)
 	}
 }
