@@ -46,6 +46,9 @@ func Normalize(raw string) string {
 	return Canonical(english)
 }
 
+// Key is the key a word is stored and looked up under in the Wiktionary file.
+func Key(word string) string { return strings.ToLower(Canonical(word)) }
+
 // Canonical straightens curly apostrophes ("don’t" -> "don't", ADR-043) and
 // drops a possessive "'s" ("dog's" -> "dog").
 func Canonical(english string) string {

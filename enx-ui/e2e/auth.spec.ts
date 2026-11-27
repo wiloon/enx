@@ -5,7 +5,7 @@ test.describe('marketing landing', () => {
     await page.goto('/')
     await expect(
       page.getByRole('heading', {
-        name: /learn english while you read the web/i,
+        name: 'Read English in English',
       })
     ).toBeVisible()
     await expect(
@@ -15,17 +15,15 @@ test.describe('marketing landing', () => {
     await expect(page.locator('.cl-signIn-root')).toHaveCount(0)
   })
 
-  // This section used to be a feature matrix with our own highlighted column,
-  // which is what the old assertion looked for. It is now a plain list of
-  // similar apps ranked by size -- no table, no self column -- so the check is
-  // that the section still renders and still names a competitor.
-  test('the "similar apps" section lists a competitor', async ({ page }) => {
+  test('the comparison section says how Catglish is different', async ({
+    page,
+  }) => {
     await page.goto('/')
     await expect(
-      page.getByRole('heading', { name: /similar apps in this space/i })
+      page.getByRole('heading', { name: 'How Catglish is different' })
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Immersive Translate' })
+      page.getByRole('heading', { name: 'Not a lookup extension' })
     ).toBeVisible()
   })
 })

@@ -7,6 +7,14 @@ import {
 } from '@/lib/dictionaryCache'
 import { createDefinitionPrefetcher } from '@/lib/definitionPrefetch'
 import {
+  createAnonymousDeviceId,
+  createEverSignedIn,
+  createLearningAccess,
+  mayTurnOnLearningMode,
+  type KeyValueStorage,
+} from '@/lib/learningAccess'
+import { lookUpAnonymously } from '@/lib/anonymousLookup'
+import {
   definitionFromEntries,
   requestDictionaryEntries,
 } from '@/lib/dictionaryEntries'
@@ -109,6 +117,30 @@ const authAdapter = selectWorkerAuth(config.auth)
 let clerkGeneration = 0
 let clerkClientPromise: Promise<AuthClient> | null = null
 
+// ADR-095: chrome.storage.local as the key-value store the anonymous-mode
+// state lives in.
+const localStore: KeyValueStorage = {
+  get: async key => (await chrome.storage.local.get(key))?.[key],
+  set: async (key, value) => {
+    await chrome.storage.local.set({ [key]: value })
+  },
+}
+let everSignedIn = createEverSignedIn(localStore)
+const makeLearningAccess = () =>
+  createLearningAccess({
+    everSignedIn,
+    sessionState: async () => {
+      try {
+        return (await getSyncedClerk()).hasSession() ? 'present' : 'absent'
+      } catch {
+        return 'unknown'
+      }
+    },
+    generation: () => clerkGeneration,
+  })
+let learningAccess = makeLearningAccess()
+let anonymousDeviceId = createAnonymousDeviceId(localStore)
+
 const getClerk = (): Promise<AuthClient> => {
   if (!clerkClientPromise) {
     clerkClientPromise = authAdapter.createClient()
@@ -125,6 +157,9 @@ export const __resetClerkClientCacheForTests = (): void => {
   clerkCookieSync = makeClerkCookieSync()
   sessionCookies = createSessionCookies()
   accountSession = makeAccountSession()
+  everSignedIn = createEverSignedIn(localStore)
+  learningAccess = makeLearningAccess()
+  anonymousDeviceId = createAnonymousDeviceId(localStore)
 }
 
 // Test-only: a worker restart drops the writer's pending actions.
@@ -199,6 +234,11 @@ const syncAndObserveClerk = async (): Promise<AuthClient> => {
   if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
   await accountSession.observe(clerk.subject())
   if (requested !== clerkGeneration) throw new SessionChanged()
+  if (clerk.hasSession()) {
+    await everSignedIn.mark().catch(error => {
+      console.warn('[ENX] could not store the signed-in flag:', error)
+    })
+  }
   return clerk
 }
 
@@ -617,6 +657,16 @@ export const makeApiRequest = async (
   // cold boot can report how long this instance had been gone (swlog.ts).
   void heartbeat()
 
+  // ADR-095: a browser that never signed in has no session to lose, so an
+  // account request is refused quietly, with no session-expired broadcast.
+  if (await learningAccess.isAnonymous()) {
+    return {
+      success: false,
+      error: 'Your session has expired. Please login again.',
+      sessionExpired: true,
+    }
+  }
+
   // Two kinds of replay. A 401 is almost always an expired session JWT
   // served from clerk-js's cache (see getSessionToken) -- force a fresh mint
   // and replay once. A request never goes out without a token (#688), so a
@@ -955,7 +1005,7 @@ const reconcileAutoEnable = () =>
 chrome.permissions.onAdded.addListener(async added => {
   await reconcileAutoEnable()
   await enableOnNewlyGrantedSite(added ?? {}, {
-    isSignedIn,
+    learningAccess: () => learningAccess.current(),
     getStatus: getLearningModeStatusOnTab,
     enable: enableLearningModeOnTab,
   }).catch(error =>
@@ -975,7 +1025,7 @@ const handleShouldAutoEnable = async (
 ): Promise<boolean> => {
   const origin = sender.origin ?? sender.tab?.url
   if (!(await shouldAutoEnable(origin))) return false
-  if (await isSignedIn()) return true
+  if (mayTurnOnLearningMode(await learningAccess.current())) return true
   const tabId = topFrameTabId(sender)
   if (tabId !== undefined) {
     bumpBadgeGeneration(tabId)
@@ -1173,7 +1223,7 @@ chrome.sidePanel.onClosed?.addListener(info => {
 chrome.commands.onCommand.addListener((command, tab) =>
   runLearningModeCommand(command, tab?.id, {
     getStatus: getLearningModeStatusOnTab,
-    isSignedIn,
+    learningAccess: () => learningAccess.current(),
     enable: enableLearningModeOnTab,
     disable: disableLearningModeOnTab,
     showOnBadge: applyStatus,
@@ -1189,7 +1239,7 @@ chrome.action.onClicked.addListener(async tab => {
   console.log('ENX Extension icon clicked', tab)
 
   // Check if user is logged in (Clerk session synced from the website)
-  if (!(await isSignedIn())) {
+  if (!mayTurnOnLearningMode(await learningAccess.current())) {
     console.log('User not logged in, popup will handle this')
     return
   }
@@ -1226,6 +1276,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.type || request.action) {
         case 'getOneWord':
           return await handleGetOneWord(request.word, request.refresh === true)
+
+        // ADR-095: the content script asks which mode it reads in.
+        case 'learningAccess':
+          return { access: await learningAccess.current() }
+
+        // ADR-095 Decision 3: never cached, so every click is one request
+        // the server can count against the device's daily limit.
+        case 'getAnonymousEntry':
+          if (!(await learningAccess.isAnonymous())) {
+            return { outcome: 'switched-off' }
+          }
+          return await lookUpAnonymously(String(request.word ?? ''), {
+            fetch: (input, init) => fetch(input, init),
+            apiBaseUrl: config.apiBaseUrl,
+            deviceId: anonymousDeviceId,
+          })
 
         case 'prefetchDefinitions':
           await definitionPrefetcher.prefetch(
@@ -1569,7 +1635,7 @@ chrome.runtime.onMessageExternal.addListener(
 
     if (type === 'enx:enable-reader') {
       void (async () => {
-        if (!(await isSignedIn())) {
+        if (!mayTurnOnLearningMode(await learningAccess.current())) {
           sendResponse({ ok: false, reason: 'signed-out' })
           return
         }

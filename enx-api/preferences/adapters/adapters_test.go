@@ -49,7 +49,7 @@ func TestTableSaveLoadClear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[preferences.AIWordFallback] {
+	if len(got) != 1 || got[preferences.AIWordFallback] != false {
 		t.Fatalf("u1 Load = %v, want only an explicit false", got)
 	}
 
@@ -59,7 +59,7 @@ func TestTableSaveLoadClear(t *testing.T) {
 	if got, _ := tbl.Load(ctx, "u1"); len(got) != 0 {
 		t.Fatalf("Load after Clear = %v, want empty", got)
 	}
-	if got, _ := tbl.Load(ctx, "u2"); !got[preferences.AIWordFallback] {
+	if got, _ := tbl.Load(ctx, "u2"); got[preferences.AIWordFallback] != true {
 		t.Fatal("clearing u1 must not touch u2")
 	}
 	if err := tbl.Clear(ctx, "u1", preferences.AIWordFallback); err != nil {
@@ -67,18 +67,43 @@ func TestTableSaveLoadClear(t *testing.T) {
 	}
 }
 
-func TestTableLoadSkipsNonBooleanValues(t *testing.T) {
+func TestTableSavesAStringValue(t *testing.T) {
 	setupDB(t)
-	if err := sqlitex.DB.Create(&sqlitex.UserPreference{
-		UserId: "u1", Key: "aiWordFallback", Value: `"yes"`, UpdatedAt: 1,
-	}).Error; err != nil {
+	ctx := context.Background()
+	tbl := Table{}
+
+	if err := tbl.Save(ctx, "u1", preferences.ExplanationLanguage, "en"); err != nil {
 		t.Fatal(err)
+	}
+	got, err := tbl.Load(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[preferences.ExplanationLanguage] != "en" {
+		t.Fatalf("Load = %v, want explanationLanguage en", got)
+	}
+	if err := tbl.Clear(ctx, "u1", preferences.ExplanationLanguage); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := tbl.Load(ctx, "u1"); len(got) != 0 {
+		t.Fatalf("Load after Clear = %v, want empty", got)
+	}
+}
+
+func TestTableLoadSkipsRowsThatAreNotJSON(t *testing.T) {
+	setupDB(t)
+	for key, value := range map[string]string{"aiWordFallback": `yes`, "explanationLanguage": `"en"`} {
+		if err := sqlitex.DB.Create(&sqlitex.UserPreference{
+			UserId: "u1", Key: key, Value: value, UpdatedAt: 1,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	got, err := Table{}.Load(context.Background(), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("Load = %v, want the malformed row treated as unset", got)
+	if len(got) != 1 || got[preferences.ExplanationLanguage] != "en" {
+		t.Fatalf("Load = %v, want only the JSON row", got)
 	}
 }

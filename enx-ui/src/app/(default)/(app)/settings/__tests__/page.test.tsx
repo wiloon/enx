@@ -236,6 +236,101 @@ describe('deleting the account (ADR-062)', () => {
   })
 })
 
+describe('explanation language (ADR-098)', () => {
+  const withLanguage = (language: string): PreferencesData => ({
+    ...subscriber,
+    explanationLanguage: {
+      value: language,
+      effective: language,
+      editable: true,
+    },
+  })
+
+  const dropdown = () =>
+    screen.findByRole<HTMLSelectElement>('combobox', {
+      name: 'Explanation language',
+    })
+  const shown = (select: HTMLSelectElement) =>
+    select.selectedOptions[0]?.textContent
+
+  it('shows the server value and saves a change', async () => {
+    api.getPreferences.mockResolvedValue({
+      success: true,
+      data: withLanguage('zh-Hans'),
+    })
+    let answer: () => void = () => {}
+    api.updatePreferences.mockReturnValue(
+      new Promise((resolve) => {
+        answer = () => resolve({ success: true, data: withLanguage('en') })
+      })
+    )
+    renderPage()
+    const select = await dropdown()
+    expect(shown(select)).toBe('Simplified Chinese')
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'Simplified Chinese',
+      'English',
+    ])
+
+    fireEvent.change(select, { target: { value: 'en' } })
+
+    await waitFor(() =>
+      expect(api.updatePreferences).toHaveBeenCalledWith({
+        explanationLanguage: 'en',
+      })
+    )
+    await waitFor(() => expect(select).toBeDisabled())
+    expect(shown(select)).toBe('English')
+
+    answer()
+    await waitFor(() => expect(select).toBeEnabled())
+    expect(shown(select)).toBe('English')
+  })
+
+  it('goes back and says so when saving fails', async () => {
+    api.getPreferences.mockResolvedValue({
+      success: true,
+      data: withLanguage('zh-Hans'),
+    })
+    api.updatePreferences.mockResolvedValue({
+      success: false,
+      error: 'HTTP 500',
+    })
+    renderPage()
+    const select = await dropdown()
+
+    fireEvent.change(select, { target: { value: 'en' } })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't save the explanation language."
+    )
+    await waitFor(() => expect(select).toBeEnabled())
+    expect(shown(select)).toBe('Simplified Chinese')
+  })
+
+  it('selects no language for a value it does not know, and writes nothing', async () => {
+    api.getPreferences.mockResolvedValue({
+      success: true,
+      data: withLanguage('zh-Hant'),
+    })
+    renderPage()
+
+    const select = await dropdown()
+
+    expect(select.value).toBe('')
+    expect(shown(select)).toBe('')
+    expect(api.updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('is not shown when the server does not send the preference', async () => {
+    api.getPreferences.mockResolvedValue({ success: true, data: subscriber })
+    renderPage()
+    await aiSwitch()
+
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+})
+
 it('tells the user only the word is sent, not the sentence', async () => {
   api.getPreferences.mockResolvedValue({ success: true, data: subscriber })
   renderPage()

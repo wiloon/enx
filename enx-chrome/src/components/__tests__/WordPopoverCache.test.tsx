@@ -9,6 +9,10 @@ jest.mock('@/lib/aiLookup', () => ({
   stopAutomaticAiLookup: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 
 // A cached definition whose lookup count enx-api refused with a 429.
 const renderRefused = (refusal: Partial<BackgroundResponse>) => {

@@ -70,6 +70,17 @@ tasks:
           -d '{"email":"{{.USER}}","amount":{{.AMOUNT}},"reason":"{{.REASON}}"}'
         echo
 
+  wiktionary:build:
+    desc: |
+      Build the Wiktionary SQLite file from kaikki.org's Wiktextract data (ADR-098).
+      Run by hand on ser8 or a Mac, never in CI.
+      Usage: task wiktionary:build INPUT=/path/raw-wiktextract-data.jsonl.gz SOURCE_DATE=YYYY-MM-DD OUT=/path/new.db [ECDICT=/path/stardict.db]
+      ECDICT defaults to ECDICT_DB_PATH. Relative paths start at enx-api/; OUT must not exist.
+    requires:
+      vars: [INPUT, SOURCE_DATE, OUT]
+    cmds:
+      - go run ./cmd/wiktionary-build -input="{{.INPUT}}" -source-date="{{.SOURCE_DATE}}" -out="{{.OUT}}" -ecdict="{{.ECDICT | default "$ECDICT_DB_PATH"}}"
+
   deps:
     desc: Download Go module dependencies
     cmds:

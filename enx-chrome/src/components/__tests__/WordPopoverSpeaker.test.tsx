@@ -15,6 +15,10 @@ jest.mock('@/lib/aiLookup', () => ({
   acknowledgeAiNotice: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 jest.mock('@/lib/pronunciation', () => ({ playPronunciation: jest.fn() }))
 
 const play = playPronunciation as jest.Mock

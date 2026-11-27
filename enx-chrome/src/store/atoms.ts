@@ -35,6 +35,10 @@ export const errorNeedsReloadAtom = atom(false)
 // Sign in in place of a definition.
 export const signedOutAtom = atom(false)
 
+// An anonymous lookup's line with Sign in (ADR-095): under the definition,
+// or in place of one. Null when the popup was not looked up anonymously.
+export const anonymousNoticeAtom = atom<string | null>(null)
+
 // The word popup's lookup or AI lookup came back unverified (#686): it shows
 // the unverified notice with Retry and Sign in, and Retry re-sends this
 // request. Null when the popup is not in that state.

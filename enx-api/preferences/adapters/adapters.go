@@ -18,18 +18,19 @@ type Table struct{}
 
 var _ preferences.Store = Table{}
 
-// Load returns userID's explicit boolean values. A row whose value is not a
-// boolean is skipped (treated as unset) rather than failing the whole read.
-func (Table) Load(ctx context.Context, userID string) (map[preferences.Key]bool, error) {
+// Load returns userID's explicit values, decoded from JSON. A row that is not
+// valid JSON is skipped (treated as unset) rather than failing the whole
+// read. Whether a value suits its key is the domain's call, not this one's.
+func (Table) Load(ctx context.Context, userID string) (map[preferences.Key]any, error) {
 	var rows []sqlitex.UserPreference
 	if err := sqlitex.DB.WithContext(ctx).Where("user_id = ?", userID).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	values := make(map[preferences.Key]bool, len(rows))
+	values := make(map[preferences.Key]any, len(rows))
 	for _, row := range rows {
-		var v bool
+		var v any
 		if err := json.Unmarshal([]byte(row.Value), &v); err != nil {
-			logger.Warnf("preferences: ignoring non-boolean value for %s (user %s): %v", row.Key, userID, err)
+			logger.Warnf("preferences: ignoring a value that is not JSON for %s (user %s): %v", row.Key, userID, err)
 			continue
 		}
 		values[preferences.Key(row.Key)] = v
@@ -38,7 +39,7 @@ func (Table) Load(ctx context.Context, userID string) (map[preferences.Key]bool,
 }
 
 // Save upserts one explicit value.
-func (Table) Save(ctx context.Context, userID string, key preferences.Key, value bool) error {
+func (Table) Save(ctx context.Context, userID string, key preferences.Key, value any) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return err

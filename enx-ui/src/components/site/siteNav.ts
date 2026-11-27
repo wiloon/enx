@@ -7,6 +7,6 @@ export const SITE_NAV = [
   { key: 'features', href: '/#features' },
   { key: 'howItWorks', href: '/#how-it-works' },
   { key: 'pricing', href: '/pricing' },
-  { key: 'similarApps', href: '/#compare' },
+  { key: 'whyCatglish', href: '/#compare' },
   { key: 'help', href: '/help' },
 ] as const

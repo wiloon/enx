@@ -216,6 +216,10 @@ describe('a Clerk sync that confirms the session is gone', () => {
   it('expires the session when no signed-in owner was known', async () => {
     sessionStorage = {}
     __resetClerkClientCacheForTests()
+    // Signed in before (ADR-095); with no flag the request is anonymous.
+    ;(chrome.storage.local.get as jest.Mock).mockResolvedValue({
+      'enx-ever-signed-in': true,
+    })
     loadsAs(empty('absent'))
 
     const result = await makeApiRequest('/api/translate?word=fox')

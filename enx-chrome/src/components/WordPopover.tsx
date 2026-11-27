@@ -8,6 +8,7 @@ import {
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiDefinition, AiMissPanel, AiNotice } from '@/components/AiLookup'
+import ExplanationLanguageSwitch from '@/components/ExplanationLanguageSwitch'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { billingUrl } from '@/lib/aiLookup'
 import { splitDefinition } from '@/lib/definitionParts'
@@ -23,6 +24,7 @@ import {
   sentencePanelHintAtom,
   sessionUnverifiedAtom,
   signedOutAtom,
+  anonymousNoticeAtom,
 } from '@/store/atoms'
 import SignedOutNotice from '@/components/SignedOutNotice'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
@@ -71,8 +73,16 @@ export default function WordPopover({
   const [lookupNotice] = useAtom(lookupNoticeAtom)
   const [signedOut] = useAtom(signedOutAtom)
   const [sessionUnverified] = useAtom(sessionUnverifiedAtom)
+  const [anonymousNotice] = useAtom(anonymousNoticeAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
+  // No switch next to a notice saying there is no usable session.
+  const showLanguageSwitch = !(
+    signedOut ||
+    sessionUnverified ||
+    lookupNotice?.sessionExpired ||
+    lookupNotice?.sessionUnverified
+  )
   const phonetic = formatPhonetic(currentWord?.Pronunciation)
   const hasSpeaker = popoverHasSpeaker({
     word: currentWord,
@@ -154,7 +164,7 @@ export default function WordPopover({
       {/* Header: word + phonetic + play + query count all on one line */}
       <div
         data-testid="word-popover-header"
-        className="flex justify-between items-center gap-2 mb-2 shrink-0"
+        className="flex flex-wrap justify-between items-center gap-2 mb-2 shrink-0"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
           <h3 className="text-lg font-bold text-foreground leading-tight min-w-0 max-w-full break-words">
@@ -202,6 +212,7 @@ export default function WordPopover({
             </span>
           )}
         </div>
+        {showLanguageSwitch && <ExplanationLanguageSwitch />}
         <button
           data-testid="word-popover-close"
           onClick={onClose}
@@ -235,6 +246,17 @@ export default function WordPopover({
             testId="word-popover-unverified"
             message={SESSION_UNVERIFIED_MESSAGE}
             onRetry={onRetryUnverified}
+            onSignIn={onSignIn}
+            className="p-3 mb-3 text-sm"
+          />
+        )}
+
+        {/* ADR-095: a lookup without an account always says what signing
+            in adds -- under the definition, or in place of one. */}
+        {anonymousNotice && !isTranslating && !currentWord && (
+          <SignedOutNotice
+            testId="word-popover-anonymous"
+            message={anonymousNotice}
             onSignIn={onSignIn}
             className="p-3 mb-3 text-sm"
           />
@@ -283,10 +305,18 @@ export default function WordPopover({
                   </p>
                 )}
               </div>
-            ) : (
+            ) : anonymousNotice ? null : (
               <AiMissPanel onLookup={onAiLookup} />
             )}
             <AiNotice />
+            {anonymousNotice && (
+              <SignedOutNotice
+                testId="word-popover-anonymous"
+                message={anonymousNotice}
+                onSignIn={onSignIn}
+                className="p-2 text-sm"
+              />
+            )}
             {lookupNotice &&
               (lookupNotice.sessionExpired || lookupNotice.sessionUnverified ? (
                 <SignedOutNotice

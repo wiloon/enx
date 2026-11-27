@@ -13,6 +13,10 @@ jest.mock('@/lib/aiLookup', () => ({
   acknowledgeAiNotice: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 
 const word = (overrides: Partial<WordData> = {}): WordData => ({
   Key: 'resilient',

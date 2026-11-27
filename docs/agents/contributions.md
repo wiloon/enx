@@ -1,5 +1,12 @@
 # AI Contributions History
 
+## 2026-11-27: Wiktionary file builder — issue #1233
+
+**Agent**: Claude
+**Solution**: `enx-api/cmd/wiktionary-build` streams kaikki's Wiktextract data into a read-only SQLite file; rules that need every entry (duplicates, missing lemmas, rank) run in SQL after the load, so memory stays bounded.
+
+**Lesson (real input beats the field table)**: The input writes `etymology_number` as a string on some English lines, which small hand-written fixtures never showed. Decode only `lang_code` before skipping a line, and run the builder on the real file after changing the input shape it reads.
+
 ## 2026-11-09: Local dictionary cache — issue #216
 
 **Agent**: Codex

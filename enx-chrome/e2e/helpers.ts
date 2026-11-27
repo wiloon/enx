@@ -93,13 +93,22 @@ export async function enableLearningMode(page: Page, extensionId: string) {
   // Get the target page URL
   const targetUrl = page.url()
 
-  // Open popup to execute chrome.tabs API (which is only available in extension contexts)
-  const popupPage = await page.context().newPage()
-  await popupPage.goto(`chrome-extension://${extensionId}/popup.html`)
-  await popupPage.waitForLoadState('domcontentloaded')
+  // Run the enable logic in the extension's service worker, which has the
+  // chrome.tabs API. Not the popup page: with no Clerk session (a fresh
+  // profile, ADR-095) Clerk navigates the popup while it loads, which destroys
+  // the evaluate's execution context.
+  const context = page.context()
+  let worker = context
+    .serviceWorkers()
+    .find(sw => sw.url().startsWith(`chrome-extension://${extensionId}/`))
+  if (!worker) {
+    worker = await context.waitForEvent('serviceworker', {
+      predicate: sw =>
+        sw.url().startsWith(`chrome-extension://${extensionId}/`),
+    })
+  }
 
-  // Execute the enable logic from popup context (has chrome.tabs API access)
-  const result = await popupPage.evaluate(async url => {
+  const result = await worker.evaluate(async url => {
     try {
       // Find the tab with our target URL
       const tabs = await chrome.tabs.query({})
@@ -131,8 +140,6 @@ export async function enableLearningMode(page: Page, extensionId: string) {
       return { success: false, error: (error as Error).message }
     }
   }, targetUrl)
-
-  await popupPage.close()
 
   console.log('Enable learning mode result:', result)
 
@@ -394,6 +401,11 @@ export async function mockBackendFetch(
      * confirmed free user (ADR-029 Decision 5). Defaults to true.
      */
     quotaUpgrade?: boolean
+    /**
+     * Set it to stub GET and PUT /api/me/preferences with this explanation
+     * language (ADR-098). Unset leaves preferences requests unstubbed.
+     */
+    explanationLanguage?: 'zh-Hans' | 'en'
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -423,6 +435,7 @@ export async function mockBackendFetch(
   const lookupPostStatus = options.lookupPostStatus ?? 200
   const dailyQuotaLeft = options.dailyQuotaLeft ?? null
   const quotaUpgrade = options.quotaUpgrade ?? true
+  const explanationLanguage = options.explanationLanguage ?? null
 
   await sw.evaluate(
     ({
@@ -436,7 +449,9 @@ export async function mockBackendFetch(
       lookupPostStatus,
       dailyQuotaLeft,
       quotaUpgrade,
+      explanationLanguage,
     }) => {
+      let language = explanationLanguage
       let quotaLeft = dailyQuotaLeft ?? Number.MAX_SAFE_INTEGER
       ;(self as unknown as Record<string, unknown>).__enxTranslatePosts = []
       // The quota refusal enx-api sends a free user.
@@ -464,6 +479,25 @@ export async function mockBackendFetch(
           typeof input === 'string'
             ? input
             : ((input as Request).url ?? String(input))
+
+        if (language && url.includes('/api/me/preferences')) {
+          if (init?.method === 'PUT') {
+            language = JSON.parse(String(init.body)).explanationLanguage
+          }
+          const off = { value: null, effective: false, editable: true }
+          return new Response(
+            JSON.stringify({
+              aiWordFallback: off,
+              aiWordFallbackNoticeAck: off,
+              explanationLanguage: {
+                value: language,
+                effective: language,
+                editable: true,
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
 
         if (url.includes('/api/me/review-words')) {
           const requests = ((
@@ -623,6 +657,7 @@ export async function mockBackendFetch(
       lookupPostStatus,
       dailyQuotaLeft,
       quotaUpgrade,
+      explanationLanguage,
     }
   )
 }
