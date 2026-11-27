@@ -66,7 +66,10 @@ test('the header switch takes /privacy to /zh/privacy and back, recording the ch
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/privacy')
-  await page.getByRole('banner').getByRole('button', { name: '简体中文' }).click()
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: '简体中文' })
+    .click()
   await expect(page).toHaveURL(/\/zh\/privacy$/)
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh')
   await expect(
@@ -78,7 +81,10 @@ test('the header switch takes /privacy to /zh/privacy and back, recording the ch
     (await page.context().cookies()).find((c) => c.name === CHOICE)?.value
   ).toBe('zh')
 
-  await page.getByRole('banner').getByRole('button', { name: 'English' }).click()
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: 'English' })
+    .click()
   await expect(page).toHaveURL(/\/privacy$/)
   await expect(page).not.toHaveURL(/\/zh\//)
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
