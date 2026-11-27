@@ -5,6 +5,7 @@ package main
 // the ones database.go applies after the load.
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,10 +17,10 @@ const builderVersion = "1"
 
 // wiktextractEntry holds the fields of an input line the builder reads.
 type wiktextractEntry struct {
-	Word            string `json:"word"`
-	LangCode        string `json:"lang_code"`
-	Pos             string `json:"pos"`
-	EtymologyNumber *int   `json:"etymology_number"`
+	Word            string  `json:"word"`
+	LangCode        string  `json:"lang_code"`
+	Pos             string  `json:"pos"`
+	EtymologyNumber *number `json:"etymology_number"`
 	Senses          []struct {
 		Glosses  []string `json:"glosses"` // general -> most specific
 		Tags     []string `json:"tags"`
@@ -38,6 +39,19 @@ type wiktextractEntry struct {
 	} `json:"forms"`
 }
 
+// number is an integer that Wiktextract writes as a number on most lines and
+// as a string ("1") on some.
+type number int
+
+func (n *number) UnmarshalJSON(data []byte) error {
+	value, err := strconv.Atoi(strings.Trim(string(data), `"`))
+	if err != nil {
+		return fmt.Errorf("%s is not a whole number", data)
+	}
+	*n = number(value)
+	return nil
+}
+
 type target struct {
 	Word string `json:"word"`
 }
@@ -49,7 +63,7 @@ type sound struct {
 
 type entry struct {
 	word, key, pos string
-	etymology      *int
+	etymology      *number
 	ipaUS, ipaUK   string // empty: none
 	senses         []sense
 }
