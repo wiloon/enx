@@ -9,6 +9,10 @@ jest.mock('@/lib/aiLookup', () => ({
   stopAutomaticAiLookup: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 
 // The lookup count reads the same here as on the Side Panel card and on
 // enx-ui's Word List: the repeat icon, the bare number, and "Looked up N

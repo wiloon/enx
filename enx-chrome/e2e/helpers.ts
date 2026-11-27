@@ -394,6 +394,11 @@ export async function mockBackendFetch(
      * confirmed free user (ADR-029 Decision 5). Defaults to true.
      */
     quotaUpgrade?: boolean
+    /**
+     * Set it to stub GET and PUT /api/me/preferences with this explanation
+     * language (ADR-098). Unset leaves preferences requests unstubbed.
+     */
+    explanationLanguage?: 'zh-Hans' | 'en'
   } = {}
 ) {
   let [sw] = context.serviceWorkers()
@@ -423,6 +428,7 @@ export async function mockBackendFetch(
   const lookupPostStatus = options.lookupPostStatus ?? 200
   const dailyQuotaLeft = options.dailyQuotaLeft ?? null
   const quotaUpgrade = options.quotaUpgrade ?? true
+  const explanationLanguage = options.explanationLanguage ?? null
 
   await sw.evaluate(
     ({
@@ -436,7 +442,9 @@ export async function mockBackendFetch(
       lookupPostStatus,
       dailyQuotaLeft,
       quotaUpgrade,
+      explanationLanguage,
     }) => {
+      let language = explanationLanguage
       let quotaLeft = dailyQuotaLeft ?? Number.MAX_SAFE_INTEGER
       ;(self as unknown as Record<string, unknown>).__enxTranslatePosts = []
       // The quota refusal enx-api sends a free user.
@@ -464,6 +472,25 @@ export async function mockBackendFetch(
           typeof input === 'string'
             ? input
             : ((input as Request).url ?? String(input))
+
+        if (language && url.includes('/api/me/preferences')) {
+          if (init?.method === 'PUT') {
+            language = JSON.parse(String(init.body)).explanationLanguage
+          }
+          const off = { value: null, effective: false, editable: true }
+          return new Response(
+            JSON.stringify({
+              aiWordFallback: off,
+              aiWordFallbackNoticeAck: off,
+              explanationLanguage: {
+                value: language,
+                effective: language,
+                editable: true,
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
 
         if (url.includes('/api/me/review-words')) {
           const requests = ((
@@ -623,6 +650,7 @@ export async function mockBackendFetch(
       lookupPostStatus,
       dailyQuotaLeft,
       quotaUpgrade,
+      explanationLanguage,
     }
   )
 }

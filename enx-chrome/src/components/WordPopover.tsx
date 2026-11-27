@@ -8,6 +8,7 @@ import {
 } from '@heroicons/react/20/solid'
 import SidePanelTranslateIcon from '@/components/icons/SidePanelTranslateIcon'
 import { AiDefinition, AiMissPanel, AiNotice } from '@/components/AiLookup'
+import ExplanationLanguageSwitch from '@/components/ExplanationLanguageSwitch'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { billingUrl } from '@/lib/aiLookup'
 import { splitDefinition } from '@/lib/definitionParts'
@@ -73,6 +74,13 @@ export default function WordPopover({
   const [sessionUnverified] = useAtom(sessionUnverifiedAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
+  // No switch next to a notice saying there is no usable session.
+  const showLanguageSwitch = !(
+    signedOut ||
+    sessionUnverified ||
+    lookupNotice?.sessionExpired ||
+    lookupNotice?.sessionUnverified
+  )
   const phonetic = formatPhonetic(currentWord?.Pronunciation)
   const hasSpeaker = popoverHasSpeaker({
     word: currentWord,
@@ -154,7 +162,7 @@ export default function WordPopover({
       {/* Header: word + phonetic + play + query count all on one line */}
       <div
         data-testid="word-popover-header"
-        className="flex justify-between items-center gap-2 mb-2 shrink-0"
+        className="flex flex-wrap justify-between items-center gap-2 mb-2 shrink-0"
       >
         <div className="flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
           <h3 className="text-lg font-bold text-foreground leading-tight min-w-0 max-w-full break-words">
@@ -202,6 +210,7 @@ export default function WordPopover({
             </span>
           )}
         </div>
+        {showLanguageSwitch && <ExplanationLanguageSwitch />}
         <button
           data-testid="word-popover-close"
           onClick={onClose}
