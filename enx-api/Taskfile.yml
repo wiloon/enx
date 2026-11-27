@@ -19,6 +19,10 @@ env:
   # without a .env. An ECDICT_DB_PATH already set in the shell wins.
   ECDICT_DB_PATH:
     sh: echo "${ECDICT_DB_PATH:-$HOME/.local/share/enx/ecdict/stardict.db}"
+  # The newest Wiktionary file by name (wiktionary-<source_date>.db, ADR-098),
+  # or empty when there is none: English-English is then unavailable.
+  WIKTIONARY_DB_PATH:
+    sh: echo "${WIKTIONARY_DB_PATH:-$(ls "$HOME"/.local/share/enx/wiktionary/wiktionary-????-??-??.db 2>/dev/null | sort | tail -n 1)}"
 
 tasks:
   default:

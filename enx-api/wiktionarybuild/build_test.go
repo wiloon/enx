@@ -1,4 +1,4 @@
-package main
+package wiktionarybuild
 
 import (
 	"bytes"
@@ -43,14 +43,14 @@ func fixture(t *testing.T, name string) []byte {
 }
 
 // newOptions writes input (already compressed) to a temp directory and returns
-// options that build it into an empty output directory.
-func newOptions(t *testing.T, input []byte, ecdict ...ecdicttest.Row) options {
+// Options that build it into an empty output directory.
+func newOptions(t *testing.T, input []byte, ecdict ...ecdicttest.Row) Options {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "input.jsonl.gz")
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return options{
+	return Options{
 		Input:      path,
 		ECDICT:     ecdicttest.Create(t, ecdict...),
 		Out:        filepath.Join(t.TempDir(), "wiktionary.db"),
@@ -72,7 +72,7 @@ func openRO(t *testing.T, path string) *sql.DB {
 func build(t *testing.T, name string, ecdict ...ecdicttest.Row) *sql.DB {
 	t.Helper()
 	opts := newOptions(t, gzipped(t, fixture(t, name)), ecdict...)
-	if err := run(context.Background(), opts); err != nil {
+	if err := Run(context.Background(), opts); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	return openRO(t, opts.Out)
@@ -231,7 +231,7 @@ func TestMetaHoldsBuildFactsAndCounts(t *testing.T) {
 	opts := newOptions(t, input)
 	var log bytes.Buffer
 	opts.Log = &log
-	if err := run(context.Background(), opts); err != nil {
+	if err := Run(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
 	meta := map[string]string{}
@@ -284,7 +284,7 @@ func TestSHA256SUMSIsChecked(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(filepath.Dir(opts.Input), "SHA256SUMS"), []byte(tc.sums), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			err := run(context.Background(), opts)
+			err := Run(context.Background(), opts)
 			if tc.wantErr {
 				if err == nil || !strings.Contains(err.Error(), "SHA256SUMS") {
 					t.Fatalf("err = %v, want a SHA256SUMS mismatch", err)
@@ -301,7 +301,7 @@ func TestSHA256SUMSIsChecked(t *testing.T) {
 
 func TestOutputOpensReadOnlyFromReadOnlyLocation(t *testing.T) {
 	opts := newOptions(t, gzipped(t, fixture(t, "senses.jsonl")))
-	if err := run(context.Background(), opts); err != nil {
+	if err := Run(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
 	if names := dirNames(t, filepath.Dir(opts.Out)); !slices.Equal(names, []string{"wiktionary.db"}) {
@@ -342,7 +342,7 @@ func TestExistingOutputIsRefused(t *testing.T) {
 	if err := os.WriteFile(opts.Out, []byte("keep me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err := Run(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("err = %v, want already exists", err)
 	}
 	if data, err := os.ReadFile(opts.Out); err != nil || string(data) != "keep me" {
@@ -354,7 +354,7 @@ func TestSourceDateMustBeYearMonthDay(t *testing.T) {
 	for _, date := range []string{"", "2026-1-3", "30-10-2026", "2026-02-30", "2026-10-30T00:00:00Z"} {
 		opts := newOptions(t, gzipped(t, fixture(t, "senses.jsonl")))
 		opts.SourceDate = date
-		if err := run(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "source-date") {
+		if err := Run(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "source-date") {
 			t.Errorf("source date %q: err = %v", date, err)
 		}
 	}
@@ -373,7 +373,7 @@ func TestFailedBuildLeavesNothingBehind(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			opts := newOptions(t, tc.input)
-			err := run(context.Background(), opts)
+			err := Run(context.Background(), opts)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
@@ -398,7 +398,7 @@ func TestCancelledBuildLeavesNothingBehind(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, opts) }()
+	go func() { done <- Run(ctx, opts) }()
 
 	// Opened read-write so that it never blocks, even if run fails early.
 	pipe, err := os.OpenFile(opts.Input, os.O_RDWR, 0)

@@ -165,7 +165,7 @@ func resolveStatus(ctx context.Context, resolver Resolver, word, userID string, 
 		return EntryResult{Word: word, Status: EntryFailed}
 	}
 	switch res.Source {
-	case SourceLocal, SourceEcdict:
+	case SourceLocal, SourceEcdict, SourceWiktionary:
 		return EntryResult{Word: word, Status: EntryFound, Result: res}
 	case SourceMiss:
 		return EntryResult{Word: word, Status: EntryNotFound}

@@ -1,4 +1,4 @@
-package main
+package wiktionarybuild
 
 // The rules that turn one Wiktextract object into the rows of the Wiktionary
 // file. No I/O here. Bump builderVersion on every change to these rules or to

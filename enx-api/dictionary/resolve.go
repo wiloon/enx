@@ -16,7 +16,9 @@ const (
 	SourceEcdict  Source = "ecdict"  // ECDICT, now cached in the words table
 	SourceMiss    Source = "miss"    // neither knows the word
 	SourceTimeout Source = "timeout" // ECDICT gave up before answering
-	SourceError   Source = "error"   // ECDICT failed, or the caller gave up
+	SourceError   Source = "error"   // a dictionary failed, or the caller gave up
+	// SourceWiktionary: the Wiktionary file, for an English explanation.
+	SourceWiktionary Source = "wiktionary"
 )
 
 var (
@@ -34,6 +36,9 @@ type Origin string
 const (
 	OriginECDICT Origin = "ecdict"
 	OriginAI     Origin = "ai"
+	// OriginWiktionary is also the source of a words row an English lookup
+	// created with no Chinese (ADR-098 Decision 5).
+	OriginWiktionary Origin = "wiktionary"
 )
 
 // Entry is one English word's dictionary definition.
@@ -60,6 +65,9 @@ type Result struct {
 	Source        Source
 	// Origin is empty on a miss.
 	Origin Origin
+	// Definition is set on an English explanation only; Chinese and
+	// Pronunciation are then empty.
+	Definition *EnglishDefinition
 }
 
 // WordStore is the application's own word cache: the words table.
@@ -76,6 +84,9 @@ type WordStore interface {
 	// "run"), or a concurrent lookup added it first -- it returns the
 	// existing row's id.
 	Add(ctx context.Context, entry Entry) (id string, err error)
+	// ID returns the id of the live row for english, whatever it holds and
+	// whoever may see its definition; ok is false when there is none.
+	ID(ctx context.Context, english string) (id string, ok bool, err error)
 }
 
 // ExternalDictionary is a read-only dictionary consulted when the WordStore
@@ -105,6 +116,7 @@ type Entitlements interface {
 type Service struct {
 	words      WordStore
 	external   ExternalDictionary
+	wiktionary Wiktionary // nil: English-English is unavailable
 	ent        Entitlements
 	ai         *aiFallback // nil until EnableAI
 	aiRecorder AIWordRecorder
@@ -114,8 +126,8 @@ type Service struct {
 // sees only the definitions every user may see and asks no entitlement.
 const NoUser = ""
 
-func NewService(words WordStore, external ExternalDictionary, ent Entitlements) *Service {
-	return &Service{words: words, external: external, ent: ent}
+func NewService(words WordStore, external ExternalDictionary, ent Entitlements, wiktionary Wiktionary) *Service {
+	return &Service{words: words, external: external, ent: ent, wiktionary: wiktionary}
 }
 
 // findCached reads the words table for userID. It looks first at the rows
@@ -142,21 +154,20 @@ func (s *Service) findCached(ctx context.Context, english, userID string) (strin
 }
 
 // Resolve turns a normalized English word into its definition in lang. In
-// zh-Hans it reads the local
-// words table first (AI-made definitions only for users who may use AI), then
-// the external dictionary, caching an external hit in the words table. An
-// English explanation is never answered from either, which hold Chinese
-// (ADR-098): it is ErrWiktionaryUnavailable.
+// zh-Hans it reads the local words table first (AI-made definitions only for
+// users who may use AI), then the external dictionary, caching an external hit
+// in the words table. An English explanation comes from Wiktionary only; see
+// resolveEnglish.
 //
 // It does not meter: each caller charges the daily quota before it resolves
 // (ADR-079, revising ADR-018 B2).
 //
 // Besides a WordStore read error, it returns only the sentinels
 // ErrEcdictUnavailable (not cached, and no external dictionary configured)
-// and ErrWiktionaryUnavailable.
+// and ErrWiktionaryUnavailable (no Wiktionary for an English explanation).
 func (s *Service) Resolve(ctx context.Context, english, userID string, lang Language) (Result, error) {
 	if lang == LanguageEnglish {
-		return Result{}, ErrWiktionaryUnavailable
+		return s.resolveEnglish(ctx, english)
 	}
 	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {

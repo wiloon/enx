@@ -54,6 +54,18 @@ func (f *fakeWords) Find(_ context.Context, english string, includeAI bool) (str
 	return "", Entry{}, false, nil
 }
 
+func (f *fakeWords) ID(_ context.Context, english string) (string, bool, error) {
+	if f.findErr != nil {
+		return "", false, f.findErr
+	}
+	for id, e := range f.rows {
+		if strings.EqualFold(e.English, english) {
+			return id, true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func (f *fakeWords) Add(_ context.Context, e Entry) (string, error) {
 	if f.addErr != nil {
 		return "", f.addErr
@@ -132,7 +144,7 @@ func newTestServiceFor(ent Entitlements) (*Service, *fakeWords, *fakeExternal) {
 		entries: map[string]Entry{"run": run},
 		forms:   map[string]string{"ran": "run"},
 	}
-	return NewService(words, external, ent), words, external
+	return NewService(words, external, ent, nil), words, external
 }
 
 func TestResolveLocalHit(t *testing.T) {

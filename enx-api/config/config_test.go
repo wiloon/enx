@@ -192,6 +192,7 @@ var envVars = map[string]string{
 	"METRICS_ADDR":                                    "metrics.addr",
 	"ECDICT_DB_PATH":                                  "ecdict.db_path",
 	"ECDICT_SAMPLING":                                 "ecdict.sampling",
+	"WIKTIONARY_DB_PATH":                              "wiktionary.db_path",
 	"RESEND_API_KEY":                                  "resend.api-key",
 	"RESEND_FROM":                                     "resend.from",
 	"RESEND_ADMIN_TO":                                 "resend.admin-to",
