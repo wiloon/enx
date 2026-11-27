@@ -462,29 +462,32 @@ function PopupContent() {
     useWordHighlightEnabled()
   // ADR-095: only a never-signed-in browser shows "Read with Catglish" above
   // the sign-in card; a prior sign-in keeps today's signed-out popup.
-  const [showAnonymousLearning, setShowAnonymousLearning] = useState(false)
+  const [signedOutAccess, setSignedOutAccess] = useState<LearningAccess | null>(
+    null
+  )
 
   useEffect(() => {
-    if (!isLoaded || isSignedIn) {
-      setShowAnonymousLearning(false)
-      return
-    }
+    if (!isLoaded || isSignedIn) return
     let cancelled = false
     void chrome.runtime
       .sendMessage({ type: 'learningAccess' })
       .then((reply: { access?: LearningAccess } | undefined) => {
         if (cancelled) return
-        setShowAnonymousLearning(
-          showsPopupLearningCardWhenSignedOut(reply?.access ?? 'signed-out')
-        )
+        setSignedOutAccess(reply?.access ?? 'signed-out')
       })
       .catch(() => {
-        if (!cancelled) setShowAnonymousLearning(false)
+        if (!cancelled) setSignedOutAccess('signed-out')
       })
     return () => {
       cancelled = true
     }
   }, [isLoaded, isSignedIn])
+
+  const showAnonymousLearning =
+    isLoaded &&
+    !isSignedIn &&
+    signedOutAccess !== null &&
+    showsPopupLearningCardWhenSignedOut(signedOutAccess)
 
   const versionFooter = (
     <PopupVersion
