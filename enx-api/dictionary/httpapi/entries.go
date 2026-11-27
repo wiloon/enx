@@ -41,6 +41,8 @@ type entriesRequest struct {
 type entryJSON struct {
 	Word   string
 	Status dictionary.EntryStatus
+	// Omitted only when the user's explanation language could not be read.
+	ExplanationLanguage dictionary.Language `json:",omitempty"`
 	*definitionJSON
 	AIFallback *dictionary.AIFallbackOffer `json:",omitempty"`
 }
@@ -108,7 +110,7 @@ func (h *Handler) Entries(c *gin.Context) {
 }
 
 func toEntryJSON(r dictionary.EntryResult) entryJSON {
-	body := entryJSON{Word: r.Word, Status: r.Status, AIFallback: r.AIFallback}
+	body := entryJSON{Word: r.Word, Status: r.Status, ExplanationLanguage: r.Language, AIFallback: r.AIFallback}
 	if r.Status == dictionary.EntryFound {
 		body.definitionJSON = &definitionJSON{
 			Id:            r.Result.ID,

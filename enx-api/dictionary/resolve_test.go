@@ -139,7 +139,7 @@ func TestResolveLocalHit(t *testing.T) {
 	svc, words, external := newTestService()
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
-	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
+	res, err := svc.Resolve(context.Background(), "serendipity", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestResolveLocalHitKeepsTypedEnglish(t *testing.T) {
 	svc, words, _ := newTestService()
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
-	res, err := svc.Resolve(context.Background(), "Serendipity", "u1")
+	res, err := svc.Resolve(context.Background(), "Serendipity", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestResolveLocalHitWithoutExternalDictionary(t *testing.T) {
 	external.unavailable = true
 	words.seed("w1", Entry{English: "serendipity"})
 
-	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
+	res, err := svc.Resolve(context.Background(), "serendipity", "u1", LanguageZhHans)
 	if err != nil || res.Source != SourceLocal {
 		t.Fatalf("got %+v, %v; want a local hit", res, err)
 	}
@@ -183,7 +183,7 @@ func TestResolveLocalHitWithoutExternalDictionary(t *testing.T) {
 func TestResolveExternalHitIsCached(t *testing.T) {
 	svc, words, _ := newTestService()
 
-	res, err := svc.Resolve(context.Background(), "run", "u1")
+	res, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestResolveExternalHitIsCached(t *testing.T) {
 		t.Fatalf("added=%v, want run cached once", words.added)
 	}
 
-	again, err := svc.Resolve(context.Background(), "run", "u1")
+	again, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans)
 	if err != nil || again.Source != SourceLocal || again.ID != "id-run" {
 		t.Fatalf("second lookup: got %+v, %v; want a local hit on id-run", again, err)
 	}
@@ -207,7 +207,7 @@ func TestResolveInflectionReusesCachedHeadword(t *testing.T) {
 	svc, words, _ := newTestService()
 	words.seed("w-run", run)
 
-	res, err := svc.Resolve(context.Background(), "ran", "u1")
+	res, err := svc.Resolve(context.Background(), "ran", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestResolveInflectionReusesCachedHeadword(t *testing.T) {
 func TestResolveMiss(t *testing.T) {
 	svc, words, _ := newTestService()
 
-	res, err := svc.Resolve(context.Background(), "zzxqv", "u1")
+	res, err := svc.Resolve(context.Background(), "zzxqv", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestResolveUncachedWordWithoutExternalDictionary(t *testing.T) {
 	svc, _, external := newTestService()
 	external.unavailable = true
 
-	if _, err := svc.Resolve(context.Background(), "run", "u1"); !errors.Is(err, ErrEcdictUnavailable) {
+	if _, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans); !errors.Is(err, ErrEcdictUnavailable) {
 		t.Fatalf("got %v, want ErrEcdictUnavailable", err)
 	}
 }
@@ -249,7 +249,7 @@ func TestResolveAnswersWhenCachingFails(t *testing.T) {
 	svc, words, _ := newTestService()
 	words.addErr = errors.New("disk full")
 
-	res, err := svc.Resolve(context.Background(), "run", "u1")
+	res, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestResolveReturnsWordStoreErrors(t *testing.T) {
 	svc, words, _ := newTestService()
 	words.findErr = errors.New("db down")
 
-	if _, err := svc.Resolve(context.Background(), "run", "u1"); err == nil || err.Error() != "db down" {
+	if _, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans); err == nil || err.Error() != "db down" {
 		t.Fatalf("got %v, want the store's error", err)
 	}
 }
@@ -282,7 +282,7 @@ func TestResolveLabelsExternalFailures(t *testing.T) {
 		svc, words, external := newTestService()
 		external.err = tc.err
 
-		res, err := svc.Resolve(context.Background(), "run", "u1")
+		res, err := svc.Resolve(context.Background(), "run", "u1", LanguageZhHans)
 		if err != nil {
 			t.Fatalf("%v: Resolve returned %v, want a result", tc.err, err)
 		}
@@ -305,7 +305,7 @@ func TestResolveECDICTRowNeverAsksForEntitlement(t *testing.T) {
 	svc, words, _ := newTestServiceFor(ent)
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
 
-	res, err := svc.Resolve(context.Background(), "serendipity", "u1")
+	res, err := svc.Resolve(context.Background(), "serendipity", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestResolveShowsAIDefinitionToUsersWhoCanUseAI(t *testing.T) {
 	svc, words, external := newTestServiceFor(&fakeEntitlements{can: true})
 	words.seed("w2", aiRow)
 
-	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestResolveHidesAIDefinitionFromUsersWhoCannotUseAI(t *testing.T) {
 	svc, words, external := newTestServiceFor(&fakeEntitlements{can: false})
 	words.seed("w2", aiRow)
 
-	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestResolveShowsAnAdminEditedAIDefinitionToEveryone(t *testing.T) {
 	svc, words, _ := newTestServiceFor(ent)
 	words.seedEdited("w2", aiRow)
 
-	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestResolveTreatsAnEntitlementErrorAsNotEntitled(t *testing.T) {
 	svc, words, _ := newTestServiceFor(&fakeEntitlements{can: true, err: errors.New("db down")})
 	words.seed("w2", aiRow)
 
-	res, err := svc.Resolve(context.Background(), "rizzler", "u1")
+	res, err := svc.Resolve(context.Background(), "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatalf("an entitlement failure must not fail the lookup: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestResolveForNoUserHidesAIDefinitionWithoutAnEntitlementCheck(t *testing.T
 	svc, words, _ := newTestServiceFor(ent)
 	words.seed("w2", aiRow)
 
-	res, err := svc.Resolve(context.Background(), "rizzler", NoUser)
+	res, err := svc.Resolve(context.Background(), "rizzler", NoUser, LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,5 +410,20 @@ func TestResolveForNoUserHidesAIDefinitionWithoutAnEntitlementCheck(t *testing.T
 		if includeAI {
 			t.Fatalf("Find calls = %v: no user must never trigger a read of AI rows", words.finds)
 		}
+	}
+}
+
+// ADR-098: an English explanation is never answered from the words table or
+// ECDICT, which hold Chinese, and nothing is cached.
+func TestResolveInEnglishWithoutWiktionaryReadsAndWritesNothing(t *testing.T) {
+	svc, words, external := newTestService()
+
+	_, err := svc.Resolve(context.Background(), "run", "u1", LanguageEnglish)
+
+	if !errors.Is(err, ErrWiktionaryUnavailable) {
+		t.Fatalf("err = %v, want ErrWiktionaryUnavailable", err)
+	}
+	if len(words.finds) != 0 || len(words.added) != 0 || len(external.queried) != 0 {
+		t.Fatalf("finds %v, added %v, external %v; want none", words.finds, words.added, external.queried)
 	}
 }

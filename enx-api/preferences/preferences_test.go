@@ -324,3 +324,24 @@ func TestEffectiveRefusesAnEnumKey(t *testing.T) {
 		t.Fatalf("Effective = %v with no error, want an error for a non-boolean key", on)
 	}
 }
+
+func TestEffectiveEnum(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeStore()
+	svc := NewService(store, fakeEnt{status: free})
+
+	if got, err := svc.EffectiveEnum(ctx, "u1", ExplanationLanguage); err != nil || got != ExplanationLanguageZhHans {
+		t.Fatalf("unset = %q, %v; want zh-Hans", got, err)
+	}
+	if err := svc.Update(ctx, "u1", map[string]any{string(ExplanationLanguage): ExplanationLanguageEnglish}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := svc.EffectiveEnum(ctx, "u1", ExplanationLanguage); err != nil || got != ExplanationLanguageEnglish {
+		t.Fatalf("stored = %q, %v; want en", got, err)
+	}
+	for _, key := range []Key{AIWordFallback, "noSuchKey"} {
+		if got, err := svc.EffectiveEnum(ctx, "u1", key); err == nil {
+			t.Errorf("EffectiveEnum(%s) = %q, want an error", key, got)
+		}
+	}
+}

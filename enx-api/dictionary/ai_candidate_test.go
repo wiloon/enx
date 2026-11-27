@@ -296,7 +296,7 @@ func TestResolveNeverReadsCandidates(t *testing.T) {
 	cands.seed(Candidate{English: "rizzler", Chinese: "x", Status: CandidatePending})
 	cands.findErr = errors.New("must not be read")
 
-	res, err := env.svc.Resolve(context.Background(), "rizzler", "u1")
+	res, err := env.svc.Resolve(context.Background(), "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}

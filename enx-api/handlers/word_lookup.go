@@ -30,6 +30,8 @@ type WordLookupRecorder interface {
 type WordLookupHandler struct {
 	lookups WordLookupRecorder
 	tiers   dictionary.QuotaTierSource
+
+	languages dictionary.ExplanationLanguages // nil: the response names none
 }
 
 func NewWordLookupHandler(lookups WordLookupRecorder) *WordLookupHandler {
@@ -43,6 +45,14 @@ func (h *WordLookupHandler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *Wo
 
 func NewWordLookupHandlerWithQuotaTiers(lookups WordLookupRecorder, tiers dictionary.QuotaTierSource) *WordLookupHandler {
 	return &WordLookupHandler{lookups: lookups, tiers: tiers}
+}
+
+// WithExplanationLanguages adds the user's explanation language to the
+// response: a client answering from its cache sends no definitions request,
+// so this is how it learns of a change (ADR-098 Decision 8).
+func (h *WordLookupHandler) WithExplanationLanguages(languages dictionary.ExplanationLanguages) *WordLookupHandler {
+	h.languages = languages
+	return h
 }
 
 // Record handles POST /api/me/word-lookups: the caller looked up the word
@@ -80,5 +90,14 @@ func (h *WordLookupHandler) Record(c *gin.Context) {
 		httpjson.Fail(c, http.StatusInternalServerError, "Failed to record the lookup")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"queryCount": qc, "known": known})
+	body := gin.H{"queryCount": qc, "known": known}
+	if h.languages != nil {
+		// The lookup is recorded whether or not the language can be read.
+		if lang, err := h.languages.ExplanationLanguage(c.Request.Context(), userId); err != nil {
+			logger.Warnf("RecordWordLookup: explanation language read failed for %s: %v", userId, err)
+		} else {
+			body["explanationLanguage"] = lang
+		}
+	}
+	c.JSON(http.StatusOK, body)
 }

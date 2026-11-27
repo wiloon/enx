@@ -170,7 +170,8 @@ func (a *AnonymousLookups) Lookup(ctx context.Context, req AnonymousRequest) (En
 	if a.obs != nil {
 		a.obs.ObserveAnonymousLookupAllowed()
 	}
-	return resolveEntry(ctx, a.resolver, word, NoUser), nil
+	// An anonymous lookup has no preference to read (ADR-098).
+	return resolveEntry(ctx, a.resolver, word, NoUser, LanguageZhHans), nil
 }
 
 func (a *AnonymousLookups) refuse(layer AnonymousLayer, retryAfter time.Duration) error {

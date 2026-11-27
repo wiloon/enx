@@ -135,7 +135,9 @@ var ErrWordNotFound = errors.New("repo: no live words row for that word")
 // AdminEditWord replaces chinese/pronunciation on the live words row for
 // english (matched as AdminGetWord does) and records the edit in
 // admin_edited_at. The row's source is left alone -- an edited AI row is
-// still an AI-sourced row, now reviewed by a person (ADR-045 Decision 6).
+// still an AI-sourced row, now reviewed by a person (ADR-045 Decision 6) --
+// except that a row with no Chinese which the edit gives some becomes an
+// "ecdict" row (ADR-098 Decision 5).
 // A soft-deleted row is not edited: it returns ErrWordNotFound. Authz and
 // audit logging are the caller's responsibility (ADR-021).
 func AdminEditWord(english, chinese, pronunciation string) (*Word, error) {
@@ -144,13 +146,17 @@ func AdminEditWord(english, chinese, pronunciation string) (*Word, error) {
 		return nil, ErrWordNotFound
 	}
 	now := time.Now().UnixMilli()
-	err := sqlitex.DB.Model(&Word{}).Where("id = ?", existing.Id).Updates(map[string]any{
+	updates := map[string]any{
 		"chinese":         chinese,
 		"pronunciation":   pronunciation,
 		"updated_at":      now,
 		"admin_edited_at": now,
-	}).Error
-	if err != nil {
+	}
+	if existing.Chinese == "" && chinese != "" {
+		updates["source"] = WordSourceECDICT
+		existing.Source = WordSourceECDICT
+	}
+	if err := sqlitex.DB.Model(&Word{}).Where("id = ?", existing.Id).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	existing.Chinese = chinese

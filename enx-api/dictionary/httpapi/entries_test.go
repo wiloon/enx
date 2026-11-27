@@ -14,9 +14,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type stubLanguages struct{ err error }
+
+func (s stubLanguages) ExplanationLanguage(context.Context, string) (dictionary.Language, error) {
+	return dictionary.LanguageZhHans, s.err
+}
+
 type stubResolver map[string]dictionary.Result
 
-func (s stubResolver) Resolve(_ context.Context, english, _ string) (dictionary.Result, error) {
+func (s stubResolver) Resolve(_ context.Context, english, _ string, _ dictionary.Language) (dictionary.Result, error) {
 	if res, ok := s[english]; ok {
 		return res, nil
 	}
@@ -53,7 +59,7 @@ var resolved = stubResolver{
 func serveEntries(t *testing.T, meter *stubMeter, userID, contentType, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(dictionary.NewEntries(resolved, meter, stubPolicy{}, nil), freeTier{})
+	h := NewHandler(dictionary.NewEntries(resolved, meter, stubPolicy{}, nil, stubLanguages{}), freeTier{})
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		if userID != "" {
@@ -83,10 +89,10 @@ func TestEntriesAnswersEachWordUnderItsRequestedForm(t *testing.T) {
 		t.Fatalf("decode %s: %v", w.Body, err)
 	}
 	want := []map[string]any{
-		{"Word": "ran", "Status": "found", "Id": "w-run", "English": "run", "Pronunciation": "ræn", "Chinese": "v. 跑", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
-		{"Word": "uncached", "Status": "found", "English": "uncached", "Pronunciation": "", "Chinese": "未缓存", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
-		{"Word": "zzxqv", "Status": "not_found", "AIFallback": map[string]any{"CanUse": true, "Auto": false}},
-		{"Word": "slow", "Status": "failed"},
+		{"Word": "ran", "Status": "found", "ExplanationLanguage": "zh-Hans", "Id": "w-run", "English": "run", "Pronunciation": "ræn", "Chinese": "v. 跑", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
+		{"Word": "uncached", "Status": "found", "ExplanationLanguage": "zh-Hans", "English": "uncached", "Pronunciation": "", "Chinese": "未缓存", "WordType": float64(0), "Origin": "ecdict", "Source": "ecdict"},
+		{"Word": "zzxqv", "Status": "not_found", "ExplanationLanguage": "zh-Hans", "AIFallback": map[string]any{"CanUse": true, "Auto": false}},
+		{"Word": "slow", "Status": "failed", "ExplanationLanguage": "zh-Hans"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -244,7 +250,7 @@ func TestEntriesFoundSource(t *testing.T) {
 	for _, source := range []dictionary.Source{dictionary.SourceLocal, dictionary.SourceEcdict} {
 		t.Run(string(source), func(t *testing.T) {
 			resolver := stubResolver{"run": {ID: "w-run", English: "run", Chinese: "v. 跑", Source: source}}
-			h := NewHandler(dictionary.NewEntries(resolver, &stubMeter{}, stubPolicy{}, nil), freeTier{})
+			h := NewHandler(dictionary.NewEntries(resolver, &stubMeter{}, stubPolicy{}, nil, stubLanguages{}), freeTier{})
 			gin.SetMode(gin.TestMode)
 			r := gin.New()
 			r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
@@ -261,5 +267,23 @@ func TestEntriesFoundSource(t *testing.T) {
 				t.Fatalf("got %d %s; want Source %s", w.Code, w.Body, source)
 			}
 		})
+	}
+}
+
+// ADR-098: ExplanationLanguage is left out only when it could not be read.
+func TestEntriesOmitsAnUnreadableExplanationLanguage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(dictionary.NewEntries(resolved, &stubMeter{}, stubPolicy{}, nil, stubLanguages{err: errors.New("db down")}), freeTier{})
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+	r.Handle("QUERY", "/api/dictionary/entries", h.Entries)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("QUERY", "/api/dictionary/entries", strings.NewReader(`{"words":["ran"]}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	r.ServeHTTP(w, req)
+
+	if body := w.Body.String(); w.Code != http.StatusOK || body != `[{"Word":"ran","Status":"failed"}]` {
+		t.Fatalf("got %d %s, want failed with no ExplanationLanguage", w.Code, body)
 	}
 }

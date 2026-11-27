@@ -122,6 +122,36 @@ func reviewOf(t *testing.T, userID, wordID string) (queryCount int, known bool, 
 	return rows[0].QueryCount, rows[0].Known, true
 }
 
+type failingLanguages struct{}
+
+func (failingLanguages) ExplanationLanguage(context.Context, string) (dictionary.Language, error) {
+	return "", errors.New("db down")
+}
+
+type okRecorder struct{}
+
+func (okRecorder) Record(context.Context, string, string) (int, bool, error) {
+	return 2, false, nil
+}
+
+// ADR-098: the lookup is recorded even when the explanation language cannot be
+// read; the response then names none.
+func TestWordLookupOmitsAnUnreadableExplanationLanguage(t *testing.T) {
+	h := NewWordLookupHandler(okRecorder{}).WithExplanationLanguages(failingLanguages{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
+	router.POST("/api/me/word-lookups", h.Record)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/me/word-lookups", strings.NewReader(`{"wordId":"w1"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(w, req)
+
+	if body := w.Body.String(); w.Code != http.StatusOK || body != `{"known":false,"queryCount":2}` {
+		t.Fatalf("got %d %s, want the count with no explanationLanguage", w.Code, body)
+	}
+}
+
 func TestWordLookupFirstTimeStartsTheQueryCountAtOne(t *testing.T) {
 	setupKnownTest(t)
 	id := seedKnownWord(t, "serendipity")

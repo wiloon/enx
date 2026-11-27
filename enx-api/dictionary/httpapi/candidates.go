@@ -84,7 +84,8 @@ func (h *CandidatesHandler) List(c *gin.Context) {
 }
 
 // Approve handles POST /api/admin/ai-candidates/:word/approve. created is
-// false when words already had a live row for the word, which is left as it was.
+// false when words already had a live row with Chinese for the word, which is
+// left as it was.
 func (h *CandidatesHandler) Approve(c *gin.Context) {
 	word := strings.TrimSpace(c.Param("word"))
 	created, err := h.review.ApproveCandidate(c.Request.Context(), word)

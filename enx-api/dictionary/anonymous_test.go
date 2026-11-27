@@ -23,12 +23,14 @@ type anonResolver struct {
 	res   Result
 	err   error
 	users []string
+	langs []Language
 }
 
-func (f *anonResolver) Resolve(_ context.Context, english, userID string) (Result, error) {
+func (f *anonResolver) Resolve(_ context.Context, english, userID string, lang Language) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.users = append(f.users, userID)
+	f.langs = append(f.langs, lang)
 	res := f.res
 	if res.English == "" {
 		res.English = english
@@ -166,6 +168,10 @@ func TestAnonymousLookupResolvesForNoUser(t *testing.T) {
 	}
 	if len(f.resolver.users) != 1 || f.resolver.users[0] != NoUser {
 		t.Fatalf("resolved for %q, want once for NoUser", f.resolver.users)
+	}
+	// With no preference to read, an anonymous lookup is zh-Hans (ADR-098).
+	if got.Language != LanguageZhHans || f.resolver.langs[0] != LanguageZhHans {
+		t.Fatalf("answered in %q, resolved in %q; want zh-Hans", got.Language, f.resolver.langs)
 	}
 	if f.obs.allowed != 1 {
 		t.Fatalf("allowed observed %d times, want 1", f.obs.allowed)

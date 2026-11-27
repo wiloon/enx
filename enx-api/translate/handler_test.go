@@ -20,7 +20,7 @@ type fakeResolver struct {
 	err error
 }
 
-func (f fakeResolver) Resolve(context.Context, string, string) (dictionary.Result, error) {
+func (f fakeResolver) Resolve(context.Context, string, string, dictionary.Language) (dictionary.Result, error) {
 	return f.res, f.err
 }
 
@@ -67,9 +67,9 @@ type countingResolver struct {
 	calls int
 }
 
-func (r *countingResolver) Resolve(ctx context.Context, english, userID string) (dictionary.Result, error) {
+func (r *countingResolver) Resolve(ctx context.Context, english, userID string, lang dictionary.Language) (dictionary.Result, error) {
 	r.calls++
-	return r.fakeResolver.Resolve(ctx, english, userID)
+	return r.fakeResolver.Resolve(ctx, english, userID, lang)
 }
 
 // ADR-079 Decision 7: each lookup GET charges one before it resolves.
@@ -225,5 +225,25 @@ func TestQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
 		}
+	}
+}
+
+// failingLanguages cannot read anyone's explanation language.
+type failingLanguages struct{}
+
+func (failingLanguages) ExplanationLanguage(context.Context, string) (dictionary.Language, error) {
+	return "", errors.New("db down")
+}
+
+// ADR-098: a user who may want English is not answered in Chinese, and the
+// refusal costs no quota.
+func TestHandlerRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
+	meter := &fakeMeter{}
+	resolver := &countingResolver{}
+
+	code, _ := serve(t, NewHandler(resolver, meter, &fakeReviewLog{}).WithExplanationLanguages(failingLanguages{}), "run")
+
+	if code != http.StatusServiceUnavailable || len(meter.charges) != 0 || resolver.calls != 0 {
+		t.Fatalf("got %d, charges %v, %d resolutions; want 503 and nothing done", code, meter.charges, resolver.calls)
 	}
 }
