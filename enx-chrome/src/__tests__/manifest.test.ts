@@ -347,12 +347,8 @@ describe('localised name and description (ADR-096)', () => {
   })
 
   it('carries the Simplified Chinese name and store summary', () => {
-    expect(messages('zh_CN').extName.message).toBe(
-      'Catglish - 边读网页边学英语'
-    )
-    expect(messages('zh_CN').extDescription.message).toBe(
-      '用英文读懂英文：只在卡住的词或句子上给你帮助，查过的词再出现时带着下划线。'
-    )
+    expect(messages('zh_CN').extName.message).toBe('Catglish')
+    expect(messages('zh_CN').extDescription.message).toBe('用英文读懂英文')
   })
 
   // Chrome rejects a name over 75 characters, suffix included, and a
