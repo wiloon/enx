@@ -13,9 +13,9 @@ import SiteFooter from '@/components/site/SiteFooter'
 export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
-  title: 'Catglish — AI-assisted English reading in your browser',
+  title: 'Catglish — Read English in English',
   description:
-    'Catglish explains any word you click as you read English online, translates whole sentences on demand, and underlines the words you have looked up wherever they come back.',
+    'Catglish keeps you reading English. Get help with the one word or sentence you are stuck on, see what a word means in this sentence, and find the words you looked up underlined wherever they come back. No full-page translation.',
 }
 
 export default function LandingPage() {

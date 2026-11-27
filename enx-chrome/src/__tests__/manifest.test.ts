@@ -161,6 +161,15 @@ describe('manifest stamping (ADR-019)', () => {
     }
   )
 
+  // The Web Store shows this as the summary and rejects more than 132
+  // characters.
+  it('carries the store summary within the 132 character limit', () => {
+    expect(base.description).toBe(
+      "Read English in English: help with the one word or sentence you're stuck on, and looked-up words underlined when they return."
+    )
+    expect(base.description.length).toBeLessThanOrEqual(132)
+  })
+
   it('keeps the static host_permissions empty', () => {
     expect(base.host_permissions).toEqual([])
   })

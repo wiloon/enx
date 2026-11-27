@@ -3,9 +3,9 @@
 
 export const SITE = {
   name: 'Catglish',
-  tagline: 'Learn English while you read the web',
+  tagline: 'Read English in English',
   subtitle:
-    'Click any word for its meaning. Select a sentence to translate it.',
+    "Get help only where you're stuck. Looked-up words come back underlined.",
 
   chromeExtensionId: 'combdcldlodkikjfhjbdbogjlfmnbjkf',
   chromeWebStoreUrl:

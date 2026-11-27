@@ -6,6 +6,6 @@ export const SITE_NAV: readonly { label: string; href: string }[] = [
   { label: 'Features', href: '/#features' },
   { label: 'How it works', href: '/#how-it-works' },
   { label: 'Pricing', href: '/pricing' },
-  { label: 'Similar apps', href: '/#compare' },
+  { label: 'Why Catglish', href: '/#compare' },
   { label: 'Help', href: '/help' },
 ]
