@@ -90,6 +90,30 @@ describe('fetchPreferences', () => {
   })
 })
 
+// ADR-098: the explanation language is optional on the wire and in the cache,
+// so an older server or cached copy keeps the other preferences working.
+describe('explanationLanguage', () => {
+  const withLanguage: PreferencesData = {
+    ...prefs(true),
+    explanationLanguage: {
+      value: null,
+      effective: 'zh-Hans',
+      editable: true,
+    },
+  }
+
+  it.each([
+    ['without the member', prefs(true)],
+    ['with the member', withLanguage],
+  ])('is parsed from a response and a cache %s', async (_name, data) => {
+    send.mockResolvedValue({ success: true, data })
+    storage.get.mockResolvedValue({ [PREFERENCES_CACHE_KEY]: data })
+
+    expect(await fetchPreferences()).toEqual({ ok: true, data })
+    expect(await readCachedPreferences()).toEqual(data)
+  })
+})
+
 describe('updatePreferences', () => {
   it('sends the partial change and returns the full set the server answers', async () => {
     send.mockResolvedValue({ success: true, data: prefs(false) })

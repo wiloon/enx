@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"enx-api/entitlement"
 )
@@ -28,21 +29,35 @@ const (
 	// on /welcome (ADR-047 Decision 1a). Written by the page, not shown on
 	// the settings page. Not tied to payment state.
 	OnboardingCompleted Key = "onboardingCompleted"
+	// ExplanationLanguage: which language word explanations come in
+	// (ADR-098 Decision 1). An enum, open to every signed-in user; more
+	// languages are added as values, not as new keys.
+	ExplanationLanguage Key = "explanationLanguage"
+)
+
+// ExplanationLanguage values.
+const (
+	ExplanationLanguageZhHans  = "zh-Hans"
+	ExplanationLanguageEnglish = "en"
 )
 
 var (
 	// ErrUnknownKey: the key is not in the registry.
 	ErrUnknownKey = errors.New("preferences: unknown key")
+	// ErrInvalidValue: the value has the wrong type for the key, or is not
+	// one of an enum key's allowed values.
+	ErrInvalidValue = errors.New("preferences: invalid value")
 	// ErrNotEditable: the user's payment state does not let them change the
 	// key.
 	ErrNotEditable = errors.New("preferences: not editable for this user")
 )
 
 // Store persists explicit values. A key with no stored value is "unset" and
-// takes its default.
+// takes its default. A value is a bool or a string, as the key's registry
+// entry says; Load returns whatever is stored and the Service judges it.
 type Store interface {
-	Load(ctx context.Context, userID string) (map[Key]bool, error)
-	Save(ctx context.Context, userID string, key Key, value bool) error
+	Load(ctx context.Context, userID string) (map[Key]any, error)
+	Save(ctx context.Context, userID string, key Key, value any) error
 	Clear(ctx context.Context, userID string, key Key) error
 }
 
@@ -53,48 +68,73 @@ type Entitlements interface {
 
 // View is one preference as a client sees it.
 type View struct {
-	// Value is the user's explicit choice; nil means unset.
-	Value *bool
+	// Value is the user's explicit choice (a bool or a string); nil means
+	// unset.
+	Value any
 	// Effective is what the server acts on, with the default and the user's
 	// entitlement applied. Clients show it; they never recompute it.
-	Effective bool
+	Effective any
 	// Editable is whether the user may change it.
 	Editable bool
 }
 
 // definition is one registry entry.
 type definition struct {
-	defaultValue func(entitlement.Status) bool
+	// allowed lists an enum key's values; nil makes the key a boolean.
+	allowed      []string
+	defaultValue func(entitlement.Status) any
 	editable     func(entitlement.Status) bool
 	// gatedByEditable: the effective value is false whenever the key is not
 	// editable, whatever is stored -- how a lapsed subscription turns the
-	// AI fallback off without losing the user's choice.
+	// AI fallback off without losing the user's choice. Booleans only.
 	gatedByEditable bool
 }
+
+func off(entitlement.Status) any { return false }
+
+func always(entitlement.Status) bool { return true }
 
 var registry = map[Key]definition{
 	AIWordFallback: {
 		// A top-up-only user may use AI but starts opted out: they may have
 		// bought credit for translation, and each lookup would spend some.
-		defaultValue:    func(s entitlement.Status) bool { return s.Subscribed },
+		defaultValue:    func(s entitlement.Status) any { return s.Subscribed },
 		editable:        func(s entitlement.Status) bool { return s.CanUseAI },
 		gatedByEditable: true,
 	},
 	AIWordFallbackNoticeAck: {
-		defaultValue: func(entitlement.Status) bool { return false },
-		editable:     func(entitlement.Status) bool { return true },
+		defaultValue: off,
+		editable:     always,
 	},
 	OnboardingCompleted: {
-		defaultValue: func(entitlement.Status) bool { return false },
-		editable:     func(entitlement.Status) bool { return true },
+		defaultValue: off,
+		editable:     always,
+	},
+	ExplanationLanguage: {
+		allowed:      []string{ExplanationLanguageZhHans, ExplanationLanguageEnglish},
+		defaultValue: func(entitlement.Status) any { return ExplanationLanguageZhHans },
+		editable:     always,
 	},
 }
 
-func (d definition) view(status entitlement.Status, explicit *bool) View {
+// valid reports whether value is one this key may hold.
+func (d definition) valid(value any) bool {
+	if d.allowed == nil {
+		_, ok := value.(bool)
+		return ok
+	}
+	s, ok := value.(string)
+	return ok && slices.Contains(d.allowed, s)
+}
+
+// view builds what a client sees. A stored value the key may no longer hold
+// reads as unset.
+func (d definition) view(status entitlement.Status, stored any) View {
 	editable := d.editable(status)
+	var explicit any
 	effective := d.defaultValue(status)
-	if explicit != nil {
-		effective = *explicit
+	if d.valid(stored) {
+		explicit, effective = stored, stored
 	}
 	if d.gatedByEditable && !editable {
 		effective = false
@@ -124,17 +164,14 @@ func (s *Service) Get(ctx context.Context, userID string) (map[Key]View, error) 
 	}
 	views := make(map[Key]View, len(registry))
 	for key, def := range registry {
-		var explicit *bool
-		if v, ok := stored[key]; ok {
-			explicit = &v
-		}
-		views[key] = def.view(status, explicit)
+		views[key] = def.view(status, stored[key])
 	}
 	return views, nil
 }
 
-// Effective returns the value the server should act on for one key. It is
-// how server-side features (ADR-045's AI fallback) read a preference.
+// Effective returns the value the server should act on for one boolean key.
+// It is how server-side features (ADR-045's AI fallback) read a preference.
+// Asked for a non-boolean key it errors rather than answering false.
 func (s *Service) Effective(ctx context.Context, userID string, key Key) (bool, error) {
 	if _, ok := registry[key]; !ok {
 		return false, fmt.Errorf("%w: %q", ErrUnknownKey, key)
@@ -143,22 +180,30 @@ func (s *Service) Effective(ctx context.Context, userID string, key Key) (bool, 
 	if err != nil {
 		return false, err
 	}
-	return views[key].Effective, nil
+	on, ok := views[key].Effective.(bool)
+	if !ok {
+		return false, fmt.Errorf("preferences: %q is not a boolean preference", key)
+	}
+	return on, nil
 }
 
-// Update applies changes: a non-nil value stores an explicit choice, a nil
-// value clears it (back to the default). It validates every key before
-// writing any, so a rejected request changes nothing. It returns
-// ErrUnknownKey or ErrNotEditable (wrapped with the key) on rejection.
-func (s *Service) Update(ctx context.Context, userID string, changes map[string]*bool) error {
+// Update applies changes, given as decoded JSON values: a non-nil value
+// stores an explicit choice, a nil value clears it (back to the default). It
+// validates every key before writing any, so a rejected request changes
+// nothing. It returns ErrUnknownKey, ErrInvalidValue or ErrNotEditable
+// (wrapped with the key) on rejection, checked in that order for each key.
+func (s *Service) Update(ctx context.Context, userID string, changes map[string]any) error {
 	status, err := s.ent.Status(ctx, userID)
 	if err != nil {
 		return err
 	}
-	for name := range changes {
+	for name, value := range changes {
 		def, ok := registry[Key(name)]
 		if !ok {
 			return fmt.Errorf("%w: %q", ErrUnknownKey, name)
+		}
+		if value != nil && !def.valid(value) {
+			return fmt.Errorf("%w: %q", ErrInvalidValue, name)
 		}
 		if !def.editable(status) {
 			return fmt.Errorf("%w: %q", ErrNotEditable, name)
@@ -169,7 +214,7 @@ func (s *Service) Update(ctx context.Context, userID string, changes map[string]
 		if value == nil {
 			err = s.store.Clear(ctx, userID, key)
 		} else {
-			err = s.store.Save(ctx, userID, key, *value)
+			err = s.store.Save(ctx, userID, key, value)
 		}
 		if err != nil {
 			return err

@@ -1,8 +1,8 @@
-package handlers
+// Package httpapi serves users' preferences over HTTP (ADR-044).
+package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -14,28 +14,28 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PreferenceService is the slice of preferences.Service the handlers use.
-type PreferenceService interface {
+// Service is the slice of preferences.Service the handler uses.
+type Service interface {
 	Get(ctx context.Context, userID string) (map[preferences.Key]preferences.View, error)
-	Update(ctx context.Context, userID string, changes map[string]*bool) error
+	Update(ctx context.Context, userID string, changes map[string]any) error
 }
 
-// PreferencesHandler serves GET and PUT /api/me/preferences (ADR-044).
-type PreferencesHandler struct {
-	svc PreferenceService
+// Handler serves GET and PUT /api/me/preferences.
+type Handler struct {
+	svc Service
 }
 
-func NewPreferencesHandler(svc PreferenceService) *PreferencesHandler {
-	return &PreferencesHandler{svc: svc}
+func NewHandler(svc Service) *Handler {
+	return &Handler{svc: svc}
 }
 
 // preferenceJSON is one preference on the wire: the user's explicit choice
 // (null when unset), the value the server acts on, and whether the user may
-// change it.
+// change it. A value is a boolean or a string, as the key's type is.
 type preferenceJSON struct {
-	Value     *bool `json:"value"`
-	Effective bool  `json:"effective"`
-	Editable  bool  `json:"editable"`
+	Value     any  `json:"value"`
+	Effective any  `json:"effective"`
+	Editable  bool `json:"editable"`
 }
 
 func preferencesBody(views map[preferences.Key]preferences.View) map[string]preferenceJSON {
@@ -47,7 +47,7 @@ func preferencesBody(views map[preferences.Key]preferences.View) map[string]pref
 }
 
 // Get returns every preference for the signed-in user.
-func (h *PreferencesHandler) Get(c *gin.Context) {
+func (h *Handler) Get(c *gin.Context) {
 	userID, ok := middleware.RequireUserID(c, "Unauthorized")
 	if !ok {
 		return
@@ -61,33 +61,27 @@ func (h *PreferencesHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, preferencesBody(views))
 }
 
-// Update applies a partial change -- {"key": true|false|null}, where null
-// returns the key to its default -- and answers with the full set, as Get
-// does.
-func (h *PreferencesHandler) Update(c *gin.Context) {
+// Update applies a partial change -- {"key": value|null}, where null returns
+// the key to its default -- and answers with the full set, as Get does. What
+// each key may hold is the service's rule, not the handler's.
+func (h *Handler) Update(c *gin.Context) {
 	userID, ok := middleware.RequireUserID(c, "Unauthorized")
 	if !ok {
 		return
 	}
-	var raw map[string]json.RawMessage
-	if err := c.ShouldBindJSON(&raw); err != nil || len(raw) == 0 {
+	var changes map[string]any
+	if err := c.ShouldBindJSON(&changes); err != nil || len(changes) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_body", "message": "Send a JSON object of preferences to change."})
 		return
-	}
-	changes := make(map[string]*bool, len(raw))
-	for key, value := range raw {
-		var v *bool
-		if err := json.Unmarshal(value, &v); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_value", "message": "Each preference must be true, false or null."})
-			return
-		}
-		changes[key] = v
 	}
 
 	switch err := h.svc.Update(c.Request.Context(), userID, changes); {
 	case err == nil:
 	case errors.Is(err, preferences.ErrUnknownKey):
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "unknown_preference", "message": "Unknown preference."})
+		return
+	case errors.Is(err, preferences.ErrInvalidValue):
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "invalid_value", "message": "That value isn't allowed for this preference. Send null to restore the default."})
 		return
 	case errors.Is(err, preferences.ErrNotEditable):
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "code": "not_entitled", "message": "This setting is available with a subscription or a credit balance."})

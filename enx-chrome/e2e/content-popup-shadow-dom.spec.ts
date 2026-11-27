@@ -425,6 +425,46 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
     ).toBeVisible()
   })
 
+  test('ADR-098: a long word keeps the language switch and close button clear of it', async ({
+    context,
+    page,
+  }) => {
+    await mockBackendFetch(context, { explanationLanguage: 'zh-Hans' })
+    const longWord = 'Pneumonoultramicroscopicsilicovolcanoconiosis'
+    await page.evaluate(word => {
+      const paragraph = document.createElement('p')
+      paragraph.id = 'long-word'
+      paragraph.textContent = word
+      document.body.prepend(paragraph)
+    }, longWord)
+    await page.locator('#long-word').dblclick({ position: { x: 20, y: 8 } })
+
+    const popup = page.locator('#enx-anchored-overlay')
+    const word = popup.getByRole('heading', { name: longWord })
+    const languages = popup.getByRole('group', { name: 'Explanation language' })
+    const close = popup.getByTestId('word-popover-close')
+    await expect(word).toBeVisible()
+    await expect(
+      languages.getByRole('button', { name: 'Simplified Chinese' })
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    const popupBox = (await popup.boundingBox())!
+    const wordBox = (await word.boundingBox())!
+    const languagesBox = (await languages.boundingBox())!
+    const closeBox = (await close.boundingBox())!
+    expect(wordBox.x + wordBox.width).toBeLessThanOrEqual(languagesBox.x)
+    expect(languagesBox.x + languagesBox.width).toBeLessThanOrEqual(closeBox.x)
+    expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(
+      popupBox.x + popupBox.width
+    )
+
+    await languages.getByRole('button', { name: 'English' }).click()
+    await expect(
+      languages.getByRole('button', { name: 'English' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(popup).toBeVisible()
+  })
+
   test('§4.1: close button / ESC / click-outside all close the popup', async ({
     page,
   }) => {
@@ -448,8 +488,11 @@ test.describe('Word popup - Shadow DOM React implementation', () => {
   })
 
   test('§4.1: Mark Known closes the popup and drops the word from every highlight bucket', async ({
+    context,
     page,
   }) => {
+    // The button is offered only for a stored word, one with an Id.
+    await mockBackendFetch(context, { wordData: { Id: 'w-known' } })
     const countBefore = await getHighlightedWordsCount(page)
     const word = await clickHighlightedWord(page, 0)
     expect(await isWordHighlighted(page, word)).toBe(true)

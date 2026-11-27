@@ -8,6 +8,10 @@ jest.mock('@/lib/aiLookup', () => ({
   stopAutomaticAiLookup: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 
 describe('WordPopover signed-out state (#236)', () => {
   it('says the reader was signed out and offers Sign in', () => {

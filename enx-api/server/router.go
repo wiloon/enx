@@ -31,6 +31,7 @@ import (
 	"enx-api/middleware"
 	"enx-api/preferences"
 	prefadapters "enx-api/preferences/adapters"
+	preferenceshttp "enx-api/preferences/httpapi"
 	"enx-api/ratelimit"
 	"enx-api/reader"
 	"enx-api/reader/saving"
@@ -297,9 +298,10 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.DELETE("/me", accountHandler.DeleteMe)
 
 	// Server-side user preferences (ADR-044): the AI word fallback switch and
-	// its one-time notice. Defaults and editability follow the user's payment
-	// state (ADR-045 Decision 14).
-	preferencesHandler := handlers.NewPreferencesHandler(preferencesService)
+	// its one-time notice, onboarding, and the explanation language. Defaults
+	// and editability of the AI keys follow the user's payment state
+	// (ADR-045 Decision 14).
+	preferencesHandler := preferenceshttp.NewHandler(preferencesService)
 	apiGroup.GET("/me/preferences", preferencesHandler.Get)
 	apiGroup.PUT("/me/preferences", preferencesHandler.Update)
 

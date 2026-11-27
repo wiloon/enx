@@ -1,6 +1,7 @@
 import { config } from '@/config/env'
 import AiWordFallbackSetting from '@/components/AiWordFallbackSetting'
 import ArticleChoiceSharingSetting from '@/components/ArticleChoiceSharingSetting'
+import ExplanationLanguageSetting from '@/components/ExplanationLanguageSetting'
 import '@/index.css'
 import { initSentry } from '@/lib/sentry'
 import { useWordHighlightEnabled } from '@/hooks/useWordHighlightEnabled'
@@ -105,6 +106,9 @@ function OptionsContent() {
             </span>
           </label>
         </div>
+
+        {/* Explanation language (stored in the account, ADR-098) */}
+        <ExplanationLanguageSetting />
 
         {/* AI word lookup (stored in the account, ADR-044) */}
         <div className="bg-background rounded-lg shadow-lg p-6 mb-6">

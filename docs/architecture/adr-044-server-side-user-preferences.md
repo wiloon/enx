@@ -55,6 +55,8 @@ ADR-045 的 AI 兜底需要一个**随套餐变默认值、服务端也要读**�
 
    Go 里的注册表对每个 key 定义：值类型、`Default(plan) value`、`Editable(plan) bool`。**v1 有两个 key：`aiWordFallback`（bool，AI 兜底开关）与 `aiWordFallbackNoticeAck`（bool，是否已看过首次提示，默认 false，不随套餐变，存服务端所以换设备不重复提示）**。仓库约定的分层照旧：注册表与规则在领域包里，SQL 在 `repo/`，handler 只做 HTTP。
 
+   **补充（#1230）：key 的值类型可以是布尔，也可以是枚举**（字符串，注册表里列出允许值和默认值）。第一个枚举 key 是 `explanationLanguage`（ADR-098 Decision 1）。值类型由注册表检查，handler 只解 JSON 对象；类型不对或不在允许列表里返回 400 `invalid_value`。SQL 在 `preferences/adapters/`，HTTP 在 `preferences/httpapi/`。
+
 2. **生效值由服务端算，客户端不重复实现规则。**
 
    ```

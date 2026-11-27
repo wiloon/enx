@@ -9,6 +9,10 @@ jest.mock('@/lib/aiLookup', () => ({
   stopAutomaticAiLookup: jest.fn(),
 }))
 jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/components/ExplanationLanguageSwitch', () => ({
+  __esModule: true,
+  default: () => null,
+}))
 
 function renderPopover(error: string, needsReload: boolean) {
   const store = createStore()

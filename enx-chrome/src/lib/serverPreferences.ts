@@ -21,10 +21,23 @@ export type PreferenceView = {
 
 export type PreferenceKey = 'aiWordFallback' | 'aiWordFallbackNoticeAck'
 
-export type PreferencesData = Record<PreferenceKey, PreferenceView>
+// The enum preference (ADR-098 Decision 1). Plain strings: the server may
+// hold a value this version doesn't know.
+export type ExplanationLanguageView = {
+  value: string | null
+  effective: string
+  editable: boolean
+}
+
+export type PreferencesData = Record<PreferenceKey, PreferenceView> & {
+  // Missing from an older server's response or an older cached copy.
+  explanationLanguage?: ExplanationLanguageView
+}
 
 // null returns a key to its default.
-export type PreferenceChanges = Partial<Record<PreferenceKey, boolean | null>>
+export type PreferenceChanges = Partial<
+  Record<PreferenceKey, boolean | null>
+> & { explanationLanguage?: string | null }
 
 export type PreferencesResult =
   | { ok: true; data: PreferencesData }

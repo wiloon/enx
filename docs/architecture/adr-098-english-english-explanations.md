@@ -12,7 +12,13 @@ Catglish 的释义只有英→中。线上第一位真实用户（注册的免�
 
 ### 1. 解释语言是一个服务端枚举偏好（#1230）
 
-- ADR-044 的偏好注册表加一个枚举 key（名字在 #1230 里定，暂称 `explanationLanguage`）。第一版两个值：`zh-Hans`（默认，今天的行为）和 `en`。以后 #672 加 `zh-Hant`，#1229 加其他语言，都是往这个枚举里加值，不再新建 key。
+- ADR-044 的偏好注册表加一个枚举 key `explanationLanguage`。第一版两个值：`zh-Hans`（默认，今天的行为）和 `en`。以后 #672 加 `zh-Hant`，#1229 加其他语言，都是往这个枚举里加值，不再新建 key。
+- 线上格式和布尔 key 同一个形状，值是字符串：
+  - `GET /api/me/preferences` → `"explanationLanguage": {"value": "en" | null, "effective": "zh-Hans", "editable": true}`。
+  - `PUT` 发 `{"explanationLanguage": "en"}`；`null` 回到默认。
+  - 不在允许列表里的值返回 400 `invalid_value`；给布尔 key 发字符串、给本 key 发布尔值也是。
+  - 允许值列表不发给客户端，客户端各自知道自己认识哪些值。库里存的值如果已不在列表里，按未设置处理。
+  - 所有登录用户的 `editable` 都是 true。
 - 偏好存服务端，因为选哪个词典、AI 提示词用什么语言都在服务端决定；网站和扩展读写同一个值。
 - 入口：查词浮层上一个 `中 / EN` 开关，点一下就保存（直接 `PUT`，请求限流 ADR-060 已经保护服务端）；扩展 Options 页和 enx-ui 设置页各有一个下拉菜单。用户一般选一次就不再改。
 - 客户端遇到不认识的值（例如老版本扩展收到 `zh-Hant`）时不改写它，开关显示为未选中。
