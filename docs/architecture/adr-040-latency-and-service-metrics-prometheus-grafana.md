@@ -25,7 +25,7 @@
 代码上的关键事实：
 
 - 查词入口是 `GET /api/translate` 和 `GET /api/word/:word`（`translate.Handler`）。查本地 `words`、回落 ECDICT、回填缓存、计量都在 `dictionary.Service.Resolve` 里（ADR-018 深 seam，#64/#70），它返回的 `Result.Source` 就是来源：`local` / `ecdict` / `miss`。
-- AI 调用都经过 `aitranslate.Translator` 接口（`TranslateSentence`、`TranslateWordInContext` 等）和 `rephrase.Rephraser` 接口，由 `aitranslate/factory.go`、`rephrase_factory.go` 按 provider 构造，返回值带 `Usage`（token 数）。目前**全部非流式**。
+- AI 调用都经过各功能包的 `Call`（`sentence`、`wordcontext`、`sentenceword`、`worddef`、`rephrase`），用的是 `aitranslate/factory.go` 按 provider 构造的 `llm.Chat`，返回值带 token 用量（#1244 起；此前是 `Translator` / `Rephraser` 接口）。目前**全部非流式**。
 - 每个接口只在 `/api` 下注册一次（#69），路由模板唯一。
 
 ## Options Considered
@@ -82,7 +82,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 
 **AI**
 
-- `enx_ai_request_duration_seconds{provider, operation, outcome}` —— 直方图。`operation ∈ {translate_sentence, word_in_context, sentence_with_words, rephrase}`（`sentence_with_word` 随单词版端点于 #1135 删除），`outcome ∈ {ok, error, timeout}`。桶：250ms, 500ms, 1s, 2s, 4s, 8s, 15s, 30s, 60s。
+- `enx_ai_request_duration_seconds{provider, operation, outcome}` —— 直方图。`operation ∈ {translate_sentence, word_in_context, sentence_with_words, rephrase, define_word}`（`sentence_with_word` 随单词版端点于 #1135 删除），`outcome ∈ {ok, error, timeout}`。桶：250ms, 500ms, 1s, 2s, 4s, 8s, 15s, 30s, 60s。
 - `enx_ai_tokens_total{provider, operation, direction}` —— 计数器，`direction ∈ {input, output}`，来源是 `Usage`。与 `token_ledger` 的关系：ledger 是**按用户计费的账**（留在库里），这个计数器只是**总量趋势图**，两者不互相替代。
 - 当前都是非流式，不做首 token 耗时。将来改流式时补 `enx_ai_time_to_first_token_seconds`——那才是用户感知的等待。
 
@@ -111,7 +111,7 @@ OTel 能顺带做 tracing，但当前只有一个 Go 服务、没有跨服务调
 ### 2. 埋点位置：计时只在一处，业务代码只打标签
 
 - 一个 Gin 中间件负责**所有计时**，挂在 `middleware.RequestLog` 旁边：记录 HTTP 指标；若 handler 在 context 里设置了查词来源（`c.Set(metrics.LookupSourceKey, "local"|"ecdict"|"miss")`），同时记一条 `enx_dictionary_lookup_duration_seconds`。`translate.Handler` 只需在拿到 `Resolve` 的结果后加一行 `c.Set(metrics.LookupSourceKey, …)`，不用自己掐表。
-- AI 用**装饰器**：在 `main` 组装处给 `Translator` 和 `Rephraser` 各包一层，对每个接口方法计时、记 token、归类 outcome（`context.DeadlineExceeded` → `timeout`）。provider 实现零改动，新 provider 自动覆盖。
+- AI 在**功能调用层**计时：handler 和单词定义器用同一个泛型包装函数包住每次功能包 `Call`，记耗时、token、归类 outcome（`context.DeadlineExceeded` → `timeout`）。一次功能调用记一次：解析失败算进 outcome，解析重试的 token 合并计入。不在 `llm.Chat` 层计时，否则解析失败会记成 `ok`、重试会记成两次。`operation` 在调用处显式传入，与 chat 的 `feature` 字符串无关。`sentence.Check` 在计时之后执行，不影响 outcome。provider 实现零改动，新 provider 自动覆盖。
 - 新包 `enx-api/metrics` 持有指标定义与注册（用自有 `prometheus.Registry`，不用全局默认，便于测试隔离），以 `*metrics.Metrics` 的形式经构造函数注入到需要的地方（`AGENTS.md` 的 DDD 约定）。
 
 ### 3. 标签基数红线
@@ -186,7 +186,7 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 
 ## 验证
 
-1. 单测：用自有 Registry 驱动中间件，分别走 local / ecdict / miss / 429 四条路径，断言直方图的 `source` 标签与计数；AI 装饰器对 ok / error / 超时各断言 `outcome` 与 token 计数器。
+1. 单测：用自有 Registry 驱动中间件，分别走 local / ecdict / miss / 429 四条路径，断言直方图的 `source` 标签与计数；AI 计时包装对 ok / error / 超时各断言 `outcome` 与 token 计数器。
 2. homelab：部署后在 Grafana Explore 里能查到 `enx_dictionary_lookup_duration_seconds_bucket`，手动在扩展里查一个已知词与一个新词，两种 `source` 各 +1。
 3. 生产：`curl 127.0.0.1:9091/metrics` 在 EC2 上有输出；从公网访问 `:9091` 失败；Grafana Cloud 里能查到 enx-api 与 node_exporter 的数据，dashboard 四行都有图。
 
@@ -202,3 +202,4 @@ Grafana dashboard 的 JSON 放进 `w10n-config` 的 `infra/homelab/k8s/observabi
 | 2026-10-16 | 加 `enx_rate_limited_total{route}`；请求日志行可带 `rate_limited` | ADR-060 Decision 6 |
 | 2026-10-22 | #278：补充 Source 响应契约、兼容规则及管理员展示范围 | 让未命中与词典超时/失败可区分，澄清 Source 与 Origin、浏览器缓存的边界；重试沿用 ADR-059 计量规则 |
 | 2026-10-22 | #278：确认 HTTP 502、503 与网络失败的 Retry 范围 | 所有者选择统一瞬时查词失败的恢复操作；保留错误文案、鉴权与禁用账号处理，沿用现有计量语义 |
+| 2026-11-27 | #1244：AI 计时由接口装饰器改为功能调用层的泛型包装；`operation` 列表补上已在使用的 `define_word` | `Translator` / `Rephraser` 接口在重构中删除；指标名称与含义保持不变 |
