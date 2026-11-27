@@ -77,6 +77,9 @@ func (WordsTable) Add(ctx context.Context, entry dictionary.Entry) (string, erro
 		row.AIQuality = &quality
 		row.AIPromptVersion = &version
 	}
+	if entry.Origin == dictionary.OriginWiktionary {
+		row.Source = string(dictionary.OriginWiktionary)
+	}
 	if err := repo.InsertWord(&row); err != nil {
 		// words.english is UNIQUE: the headword is already cached.
 		existing := repo.GetWordByEnglish(entry.English)
@@ -89,6 +92,18 @@ func (WordsTable) Add(ctx context.Context, entry dictionary.Entry) (string, erro
 		return existing.Id, nil
 	}
 	return row.Id, nil
+}
+
+// ID finds the live row in any case and either apostrophe (ADR-043).
+func (WordsTable) ID(ctx context.Context, english string) (string, bool, error) {
+	var ids []string
+	err := sqlitex.DB.WithContext(ctx).Model(&repo.Word{}).
+		Where("english = ? AND deleted_at IS NULL", repo.CanonicalEnglish(english)).
+		Limit(1).Pluck("id", &ids).Error
+	if err != nil || len(ids) == 0 {
+		return "", false, err
+	}
+	return ids[0], true, nil
 }
 
 // Ecdict is the dictionary.ExternalDictionary backed by ECDICT.

@@ -34,6 +34,7 @@ type Config struct {
 	Log               Log               `mapstructure:"log"`
 	Metrics           Metrics           `mapstructure:"metrics"`
 	Ecdict            Ecdict            `mapstructure:"ecdict"`
+	Wiktionary        Wiktionary        `mapstructure:"wiktionary"`
 	Resend            Resend            `mapstructure:"resend"`
 	App               App               `mapstructure:"app"`
 	Clerk             Clerk             `mapstructure:"clerk"`
@@ -93,6 +94,12 @@ type Log struct {
 
 type Metrics struct {
 	Addr string `mapstructure:"addr"`
+}
+
+// Wiktionary is the read-only Wiktionary file English-English lookups read
+// (ADR-098). An empty DBPath leaves English-English unavailable.
+type Wiktionary struct {
+	DBPath string `mapstructure:"db_path"`
 }
 
 type Ecdict struct {
@@ -916,6 +923,8 @@ func defaults() map[string]any {
 	// nothing.
 	set("ecdict.sampling", false)
 
+	set("wiktionary.db_path", "")
+
 	set("resend.api-key", "")
 	set("resend.from", "Catglish <no-reply@catglish.com>")
 	set("resend.admin-to", "")
@@ -1051,6 +1060,8 @@ var envBindings = map[string]string{
 	"metrics.addr":    "METRICS_ADDR",
 	"ecdict.db_path":  "ECDICT_DB_PATH",
 	"ecdict.sampling": "ECDICT_SAMPLING",
+
+	"wiktionary.db_path": "WIKTIONARY_DB_PATH",
 
 	"resend.api-key":        "RESEND_API_KEY",
 	"resend.from":           "RESEND_FROM",

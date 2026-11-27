@@ -1,4 +1,4 @@
-package main
+package wiktionarybuild
 
 import (
 	"bufio"
@@ -19,14 +19,15 @@ import (
 
 const sourceURL = "https://kaikki.org/dictionary/rawdata.html"
 
-type options struct {
+// Options says what to build.
+type Options struct {
 	Input, ECDICT, Out, SourceDate string
 	Log                            io.Writer // notes and the final meta counts
 }
 
-// run does the whole build. On failure, a cancelled ctx included, it leaves
+// Run does the whole build. On failure, a cancelled ctx included, it leaves
 // the output directory as it was.
-func run(ctx context.Context, opts options) (err error) {
+func Run(ctx context.Context, opts Options) (err error) {
 	defer func() {
 		// SQLite reports an interrupted statement in its own words.
 		if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {

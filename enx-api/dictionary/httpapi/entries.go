@@ -55,6 +55,22 @@ type definitionJSON struct {
 	WordType      int
 	Origin        dictionary.Origin
 	Source        dictionary.Source
+	*englishJSON
+}
+
+// englishJSON is what a word explained in English carries besides
+// definitionJSON, whose Chinese and Pronunciation are then empty (ADR-098).
+type englishJSON struct {
+	Senses          []senseJSON
+	LemmaNote       string `json:",omitempty"`
+	PronunciationUS string `json:",omitempty"`
+	PronunciationUK string `json:",omitempty"`
+}
+
+type senseJSON struct {
+	Pos     string `json:"pos"`
+	Gloss   string `json:"gloss"`
+	Example string `json:"example,omitempty"`
 }
 
 // Entries handles QUERY /api/dictionary/entries (the default) and POST
@@ -119,7 +135,24 @@ func toEntryJSON(r dictionary.EntryResult) entryJSON {
 			Chinese:       r.Result.Chinese,
 			Origin:        r.Result.Origin,
 			Source:        r.Result.Source,
+			englishJSON:   toEnglishJSON(r.Result.Definition),
 		}
+	}
+	return body
+}
+
+func toEnglishJSON(d *dictionary.EnglishDefinition) *englishJSON {
+	if d == nil {
+		return nil
+	}
+	body := &englishJSON{
+		Senses:          make([]senseJSON, len(d.Senses)),
+		LemmaNote:       d.LemmaNote,
+		PronunciationUS: d.PronunciationUS,
+		PronunciationUK: d.PronunciationUK,
+	}
+	for i, s := range d.Senses {
+		body.Senses[i] = senseJSON{Pos: s.POS, Gloss: s.Gloss, Example: s.Example}
 	}
 	return body
 }

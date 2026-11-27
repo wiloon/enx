@@ -11,10 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"enx-api/wiktionarybuild"
 )
 
 func main() {
-	opts := options{Log: os.Stdout}
+	opts := wiktionarybuild.Options{Log: os.Stdout}
 	flag.StringVar(&opts.Input, "input", "", "raw-wiktextract-data.jsonl.gz from kaikki.org (required)")
 	flag.StringVar(&opts.ECDICT, "ecdict", "", "ECDICT stardict.db, read for POS ranking (required)")
 	flag.StringVar(&opts.Out, "out", "", "SQLite file to create; must not exist (required)")
@@ -23,7 +25,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, opts); err != nil {
+	if err := wiktionarybuild.Run(ctx, opts); err != nil {
 		fmt.Fprintln(os.Stderr, "wiktionary-build:", err)
 		stop()
 		os.Exit(1)

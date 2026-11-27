@@ -153,7 +153,8 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// The daily lookup quota (ADR-079 Decision 5): each caller charges it
 	// before it resolves; dictionaryService itself never does.
 	lookupQuota := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, quotaTiers, cfg.Stripe.Quota, time.Now)
-	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, entitlements)
+	dictionaryService := dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, entitlements,
+		adapters.OpenWiktionary(cfg.Wiktionary.DBPath))
 	if m != nil {
 		dictionaryService.RecordAIWordOutcomes(m)
 	}
