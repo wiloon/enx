@@ -237,6 +237,7 @@ ADR-030 早就把「AI 兜底」设计成链尾，但它的存储与计费方案
 实现时细化或偏离了上文的几处，以此为准：
 
 - **provider 范围**：先只做 **deepseek**（homelab）和 **openrouter**（生产）。`DefineWord` 是个**可选接口**（`aitranslate.WordDefiner`，经 `AsWordDefiner` 取用，能穿过指标包装 `Instrument`），不是给共享的 `Translator` 接口加方法，所以 bedrock、gemini、kimi、minimax 不用改。provider 不支持时整个 AI 兜底关闭，启动日志里有一条 warn。
+  - **2026-11-27 修订（#1244，纯重构）**：provider 只提供 `llm.Chat`，不再实现 `DefineWord`；哪个 provider 支持定义单词改由 `factory.go` 声明，`AsWordDefiner` 据此返回 `WordDefiner`（内部调用 `worddef.Call` 并记指标）。原因：给一个功能加参数时不必再改每个 provider（#1237）。范围不变：仍只有 deepseek 和 openrouter。
 - **第二个请求的形状**：`POST /api/dictionary/ai-word`，body `{"word": "..."}`。成功是 200 `{"found": true, "word": {…与查词相同的 Word 载荷…}}`，AI 没有定义是 200 `{"found": false, "reason": "no_definition"}`。错误用状态码加稳定的 `code`：`invalid_word` 400、`not_entitled` 403、`insufficient_credit` 402、`rate_limited` 429、`ai_unavailable` 503、`internal_error` 502（调用模型之前我方出错，含 ECDICT 超时或出错）、`ai_upstream_failed` 502（上游 AI 服务出错，含回复不合格）。
 - **第一个请求的字段**：未命中且已配置兜底时，响应里带 `AIFallback: { CanUse, Auto }`（首字母大写，与这个载荷里其他字段一致，不是 Decision 3 里写的小写）。命中时不带。
 - **计费细化**（Decision 7）：调用失败**不扣费**；模型回了**不合格的内容**（解析或校验失败）也**不扣费**，因为那不是用户的责任；调用成功才扣，包括「不是词」。

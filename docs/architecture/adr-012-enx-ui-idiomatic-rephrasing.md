@@ -17,6 +17,7 @@
 
 ## 修订记录
 
+- **2026-11-27（#1244，纯重构）**：provider 不再逐功能实现方法，只提供 `llm.Chat`，所以 `rephrase.Rephraser` 接口与 `NewRephraser` 里的接口断言删除，改为 `factory.go` 声明该 provider 是否有改写用的 chat（含 `rephrase-model` 的绑定）。原因：给一个功能加参数时不必再改每个 provider（#1237）。对外行为不变：支持改写的 provider 集合相同，显式配置了不支持改写的 provider 仍 `os.Exit(1)`。
 - **2026-09-02（部署前）**：新增 **MiniMax** 的 `Rephrase` 实现。原计划「至少实现 kimi 一个 provider」，但 homelab 部署跑的是 `sentence-translate.provider = minimax`（只有 MiniMax 的 key），而 Decision 1 定的「provider 显式配了但 `NewRephraser` 失败 → `os.Exit(1)`」会让 enx-api 在 homelab 直接崩溃。为让 homelab 能用上 rephrase，给 MiniMax 也实现了 `Rephraser`：
   - 共享 system prompt / temperature 提到 `aitranslate/rephrase` 包（`rephrase.SystemPrompt` / `rephrase.Temperature`），kimi 与 minimax 共用，不再各写一份。
   - MiniMax 的 `chat` helper 改为返回 `usage` 并接受 `temperature` 参数（对齐 kimi）。
