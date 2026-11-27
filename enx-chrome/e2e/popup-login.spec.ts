@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs'
 import { loginAvailable, LOGIN_SKIP_REASON } from './auth'
 import { expect, test } from './fixtures'
 import { openPopup } from './helpers'
@@ -40,6 +41,28 @@ test.describe('Popup - version footer', () => {
       new RegExp(
         `^Catglish v${version.replace(/\./g, '\\.')} .*\\nCommit [0-9a-f]{7,}\\nBuilt `
       )
+    )
+  })
+})
+
+// ADR-096 Decision 10: Chrome fills the manifest's name from _locales.
+test.describe('Extension name', () => {
+  test.use({ uiLanguage: 'en' })
+
+  test('is the English name on an English browser', async ({
+    page,
+    extensionId,
+  }) => {
+    const { extName } = JSON.parse(
+      readFileSync(
+        new URL('../_locales/en/messages.json', import.meta.url),
+        'utf8'
+      )
+    )
+    await openPopup(page, extensionId)
+
+    expect(await page.evaluate(() => chrome.runtime.getManifest().name)).toBe(
+      `${extName.message} (Dev)`
     )
   })
 })

@@ -4,9 +4,11 @@
 
 import { badgeFor, type LearningModeStatus } from '@/lib/learningModeStatus'
 
-// The manifest has no action.default_title, so Chrome's default hover text is
-// the extension name; a per-tab title can't be unset, only overwritten.
-const defaultTitle = (): string => chrome.runtime.getManifest().name ?? ''
+// A per-tab title can't be unset, only overwritten, so put back what Chrome
+// shows on an untouched tab. Not the manifest name: getManifest() returns it
+// localised, and the extension's UI stays English (ADR-096 Decision 10).
+const defaultTitle = (): string =>
+  chrome.runtime.getManifest().action?.default_title ?? ''
 
 export async function applyStatus(
   tabId: number,

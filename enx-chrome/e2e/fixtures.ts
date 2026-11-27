@@ -20,6 +20,11 @@ export type ExtensionOptions = {
    * the local throwaway database directly, so a deployed lane turns it off.
    */
   seedsVocabulary: boolean
+  /**
+   * Browser UI language, which picks the extension's _locales messages.
+   * Unset follows the machine's own locale.
+   */
+  uiLanguage: string | undefined
 }
 
 type ExtensionFixtures = ExtensionOptions & {
@@ -47,11 +52,12 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
   extensionDir: ['dist-e2e', { option: true }],
   uiOrigin: [UI_ORIGIN, { option: true }],
   seedsVocabulary: [true, { option: true }],
+  uiLanguage: [undefined, { option: true }],
 
   // `viewport` is Playwright's built-in option. Default stays 1280×720; a
   // spec that needs the real window size (Split View innerWidth, ADR-089)
   // sets `test.use({ viewport: null })`.
-  context: async ({ extensionDir, headless, viewport }, use) => {
+  context: async ({ extensionDir, headless, viewport, uiLanguage }, use) => {
     const pathToExtension = path.join(__dirname, '..', extensionDir)
     if (!existsSync(path.join(pathToExtension, 'manifest.json'))) {
       throw new Error(
@@ -81,6 +87,8 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
       channel: 'chromium',
       executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
       args,
+      // Chromium on Linux takes its UI language from LANGUAGE, not --lang.
+      env: uiLanguage ? { ...process.env, LANGUAGE: uiLanguage } : undefined,
       viewport,
       // devices['Desktop Chrome'] injects deviceScaleFactor: 1; Playwright
       // rejects that pairing when viewport is null (Split View width checks).

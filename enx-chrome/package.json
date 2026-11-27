@@ -8,7 +8,7 @@
     "build:homelab": "pnpm build",
     "build:homelab-test": "tsc -p tsconfig.app.json && vite build --mode homelab-test",
     "build:dev": "tsc -p tsconfig.app.json && vite build --mode development",
-    "build:prod": "tsc -p tsconfig.app.json && vite build --mode production && node scripts/check-bundle-env.mjs",
+    "build:prod": "tsc -p tsconfig.app.json && vite build --mode production && node scripts/check-bundle-env.mjs && node scripts/check-locales.mjs",
     "build:e2e": "tsc -p tsconfig.app.json && VITE_ENX_UI_ORIGINS=http://localhost:3000 VITE_CONTENT_SCRIPT_ORIGINS=http://localhost:8765,https://standardebooks.org,https://docs.aws.amazon.com vite build --mode development --outDir dist-e2e",
     "package:prod": "node scripts/version.mjs --release && pnpm build:prod && node scripts/package-prod.mjs",
     "preview": "vite preview",
