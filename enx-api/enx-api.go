@@ -174,8 +174,10 @@ func runStatsIngestLogCleanup(ctx context.Context, ttl time.Duration, lookupEven
 
 // runStatsJobs deletes expired stats deduplication rows (ADR-028 Decision
 // 5), runs the lookup event job, and deletes the daily lookup quota rows
-// outside the lookup events' retention (ADR-079 Decision 5). daily_stats
-// and active_users_daily are history and are never deleted. Every step is
+// outside the lookup events' retention (ADR-079 Decision 5), and rolls the
+// anonymous device rows of finished UTC days up into anonymous_lookups_daily,
+// deleting them (ADR-095). daily_stats, active_users_daily and
+// anonymous_lookups_daily are history and are never deleted. Every step is
 // safe to rerun.
 func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration, lookupEventRetentionDays int, activeUsers *userstats.Service) {
 	deleted, err := stats.PurgeIngestLog(ctx, now, ingestLogTTL)
@@ -192,6 +194,13 @@ func runStatsJobs(ctx context.Context, now time.Time, ingestLogTTL time.Duration
 		logJobFailure(ctx, "dictionary: lookup quota usage cleanup", err)
 	} else if deleted > 0 {
 		logger.Infof("dictionary: deleted %d lookup quota usage row(s) past retention", deleted)
+	}
+
+	days, err := dictadapters.AnonymousDeviceUsage{}.Rollup(ctx, now)
+	if err != nil {
+		logJobFailure(ctx, "dictionary: anonymous lookup rollup", err)
+	} else if days > 0 {
+		logger.Infof("dictionary: rolled up anonymous lookups for %d day(s)", days)
 	}
 }
 

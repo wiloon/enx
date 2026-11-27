@@ -66,3 +66,37 @@ func TestStatsJobDeletesQuotaUsageOutsideTheLookupEventRetention(t *testing.T) {
 		t.Fatalf("days left %v, want [2026-09-15 2026-10-16]", days)
 	}
 }
+
+// ADR-095: the anonymous device rows of finished UTC days are rolled up and
+// deleted by the stats job, even when the active-users rollup (which makes
+// the lookup event job return early) fails.
+func TestStatsJobRollsUpAnonymousDeviceUsage(t *testing.T) {
+	sqlitex.Init(filepath.Join(t.TempDir(), "job.db"))
+	now := time.Date(2026, 10, 16, 1, 30, 0, 0, time.UTC)
+	for _, r := range []sqlitex.AnonymousDeviceUsage{
+		{DeviceHash: "h1", UTCDay: "2026-10-15", Used: 2},
+		{DeviceHash: "h2", UTCDay: "2026-10-15", Used: 5},
+		{DeviceHash: "h1", UTCDay: "2026-10-16", Used: 1},
+	} {
+		if err := sqlitex.DB.Create(&r).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The active-users rollup fails, so runLookupEventJob returns early.
+	if err := sqlitex.DB.Migrator().DropTable(&sqlitex.LookupEvent{}); err != nil {
+		t.Fatal(err)
+	}
+
+	runStatsJobs(context.Background(), now, time.Hour, 31, userstats.NewService(repo.UserStats{}, func() time.Time { return now }))
+
+	var got []sqlitex.AnonymousLookupsDay
+	sqlitex.DB.Find(&got)
+	if len(got) != 1 || got[0] != (sqlitex.AnonymousLookupsDay{UTCDay: "2026-10-15", Devices: 2, Lookups: 7}) {
+		t.Fatalf("aggregate rows %+v, want 2026-10-15: 2 devices, 7 lookups", got)
+	}
+	var days []string
+	sqlitex.DB.Model(&sqlitex.AnonymousDeviceUsage{}).Pluck("utc_day", &days)
+	if len(days) != 1 || days[0] != "2026-10-16" {
+		t.Fatalf("device rows left for %v, want only today's", days)
+	}
+}

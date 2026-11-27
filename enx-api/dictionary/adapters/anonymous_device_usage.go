@@ -38,3 +38,29 @@ func (AnonymousDeviceUsage) Take(ctx context.Context, deviceHash string, day tim
 	}
 	return allowed, nil
 }
+
+// Rollup writes one anonymous_lookups_daily row per finished UTC day (before
+// now's) that has device rows, then deletes those rows, in one transaction.
+// A day already rolled up keeps its row: rows written for it later (a lookup
+// straddling midnight) are deleted without being counted. It returns the
+// number of days newly rolled up. Run hourly, it leaves no device row older
+// than about a day and an hour, inside the 2 days the privacy policy promises.
+func (AnonymousDeviceUsage) Rollup(ctx context.Context, now time.Time) (int64, error) {
+	today := now.UTC().Format(utcDayLayout)
+	var days int64
+	err := sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Exec(`INSERT INTO anonymous_lookups_daily (utc_day, devices, lookups)
+			SELECT utc_day, SUM(CASE WHEN used > 0 THEN 1 ELSE 0 END), SUM(used)
+			FROM anonymous_device_usage WHERE utc_day < ? GROUP BY utc_day HAVING SUM(used) > 0
+			ON CONFLICT(utc_day) DO NOTHING`, today)
+		if res.Error != nil {
+			return res.Error
+		}
+		days = res.RowsAffected
+		return tx.Exec(`DELETE FROM anonymous_device_usage WHERE utc_day < ?`, today).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return days, nil
+}
