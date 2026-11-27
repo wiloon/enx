@@ -93,13 +93,22 @@ export async function enableLearningMode(page: Page, extensionId: string) {
   // Get the target page URL
   const targetUrl = page.url()
 
-  // Open popup to execute chrome.tabs API (which is only available in extension contexts)
-  const popupPage = await page.context().newPage()
-  await popupPage.goto(`chrome-extension://${extensionId}/popup.html`)
-  await popupPage.waitForLoadState('domcontentloaded')
+  // Run the enable logic in the extension's service worker, which has the
+  // chrome.tabs API. Not the popup page: with no Clerk session (a fresh
+  // profile, ADR-095) Clerk navigates the popup while it loads, which destroys
+  // the evaluate's execution context.
+  const context = page.context()
+  let worker = context
+    .serviceWorkers()
+    .find(sw => sw.url().startsWith(`chrome-extension://${extensionId}/`))
+  if (!worker) {
+    worker = await context.waitForEvent('serviceworker', {
+      predicate: sw =>
+        sw.url().startsWith(`chrome-extension://${extensionId}/`),
+    })
+  }
 
-  // Execute the enable logic from popup context (has chrome.tabs API access)
-  const result = await popupPage.evaluate(async url => {
+  const result = await worker.evaluate(async url => {
     try {
       // Find the tab with our target URL
       const tabs = await chrome.tabs.query({})
@@ -131,8 +140,6 @@ export async function enableLearningMode(page: Page, extensionId: string) {
       return { success: false, error: (error as Error).message }
     }
   }, targetUrl)
-
-  await popupPage.close()
 
   console.log('Enable learning mode result:', result)
 
