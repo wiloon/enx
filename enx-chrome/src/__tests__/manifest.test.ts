@@ -19,6 +19,16 @@ const pkg = JSON.parse(
 
 const VERSION = '0.1.2'
 
+type Messages = Record<'extName' | 'extDescription', { message: string }>
+
+const messages = (locale: string): Messages =>
+  JSON.parse(
+    readFileSync(
+      join(__dirname, `../../_locales/${locale}/messages.json`),
+      'utf8'
+    )
+  )
+
 // buildManifest returns an open-ended Manifest (most keys are `unknown`); these
 // are the fields this file reads, all present in manifest.json.
 interface StampedManifest {
@@ -160,15 +170,6 @@ describe('manifest stamping (ADR-019)', () => {
       ])
     }
   )
-
-  // The Web Store shows this as the summary and rejects more than 132
-  // characters.
-  it('carries the store summary within the 132 character limit', () => {
-    expect(base.description).toBe(
-      "Read English in English: help with the one word or sentence you're stuck on, and looked-up words underlined when they return."
-    )
-    expect(base.description.length).toBeLessThanOrEqual(132)
-  })
 
   it('keeps the static host_permissions empty', () => {
     expect(base.host_permissions).toEqual([])
@@ -322,5 +323,61 @@ describe('manifest stamping (ADR-019)', () => {
         'storage',
       ].sort()
     )
+  })
+})
+
+// ADR-096 Decision 10: the Web Store shows a localised listing only when the
+// package has _locales.
+describe('localised name and description (ADR-096)', () => {
+  const targetNames = Object.keys(TARGETS) as TargetName[]
+
+  it('uses the message placeholders, with English as the default', () => {
+    expect(base.default_locale).toBe('en')
+    expect(base.name).toBe('__MSG_extName__')
+    expect(base.description).toBe('__MSG_extDescription__')
+  })
+
+  it('keeps the English name and store summary unchanged', () => {
+    expect(messages('en').extName.message).toBe(
+      'Catglish - Learn English as you read the web'
+    )
+    expect(messages('en').extDescription.message).toBe(
+      "Read English in English: help with the one word or sentence you're stuck on, and looked-up words underlined when they return."
+    )
+  })
+
+  it('carries the Simplified Chinese name and store summary', () => {
+    expect(messages('zh_CN').extName.message).toBe('Catglish')
+    expect(messages('zh_CN').extDescription.message).toBe('用英文读懂英文')
+  })
+
+  // Chrome rejects a name over 75 characters, suffix included, and a
+  // description over 132.
+  it.each(['en', 'zh_CN'])('stays within Chrome limits in %s', locale => {
+    const { extName, extDescription } = messages(locale)
+    for (const target of targetNames) {
+      const name = stamp(TARGETS[target]).name.replace(
+        '__MSG_extName__',
+        extName.message
+      )
+      expect(name).toContain(extName.message)
+      expect(name.length).toBeLessThanOrEqual(75)
+    }
+    expect(extDescription.message.length).toBeGreaterThan(0)
+    expect(extDescription.message.length).toBeLessThanOrEqual(132)
+  })
+
+  // Chrome substitutes a placeholder inside a longer string, so the build
+  // suffix can follow it.
+  it('keeps the placeholders in a stamped manifest', () => {
+    const production = stamp(TARGETS.production) as unknown as {
+      name: string
+      description: string
+      default_locale: string
+    }
+    expect(production.name).toBe('__MSG_extName__')
+    expect(production.description).toBe('__MSG_extDescription__')
+    expect(production.default_locale).toBe('en')
+    expect(stamp(TARGETS.development).name).toBe('__MSG_extName__ (Dev)')
   })
 })

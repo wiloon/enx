@@ -39,7 +39,8 @@ export function buildManifest(
   cookieHost.port = ''
 
   // So a non-production build is recognisable in chrome://extensions and in the
-  // toolbar, instead of two identical-looking "Catglish" entries.
+  // toolbar, instead of two identical-looking "Catglish" entries. The name is a
+  // _locales placeholder; Chrome substitutes it with the suffix after it.
   const NAME_SUFFIX: Partial<Record<TargetName, string>> = {
     production: '',
     homelab: ' (Lab)',

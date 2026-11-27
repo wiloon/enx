@@ -21,7 +21,8 @@ beforeEach(() => {
     async (items: Record<string, unknown>) => Object.assign(store, items)
   )
   ;(chrome.runtime.getManifest as jest.Mock).mockReturnValue({
-    name: 'Catglish',
+    name: 'Catglish - Learn English as you read the web (Dev)',
+    action: { default_title: 'Catglish' },
   })
   ;(chrome.action.setBadgeText as jest.Mock).mockResolvedValue(undefined)
   ;(chrome.action.setBadgeBackgroundColor as jest.Mock).mockResolvedValue(
