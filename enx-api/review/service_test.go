@@ -14,12 +14,15 @@ type fakeWord struct {
 }
 
 // fakeStore is an in-memory Store for one user and word. A failed fn rolls
-// nothing back: atomicity is the adapter's, tested on SQLite.
+// nothing back: atomicity is the adapter's, tested on SQLite. schedules is
+// what Candidates reads; live is false only when a test clears it.
 type fakeStore struct {
-	word  fakeWord
-	state *State
-	logs  []Log
-	err   error
+	word      fakeWord
+	state     *State
+	logs      []Log
+	err       error
+	schedules []ScheduleRow
+	live      bool
 }
 
 func (f *fakeStore) Transact(_ context.Context, fn func(Tx) error) error {
@@ -27,6 +30,10 @@ func (f *fakeStore) Transact(_ context.Context, fn func(Tx) error) error {
 		return f.err
 	}
 	return fn(f)
+}
+
+func (f *fakeStore) Schedules(context.Context, string) ([]ScheduleRow, error) {
+	return f.schedules, nil
 }
 
 func (f *fakeStore) Word(string, string) (int, bool, error) {
@@ -60,6 +67,10 @@ func (f *fakeStore) AddLog(l Log) error {
 	return nil
 }
 
+func (f *fakeStore) LiveWord(string) (bool, error) {
+	return f.live, nil
+}
+
 var start = time.Date(2026, 11, 27, 9, 0, 0, 0, time.UTC)
 
 // clock is a settable time source.
@@ -84,7 +95,7 @@ func rescheduled(logs []Log) string {
 }
 
 func newTestService() (*Service, *fakeStore, *clock) {
-	store, c := &fakeStore{}, &clock{at: start}
+	store, c := &fakeStore{live: true}, &clock{at: start}
 	return NewService(store, c.now), store, c
 }
 
@@ -219,5 +230,124 @@ func TestAFailedTransactionIsReturned(t *testing.T) {
 
 	if !errors.Is(lookupErr, store.err) || !errors.Is(knownErr, store.err) {
 		t.Fatalf("errors %v, %v; want the store's", lookupErr, knownErr)
+	}
+}
+
+func candidateIDs(got []Candidate) []string {
+	out := make([]string, len(got))
+	for i, c := range got {
+		out[i] = c.WordID
+	}
+	return out
+}
+
+func TestSessionOrdersDueThenFreshAndSkipsTheRest(t *testing.T) {
+	s, store, c := newTestService()
+	c.at = start
+	dueEarly := &State{Due: start.Add(-48 * time.Hour)}
+	dueLate := &State{Due: start.Add(-time.Hour)}
+	notDue := &State{Due: start.Add(24 * time.Hour)}
+	store.schedules = []ScheduleRow{
+		{WordID: "fresh-old", English: "old", QueryCount: 1, UpdatedAt: start.Add(-3 * time.Hour)},
+		{WordID: "due-late", English: "late", QueryCount: 2, UpdatedAt: start, State: dueLate},
+		{WordID: "known", English: "known", Known: true, QueryCount: 3, UpdatedAt: start, State: dueEarly},
+		{WordID: "fresh-new", English: "new", QueryCount: 1, UpdatedAt: start.Add(-time.Hour)},
+		{WordID: "due-early", English: "early", QueryCount: 1, UpdatedAt: start, State: dueEarly},
+		{WordID: "not-due", English: "later", QueryCount: 1, UpdatedAt: start, State: notDue},
+		{WordID: "no-lookups", English: "mark", QueryCount: 0, UpdatedAt: start},
+	}
+
+	got, err := s.Candidates(context.Background(), "u1", SessionLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"due-early", "due-late", "fresh-new", "fresh-old"}
+	if fmt.Sprint(candidateIDs(got)) != fmt.Sprint(want) {
+		t.Fatalf("candidates %v, want %v", candidateIDs(got), want)
+	}
+}
+
+func TestSessionCapsAtTwenty(t *testing.T) {
+	s, store, _ := newTestService()
+	for i := 0; i < 25; i++ {
+		store.schedules = append(store.schedules, ScheduleRow{
+			WordID: fmt.Sprintf("w%d", i), English: fmt.Sprintf("e%d", i),
+			QueryCount: 1, UpdatedAt: start.Add(-time.Duration(i) * time.Hour),
+		})
+	}
+
+	got, err := s.Candidates(context.Background(), "u1", SessionLimit)
+	if err != nil || len(got) != SessionLimit || got[0].WordID != "w0" || got[19].WordID != "w19" {
+		t.Fatalf("got %d cards starting %v; want %d starting w0..w19", len(got), candidateIDs(got), SessionLimit)
+	}
+}
+
+func TestANewWordAnsweredEasyIsDueInSixteenDays(t *testing.T) {
+	s, store, _ := newTestService()
+	store.word = fakeWord{count: 1}
+
+	due, err := s.Answer(context.Background(), "u1", "w1", RatingEasy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDue := start.Add(16 * 24 * time.Hour)
+	if !due.Equal(wantDue) || store.state == nil || !store.state.Due.Equal(wantDue) || store.state.Reps != 1 {
+		t.Fatalf("due %v state %+v, want %v with one rep", due, store.state, wantDue)
+	}
+	if len(store.logs) != 1 || store.logs[0].Type != SignalEasy || store.logs[0].Source != SourceReview {
+		t.Fatalf("logs %+v, want one easy/review", store.logs)
+	}
+}
+
+func TestARepeatedAnswerIsRefusedAndWritesNothing(t *testing.T) {
+	s, store, _ := newTestService()
+	store.word = fakeWord{count: 1}
+	if _, err := s.Answer(context.Background(), "u1", "w1", RatingGood); err != nil {
+		t.Fatal(err)
+	}
+	first := *store.state
+	logs := len(store.logs)
+
+	_, err := s.Answer(context.Background(), "u1", "w1", RatingGood)
+	if !errors.Is(err, ErrNotDue) || *store.state != first || len(store.logs) != logs {
+		t.Fatalf("err %v state %+v logs %d; want ErrNotDue and no change", err, store.state, len(store.logs))
+	}
+}
+
+func TestAnswerOfAGoneWordIsErrWordGone(t *testing.T) {
+	s, store, _ := newTestService()
+	store.live = false
+	store.word = fakeWord{count: 1}
+
+	_, err := s.Answer(context.Background(), "u1", "w1", RatingGood)
+	if !errors.Is(err, ErrWordGone) || store.state != nil || len(store.logs) != 0 {
+		t.Fatalf("err %v state %+v logs %d; want ErrWordGone and nothing written", err, store.state, len(store.logs))
+	}
+}
+
+func TestAnswerOfAKnownWordIsErrNotDue(t *testing.T) {
+	s, store, _ := newTestService()
+	store.word = fakeWord{count: 2, known: true}
+	store.state = &State{UserID: "u1", WordID: "w1", Due: start.Add(-time.Hour), Reps: 1}
+
+	_, err := s.Answer(context.Background(), "u1", "w1", RatingGood)
+	if !errors.Is(err, ErrNotDue) {
+		t.Fatalf("err %v, want ErrNotDue", err)
+	}
+}
+
+func TestParseRating(t *testing.T) {
+	for raw, want := range map[string]Rating{
+		"again": RatingAgain, "hard": RatingHard, "good": RatingGood, "easy": RatingEasy,
+	} {
+		got, ok := ParseRating(raw)
+		if !ok || got != want {
+			t.Errorf("ParseRating(%q) = %q, %v", raw, got, ok)
+		}
+	}
+	for _, raw := range []string{"", "Again", "medium"} {
+		if _, ok := ParseRating(raw); ok {
+			t.Errorf("ParseRating(%q) ok, want false", raw)
+		}
 	}
 }

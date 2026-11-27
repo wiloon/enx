@@ -40,6 +40,7 @@ import (
 	"enx-api/repo"
 	"enx-api/review"
 	reviewadapters "enx-api/review/adapters"
+	reviewhttp "enx-api/review/httpapi"
 	"enx-api/savedpage"
 	"enx-api/stats"
 	"enx-api/translate"
@@ -320,6 +321,11 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	knownWordHandler := handlers.NewKnownWordHandler(reviews)
 	apiGroup.PUT("/me/words/:english/known", knownWordHandler.Set)
 	apiGroup.DELETE("/me/words/:english/known", knownWordHandler.Clear)
+	// Review session and answers (ADR-097): paid tier only; states are still
+	// written for every signed-in user on lookups and Know it above.
+	reviewHandler := reviewhttp.NewHandler(reviews, dictionaryService, explanationLanguages, quotaTiers)
+	apiGroup.GET("/me/review/session", reviewHandler.Session)
+	apiGroup.POST("/me/review/answers", reviewHandler.Answer)
 	// The review list the extension underlines from (ADR-069 Decision 1):
 	// one request per page, no page text. Successful loads are the
 	// "pages enabled" count in Grafana.

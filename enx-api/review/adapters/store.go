@@ -120,6 +120,69 @@ func (t tx) AddLog(l review.Log) error {
 	}).Error
 }
 
+func (t tx) LiveWord(wordID string) (bool, error) {
+	var n int64
+	err := t.db.Raw(`SELECT COUNT(1) FROM words WHERE id = ? AND deleted_at IS NULL`, wordID).Scan(&n).Error
+	return n > 0, err
+}
+
+// Schedules lists every live word the user has a user_dicts row for, with its
+// review state when present. Candidates filters and orders them.
+func (Store) Schedules(ctx context.Context, userID string) ([]review.ScheduleRow, error) {
+	type row struct {
+		WordID              string
+		English             string
+		Known               bool
+		QueryCount          int
+		UpdatedAt           int64
+		HasState            bool
+		Stability           float64
+		Difficulty          float64
+		Phase               int
+		Due                 *int64
+		LastReview          *int64
+		Reps                int
+		Lapses              int
+		LastLapseAt         *int64
+		LookupRescheduledAt *int64
+	}
+	var rows []row
+	err := sqlitex.DB.WithContext(ctx).Raw(`
+		SELECT ud.word_id AS word_id, w.english AS english,
+			COALESCE(ud.known, 0) AS known, COALESCE(ud.query_count, 0) AS query_count,
+			ud.updated_at AS updated_at,
+			rs.word_id IS NOT NULL AS has_state,
+			COALESCE(rs.stability, 0) AS stability, COALESCE(rs.difficulty, 0) AS difficulty,
+			COALESCE(rs.phase, 0) AS phase, rs.due AS due, rs.last_review AS last_review,
+			COALESCE(rs.reps, 0) AS reps, COALESCE(rs.lapses, 0) AS lapses,
+			rs.last_lapse_at AS last_lapse_at, rs.lookup_rescheduled_at AS lookup_rescheduled_at
+		FROM user_dicts ud
+		JOIN words w ON w.id = ud.word_id AND w.deleted_at IS NULL
+		LEFT JOIN review_states rs ON rs.user_id = ud.user_id AND rs.word_id = ud.word_id
+		WHERE ud.user_id = ?`, userID).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]review.ScheduleRow, len(rows))
+	for i, r := range rows {
+		out[i] = review.ScheduleRow{
+			WordID: r.WordID, English: r.English, Known: r.Known,
+			QueryCount: r.QueryCount, UpdatedAt: time.UnixMilli(r.UpdatedAt),
+		}
+		if r.HasState && r.Due != nil && r.LastReview != nil {
+			st := review.State{
+				UserID: userID, WordID: r.WordID,
+				Stability: r.Stability, Difficulty: r.Difficulty, Phase: r.Phase,
+				Due: time.UnixMilli(*r.Due), LastReview: time.UnixMilli(*r.LastReview),
+				Reps: r.Reps, Lapses: r.Lapses,
+				LastLapseAt: timeOf(r.LastLapseAt), LookupRescheduledAt: timeOf(r.LookupRescheduledAt),
+			}
+			out[i].State = &st
+		}
+	}
+	return out, nil
+}
+
 // millisOf is t as a column that is NULL for the zero time.
 func millisOf(t time.Time) *int64 {
 	if t.IsZero() {

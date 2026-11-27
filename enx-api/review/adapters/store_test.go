@@ -23,7 +23,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&repo.UserDict{}, &sqlitex.ReviewState{}, &sqlitex.ReviewLog{}); err != nil {
+	if err := db.AutoMigrate(&sqlitex.Word{}, &repo.UserDict{}, &sqlitex.ReviewState{}, &sqlitex.ReviewLog{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db
@@ -148,5 +148,78 @@ func TestAFailedTransactionKeepsNothing(t *testing.T) {
 	db.Model(&repo.UserDict{}).Count(&rows)
 	if !errors.Is(err, failed) || rows != 0 {
 		t.Fatalf("err %v, %d user_dicts rows; want the error and no row", err, rows)
+	}
+}
+
+func seedWord(t *testing.T, id, english string, deleted bool) {
+	t.Helper()
+	row := sqlitex.Word{Id: id, English: english, CreatedAt: 1, UpdatedAt: 1}
+	if deleted {
+		ms := int64(2)
+		row.DeletedAt = &ms
+	}
+	if err := sqlitex.DB.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLiveWordIgnoresDeletedRows(t *testing.T) {
+	newTestDB(t)
+	seedWord(t, "live", "cat", false)
+	seedWord(t, "gone", "dog", true)
+
+	inTx(t, func(tx review.Tx) error {
+		ok, err := tx.LiveWord("live")
+		if err != nil || !ok {
+			t.Fatalf("live: %v, %v", ok, err)
+		}
+		ok, err = tx.LiveWord("gone")
+		if err != nil || ok {
+			t.Fatalf("gone: %v, %v", ok, err)
+		}
+		ok, err = tx.LiveWord("missing")
+		if err != nil || ok {
+			t.Fatalf("missing: %v, %v", ok, err)
+		}
+		return nil
+	})
+}
+
+func TestSchedulesJoinsLiveWordsAndStates(t *testing.T) {
+	newTestDB(t)
+	seedWord(t, "w1", "cat", false)
+	seedWord(t, "w2", "dog", false)
+	seedWord(t, "w3", "owl", true)
+	at := time.UnixMilli(1_700_000_000_000)
+	if err := sqlitex.DB.Create(&repo.UserDict{UserId: "u1", WordId: "w1", QueryCount: 2, UpdatedAt: at.UnixMilli()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Create(&repo.UserDict{UserId: "u1", WordId: "w2", QueryCount: 1, Known: true, UpdatedAt: at.UnixMilli()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlitex.DB.Create(&repo.UserDict{UserId: "u1", WordId: "w3", QueryCount: 4, UpdatedAt: at.UnixMilli()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	inTx(t, func(tx review.Tx) error {
+		return tx.SaveState(review.State{UserID: "u1", WordID: "w1", Stability: 1, Difficulty: 5, Phase: 2,
+			Due: at.Add(24 * time.Hour), LastReview: at, Reps: 1})
+	})
+
+	got, err := (Store{}).Schedules(context.Background(), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("rows %+v, want w1 and w2 only", got)
+	}
+	byID := map[string]review.ScheduleRow{}
+	for _, row := range got {
+		byID[row.WordID] = row
+	}
+	if row := byID["w1"]; row.English != "cat" || row.QueryCount != 2 || row.State == nil || row.State.Reps != 1 {
+		t.Fatalf("w1 %+v", row)
+	}
+	if row := byID["w2"]; row.English != "dog" || !row.Known || row.State != nil {
+		t.Fatalf("w2 %+v", row)
 	}
 }

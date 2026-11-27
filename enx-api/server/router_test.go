@@ -35,6 +35,8 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 		"PUT /me/words/:english/known",
 		"DELETE /me/words/:english/known",
 		"POST /me/word-lookups",
+		"GET /me/review/session",
+		"POST /me/review/answers",
 		"GET /me/review-words",
 	} {
 		if registered[route] {
