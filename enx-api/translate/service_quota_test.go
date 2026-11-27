@@ -47,7 +47,7 @@ func newTestHandlerWithQuota(limits config.StripeQuota) *Handler {
 	return NewHandler(
 		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, noAI{}, nil),
 		dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now),
-		repo.ReviewLog{},
+		repo.WordCounts{},
 	)
 }
 

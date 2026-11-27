@@ -18,6 +18,7 @@ require (
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.2
 	github.com/knadh/koanf/providers/confmap v1.0.1
 	github.com/knadh/koanf/v2 v2.4.1
+	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stripe/stripe-go/v86 v86.4.2
 	go.uber.org/zap v1.28.0

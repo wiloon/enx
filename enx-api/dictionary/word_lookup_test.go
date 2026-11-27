@@ -16,6 +16,7 @@ type fakeWordLookupRecords struct {
 	counts    map[string]int // userID+"/"+wordID -> query count
 	existsErr error
 	recordErr error
+	sources   []string
 }
 
 func newFakeWordLookupRecords(wordIDs ...string) *fakeWordLookupRecords {
@@ -33,10 +34,11 @@ func (q *fakeWordLookupRecords) WordExists(_ context.Context, wordID string) (bo
 	return q.words[wordID], nil
 }
 
-func (q *fakeWordLookupRecords) RecordWordLookup(_ context.Context, userID, wordID string) (int, bool, error) {
+func (q *fakeWordLookupRecords) RecordLookup(_ context.Context, userID, wordID, source string) (int, bool, error) {
 	if q.recordErr != nil {
 		return 0, false, q.recordErr
 	}
+	q.sources = append(q.sources, source)
 	q.counts[userID+"/"+wordID]++
 	return q.counts[userID+"/"+wordID], false, nil
 }
@@ -56,7 +58,7 @@ func (f *fakeLookupEvents) Add(_ context.Context, e LookupEvent) error {
 }
 
 func newTestWordLookups(records *fakeWordLookupRecords, meter Meter, events *fakeLookupEvents) *WordLookups {
-	return NewWordLookups(records, meter, events, func() time.Time { return noon })
+	return NewWordLookups(records, records, meter, events, func() time.Time { return noon })
 }
 
 func TestWordLookupChargesOneCountsAndWritesAnAllowedEvent(t *testing.T) {
@@ -64,13 +66,16 @@ func TestWordLookupChargesOneCountsAndWritesAnAllowedEvent(t *testing.T) {
 	meter := &fakeMeter{}
 	events := &fakeLookupEvents{}
 
-	qc, known, err := newTestWordLookups(counts, meter, events).Record(stats.WithOffset(context.Background(), 480), "u1", "w1")
+	qc, known, err := newTestWordLookups(counts, meter, events).Record(stats.WithOffset(context.Background(), 480), "u1", "w1", "popover")
 
 	if err != nil || qc != 1 || known {
 		t.Fatalf("Record = %d, %v, %v; want 1, false, nil", qc, known, err)
 	}
 	if len(meter.charges) != 1 || meter.charges[0] != 1 {
 		t.Fatalf("charges %v, want [1]", meter.charges)
+	}
+	if len(counts.sources) != 1 || counts.sources[0] != "popover" {
+		t.Fatalf("sources %v, want [popover]", counts.sources)
 	}
 	want := LookupEvent{UserID: "u1", At: noon, TZOffsetMinutes: 480, Outcome: OutcomeAllowed}
 	if len(events.events) != 1 || events.events[0] != want {
@@ -82,7 +87,7 @@ func TestWordLookupOverQuotaLeavesTheCountAndWritesNoEvent(t *testing.T) {
 	counts := newFakeWordLookupRecords("w1")
 	events := &fakeLookupEvents{}
 
-	_, _, err := newTestWordLookups(counts, &fakeMeter{err: ErrQuotaExceeded}, events).Record(context.Background(), "u1", "w1")
+	_, _, err := newTestWordLookups(counts, &fakeMeter{err: ErrQuotaExceeded}, events).Record(context.Background(), "u1", "w1", "popover")
 
 	if !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("err = %v, want ErrQuotaExceeded", err)
@@ -96,7 +101,7 @@ func TestWordLookupOfAnUnknownWordIsNotFoundAndNotCharged(t *testing.T) {
 	meter := &fakeMeter{}
 	events := &fakeLookupEvents{}
 
-	_, _, err := newTestWordLookups(newFakeWordLookupRecords(), meter, events).Record(context.Background(), "u1", "no-such-word")
+	_, _, err := newTestWordLookups(newFakeWordLookupRecords(), meter, events).Record(context.Background(), "u1", "no-such-word", "popover")
 
 	if !errors.Is(err, ErrWordNotFound) {
 		t.Fatalf("err = %v, want ErrWordNotFound", err)
@@ -111,7 +116,7 @@ func TestWordLookupWhoseExistenceCheckFailsIsNotCharged(t *testing.T) {
 	counts.existsErr = errors.New("db down")
 	meter := &fakeMeter{}
 
-	_, _, err := newTestWordLookups(counts, meter, &fakeLookupEvents{}).Record(context.Background(), "u1", "w1")
+	_, _, err := newTestWordLookups(counts, meter, &fakeLookupEvents{}).Record(context.Background(), "u1", "w1", "popover")
 
 	if err == nil {
 		t.Fatal("err = nil, want the existence check's error")
@@ -127,7 +132,7 @@ func TestWordLookupFailsOpenWhenTheMeterErrors(t *testing.T) {
 	counts := newFakeWordLookupRecords("w1")
 	events := &fakeLookupEvents{}
 
-	qc, _, err := newTestWordLookups(counts, &fakeMeter{err: errors.New("db down")}, events).Record(context.Background(), "u1", "w1")
+	qc, _, err := newTestWordLookups(counts, &fakeMeter{err: errors.New("db down")}, events).Record(context.Background(), "u1", "w1", "popover")
 
 	if err != nil || qc != 1 || len(events.events) != 1 {
 		t.Fatalf("Record = %d, %v with %d events; want 1, nil and one event", qc, err, len(events.events))
@@ -142,7 +147,7 @@ func TestWordLookupStaysChargedWithoutAnEventWhenTheCountFails(t *testing.T) {
 	meter := &fakeMeter{}
 	events := &fakeLookupEvents{}
 
-	_, _, err := newTestWordLookups(counts, meter, events).Record(context.Background(), "u1", "w1")
+	_, _, err := newTestWordLookups(counts, meter, events).Record(context.Background(), "u1", "w1", "popover")
 
 	if err == nil || errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrWordNotFound) {
 		t.Fatalf("err = %v, want the record error", err)
@@ -157,7 +162,7 @@ func TestWordLookupSucceedsWhenTheEventWriteFails(t *testing.T) {
 	counts := newFakeWordLookupRecords("w1")
 	events := &fakeLookupEvents{err: errors.New("db locked")}
 
-	qc, _, err := newTestWordLookups(counts, &fakeMeter{}, events).Record(context.Background(), "u1", "w1")
+	qc, _, err := newTestWordLookups(counts, &fakeMeter{}, events).Record(context.Background(), "u1", "w1", "popover")
 
 	if err != nil || qc != 1 {
 		t.Fatalf("Record = %d, %v; want 1, nil", qc, err)

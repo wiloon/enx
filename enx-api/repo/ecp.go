@@ -156,64 +156,13 @@ func WordExists(wordId string) (bool, error) {
 	return n > 0, err
 }
 
-// ReviewLog is the translate handler's read-only view of a user's review
-// state for a word.
-type ReviewLog struct{}
+// WordCounts is the translate handler's read-only view of a user's query
+// count and known flag for a word. review.Service writes them.
+type WordCounts struct{}
 
-// ReviewState is userId's current query count and known flag for wordId;
+// CountAndKnown is userId's current query count and known flag for wordId;
 // 0 and false when the user has never looked it up or marked it.
-func (ReviewLog) ReviewState(userId, wordId string) (int, bool, error) {
+func (WordCounts) CountAndKnown(userId, wordId string) (int, bool, error) {
 	qc, known, _ := GetUserWordQueryCount(wordId, userId)
 	return qc, known, nil
-}
-
-// RecordWordLookup counts one lookup of wordId by userId for the review
-// system: the first lookup starts query_count at 1, a repeat adds 1, and
-// looking up a word the user had marked as known puts it back into review
-// without resetting the count. It is a single statement, so concurrent
-// lookups can't lose an increment. POST /api/me/word-lookups is its only
-// caller (ADR-059 Decision 3).
-func RecordWordLookup(userId, wordId string) (queryCount int, known bool, err error) {
-	now := time.Now().UnixMilli()
-	var row UserDict
-	err = sqlitex.DB.Raw(`
-		INSERT INTO user_dicts (user_id, word_id, query_count, known, created_at, updated_at)
-		VALUES (?, ?, 1, 0, ?, ?)
-		ON CONFLICT (user_id, word_id) DO UPDATE SET
-			query_count = COALESCE(query_count, 0) + 1,
-			known = 0,
-			updated_at = excluded.updated_at
-		RETURNING query_count, known`,
-		userId, wordId, now, now).Scan(&row).Error
-	return row.QueryCount, row.Known, err
-}
-
-// SetKnown sets userId's "already know this word" flag for wordId and
-// returns the row's state afterwards. It is idempotent, so a client can
-// retry it. Setting a word known that has no user_dicts row yet creates one
-// with query_count 0; setting it not known writes nothing when there is no
-// row, since no row already means learning with no lookups.
-//
-// It leaves updated_at alone: updated_at is the last lookup, which only
-// RecordWordLookup moves, so marking a word known doesn't reorder the Word
-// List (ADR-027 Decision 7, 2026-10-15 note).
-func SetKnown(userId, wordId string, known bool) (queryCount int, isKnown bool, err error) {
-	var row UserDict
-	if !known {
-		err = sqlitex.DB.Raw(`
-			UPDATE user_dicts SET known = 0
-			WHERE user_id = ? AND word_id = ?
-			RETURNING query_count, known`,
-			userId, wordId).Scan(&row).Error
-		return row.QueryCount, row.Known, err
-	}
-	now := time.Now().UnixMilli()
-	err = sqlitex.DB.Raw(`
-		INSERT INTO user_dicts (user_id, word_id, query_count, known, created_at, updated_at)
-		VALUES (?, ?, 0, 1, ?, ?)
-		ON CONFLICT (user_id, word_id) DO UPDATE SET
-			known = 1
-		RETURNING query_count, known`,
-		userId, wordId, now, now).Scan(&row).Error
-	return row.QueryCount, row.Known, err
 }

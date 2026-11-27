@@ -15,6 +15,8 @@ import (
 	"enx-api/dictionary/adapters"
 	dictionaryhttp "enx-api/dictionary/httpapi"
 	entadapters "enx-api/entitlement/adapters"
+	"enx-api/review"
+	reviewadapters "enx-api/review/adapters"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +35,8 @@ var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, Dict
 func sendWordLookup(t *testing.T, limits config.StripeQuota, userID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	meter := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now)
-	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.WordLookupRecords{}, meter, adapters.LookupEvents{}, time.Now))
+	reviews := review.NewService(reviewadapters.Store{}, time.Now)
+	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.WordLookupRecords{}, reviews, meter, adapters.LookupEvents{}, time.Now))
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
 	router.POST("/api/me/word-lookups", h.Record)
@@ -130,7 +133,7 @@ func (failingLanguages) ExplanationLanguage(context.Context, string) (dictionary
 
 type okRecorder struct{}
 
-func (okRecorder) Record(context.Context, string, string) (int, bool, error) {
+func (okRecorder) Record(context.Context, string, string, string) (int, bool, error) {
 	return 2, false, nil
 }
 
@@ -320,7 +323,7 @@ func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 
 type errRecorder struct{ err error }
 
-func (r errRecorder) Record(context.Context, string, string) (int, bool, error) {
+func (r errRecorder) Record(context.Context, string, string, string) (int, bool, error) {
 	return 0, false, r.err
 }
 

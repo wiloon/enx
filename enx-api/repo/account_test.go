@@ -50,6 +50,8 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 	for _, id := range []string{"alice", "bob"} {
 		for _, row := range []any{
 			&sqlitex.UserDict{UserId: id, WordId: "w1", CreatedAt: 1, UpdatedAt: 1},
+			&sqlitex.ReviewState{UserID: id, WordID: "w1"},
+			&sqlitex.ReviewLog{UserID: id, WordID: "w1", Type: "lookup", Source: "unknown"},
 			&sqlitex.LookupEvent{UserID: id, At: 1, Outcome: "hit"},
 			&sqlitex.DictionaryQuotaUsage{UserID: id, UTCDay: "2026-11-10", Used: 3, Rejected: 1},
 			&sqlitex.SavedPage{ID: id + "-p", UserID: id, URL: "https://x", Host: "x", CreatedAt: 1},
@@ -73,6 +75,11 @@ func TestAccountsDeleteDataRemovesPersonalRowsAndKeepsTheLedger(t *testing.T) {
 	for _, tc := range personalTables {
 		if n := countRows(t, tc.table, tc.column, "alice"); n != 0 {
 			t.Errorf("%s: %d row(s) of alice left", tc.table, n)
+		}
+	}
+	for _, table := range []string{"review_states", "review_logs"} {
+		if a, b := countRows(t, table, "user_id", "alice"), countRows(t, table, "user_id", "bob"); a != 0 || b != 1 {
+			t.Errorf("%s: %d row(s) of alice and %d of bob, want 0 and 1", table, a, b)
 		}
 	}
 	for _, table := range []string{"credit_transactions", "subscriptions"} {

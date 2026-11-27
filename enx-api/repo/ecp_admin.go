@@ -167,7 +167,8 @@ func AdminEditWord(english, chinese, pronunciation string) (*Word, error) {
 }
 
 // AdminDeleteWord removes the words row for english (exact match) and every
-// user's user_dicts row for it, in one transaction. The words table is a
+// user's user_dicts row, review state and review logs for it, in one
+// transaction. The words table is a
 // shared cache, so this resets that word for every user; the next lookup
 // re-fills it from ECDICT. deleted reports whether a words row existed.
 func AdminDeleteWord(english string) (deleted bool, err error) {
@@ -180,8 +181,10 @@ func AdminDeleteWord(english string) (deleted bool, err error) {
 		if w.Id == "" {
 			return nil
 		}
-		if err := tx.Where("word_id = ?", w.Id).Delete(&UserDict{}).Error; err != nil {
-			return err
+		for _, model := range []any{&UserDict{}, &sqlitex.ReviewState{}, &sqlitex.ReviewLog{}} {
+			if err := tx.Where("word_id = ?", w.Id).Delete(model).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Where("id = ?", w.Id).Delete(&Word{}).Error; err != nil {
 			return err

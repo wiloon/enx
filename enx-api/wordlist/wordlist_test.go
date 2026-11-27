@@ -10,7 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"enx-api/repo"
+	"enx-api/review"
+	reviewadapters "enx-api/review/adapters"
 	"enx-api/utils/sqlitex"
 )
 
@@ -123,7 +124,8 @@ func TestMarkingAWordKnownLeavesItsLastLookupTime(t *testing.T) {
 		t.Fatalf("find word: %v", err)
 	}
 
-	if _, _, err := repo.SetKnown(user, word.Id, true); err != nil {
+	reviews := review.NewService(reviewadapters.Store{}, time.Now)
+	if _, _, err := reviews.SetKnown(context.Background(), user, word.Id, true, ""); err != nil {
 		t.Fatalf("SetKnown: %v", err)
 	}
 

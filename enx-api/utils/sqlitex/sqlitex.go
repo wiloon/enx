@@ -237,7 +237,7 @@ func initDatabase(dbPath, level string) error {
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &Feedback{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
 		&User{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryQuotaUsage{}, &AICandidate{},
-		&AnonymousDeviceUsage{}, &AnonymousLookupsDay{}}
+		&AnonymousDeviceUsage{}, &AnonymousLookupsDay{}, &ReviewState{}, &ReviewLog{}}
 	err = DB.AutoMigrate(models...)
 	if err != nil {
 		return fmt.Errorf("auto-migrate database: %w", err)
