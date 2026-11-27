@@ -1,7 +1,7 @@
 import { ClerkProvider } from '@clerk/nextjs'
 import { clerkMiddleware } from '@clerk/nextjs/server'
 import type { NextFetchEvent, NextMiddleware, NextRequest } from 'next/server'
-import type { AuthAdapter } from '../types'
+import type { AuthAdapter, PageResponder } from '../types'
 import ClerkAuthContext from './ClerkAuthContext'
 import { SignInBody, SignUpBody } from './ClerkAuthWidgets'
 
@@ -11,12 +11,23 @@ import { SignInBody, SignUpBody } from './ClerkAuthWidgets'
 // publishableKey".
 let handler: NextMiddleware | undefined
 
+// The page responder of each request in flight. Clerk passes the same
+// request object on to its handler, which returns the responder's response
+// (e.g. next-intl's rewrite or redirect) for Clerk to add its headers to.
+const responders = new WeakMap<NextRequest, PageResponder>()
+
 // ADR-015: no routes are protected server-side. clerkMiddleware() is still
 // required for <ClerkProvider> and the Clerk hooks to work.
-function handle(req: NextRequest, event: NextFetchEvent) {
-  handler ??= clerkMiddleware({
-    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-  })
+function handle(
+  req: NextRequest,
+  event: NextFetchEvent,
+  respond?: PageResponder
+) {
+  handler ??= clerkMiddleware(
+    (_auth, request) => responders.get(request)?.(request),
+    { publishableKey: process.env.CLERK_PUBLISHABLE_KEY }
+  )
+  if (respond) responders.set(req, respond)
   return handler(req, event)
 }
 

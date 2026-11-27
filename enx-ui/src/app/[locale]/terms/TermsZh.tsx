@@ -10,13 +10,11 @@ import { SITE } from '@/lib/site'
 // 条款的一方对免除或减轻自己责任的条款尽到提示说明义务 —— 这正是把这两条加粗、
 // 单独成节、并用平实中文写出来的原因。
 //
-// ⚠️ 与 /terms 逐节对应，app/__tests__/legal.test.tsx 比对两版小节数量。
-export const dynamic = 'force-static'
+// ⚠️ 与 /terms 逐节对应，app/[locale]/__tests__/legal.test.tsx 比对两版小节数量。
 
 export const metadata: Metadata = {
   title: `用户协议 — ${SITE.name}`,
   description: `使用 ${SITE.name} 时你所同意的条款。`,
-  alternates: { canonical: '/zh/terms', languages: { en: '/terms' } },
 }
 
 export default function TermsZhPage() {

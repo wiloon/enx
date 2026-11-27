@@ -7,6 +7,7 @@ import RedirectToSignIn from '../RedirectToSignIn'
 import ClerkAuthContext from '../clerk/ClerkAuthContext'
 import { clerkAdapter } from '../clerk'
 import { getAuthAdapter } from '..'
+import { IntlWrapper } from '@/test-utils/intl'
 
 // The Clerk SDK is the boundary here: these tests drive the real adapter,
 // consumers and ApiService against doubles of Clerk's hooks and components.
@@ -54,8 +55,15 @@ jest.mock('@clerk/nextjs/server', () => ({
   clerkMiddleware: jest.fn(),
 }))
 
+// The site's entry points also read UI messages (ADR-096).
+const Intl = IntlWrapper()
+
 function withClerk({ children }: { children: React.ReactNode }) {
-  return <ClerkAuthContext>{children}</ClerkAuthContext>
+  return (
+    <Intl>
+      <ClerkAuthContext>{children}</ClerkAuthContext>
+    </Intl>
+  )
 }
 
 beforeEach(() => {

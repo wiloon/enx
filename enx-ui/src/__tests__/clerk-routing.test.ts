@@ -18,11 +18,13 @@ import path from 'node:path'
 //   2. <SignIn> / <SignUp> are only rendered inside those catch-all routes
 
 const SRC = path.resolve(__dirname, '..')
-const APP = path.join(SRC, 'app')
+// Pages without a language in the URL live under the (default) root layout
+// (ADR-096); a route group adds no URL segment.
+const APP = path.join(SRC, 'app', '(default)')
 const OPTIONAL_CATCH_ALL = /^\[\[\.\.\..+\]\]$/
 
 function routeDirForUrl(url: string): string {
-  // "/sign-in" -> src/app/sign-in
+  // "/sign-in" -> src/app/(default)/sign-in
   return path.join(APP, url.replace(/^\//, ''))
 }
 

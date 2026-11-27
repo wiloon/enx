@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WelcomeGuide from '../WelcomeGuide'
-import AppHome from '@/app/(app)/app/page'
+import AppHome from '@/app/(default)/(app)/app/page'
 import { apiService } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { setRuntimeEnv } from '@/test/runtimeEnv'

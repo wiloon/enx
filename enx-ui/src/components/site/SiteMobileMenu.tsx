@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Menu, X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { SITE } from '@/lib/site'
 import ChromeStoreCta from './ChromeStoreCta'
 import { SITE_NAV } from './siteNav'
+import UiLanguageSwitch from './UiLanguageSwitch'
 
 const linkClass =
   'block rounded-md px-3 py-2 text-base text-foreground/70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
@@ -13,6 +15,9 @@ const linkClass =
 // panel drops down under the sticky header. Choosing a link closes it, so a
 // same-page anchor such as /#features is not left covered by the panel.
 export default function SiteMobileMenu() {
+  const t = useTranslations('SiteMobileMenu')
+  const nav = useTranslations('SiteNav')
+  const header = useTranslations('SiteHeader')
   const [open, setOpen] = useState(false)
   const toggleRef = useRef<HTMLButtonElement>(null)
 
@@ -37,7 +42,7 @@ export default function SiteMobileMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="site-menu"
-        aria-label={open ? 'Close menu' : 'Open menu'}
+        aria-label={open ? t('closeMenu') : t('openMenu')}
         className="rounded-md p-1.5 text-foreground/70 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         {open ? (
@@ -51,7 +56,7 @@ export default function SiteMobileMenu() {
           has already finished when the menu opens. */}
       <nav
         id="site-menu"
-        aria-label="Menu"
+        aria-label={t('menu')}
         hidden={!open}
         className="absolute inset-x-0 top-full border-b border-border/60 bg-background shadow-sm"
       >
@@ -59,7 +64,7 @@ export default function SiteMobileMenu() {
           {SITE_NAV.map((item) => (
             <li key={item.href}>
               <a href={item.href} onClick={close} className={linkClass}>
-                {item.label}
+                {nav(item.key)}
               </a>
             </li>
           ))}
@@ -74,10 +79,13 @@ export default function SiteMobileMenu() {
               GitHub
             </a>
           </li>
+          <li>
+            <UiLanguageSwitch variant="menu" onSwitch={close} />
+          </li>
           {/* Below sm the bar has no room for the CTA, so it moves here. */}
           <li className="pt-2 sm:hidden">
             <ChromeStoreCta className="block rounded-md bg-brand px-3 py-2 text-center text-base font-medium text-brand-foreground transition-opacity hover:opacity-90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-              Add to Chrome
+              {header('addToChrome')}
             </ChromeStoreCta>
           </li>
         </ul>

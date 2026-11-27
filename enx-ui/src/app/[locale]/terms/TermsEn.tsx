@@ -10,7 +10,6 @@ import { SITE } from '@/lib/site'
 // are the limitation of liability (§11) and the governing-law clause (§13):
 // both are jurisdiction-specific and both are the ones that matter if
 // anything ever goes wrong.
-export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
   title: `Terms of Service — ${SITE.name}`,

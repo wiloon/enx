@@ -1,12 +1,18 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import HelpLayout from '../layout'
+import { renderWithIntl } from '@/test-utils/intl'
 
 jest.mock('@/auth/context', () => ({
   useAuthContext: () => ({ isLoaded: true, isSignedIn: false }),
 }))
 
+jest.mock('next/navigation', () =>
+  jest.requireActual('@/test-utils/navigation')
+)
+
 it('keeps guides and the app reachable from the public help shell', async () => {
-  render(
+  // The shell's header and footer read UI messages (ADR-096).
+  renderWithIntl(
     <HelpLayout>
       <h1>Test guide</h1>
     </HelpLayout>

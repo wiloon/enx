@@ -1,6 +1,15 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { SITE } from '@/lib/site'
 import { SUBSCRIPTION_PLANS } from '@/lib/plans'
+import { renderWithIntl } from '@/test-utils/intl'
+
+// The header and footer read UI messages (ADR-096); English unless a test
+// says otherwise.
+const render = (ui: React.ReactElement) => renderWithIntl(ui)
+
+jest.mock('next/navigation', () =>
+  jest.requireActual('@/test-utils/navigation')
+)
 
 const mockUseAuth = jest.fn(() => ({ isLoaded: true, isSignedIn: false }))
 jest.mock('@/auth/context', () => ({
@@ -21,7 +30,7 @@ import InstallCTA from '../InstallCTA'
 import HowItWorks from '../HowItWorks'
 import SiteFooter from '../SiteFooter'
 import SiteHeader from '../SiteHeader'
-import { dynamic, metadata } from '@/app/page'
+import { dynamic, metadata } from '@/app/(default)/page'
 
 jest.mock('@/lib/site', () => {
   const actual = jest.requireActual('@/lib/site')
@@ -32,6 +41,25 @@ jest.mock('@/lib/site', () => {
 // tests swap in other strings, so widen to `string` as well as dropping readonly.
 const mutableSite = SITE as unknown as Record<keyof typeof SITE, string>
 const original = { ...SITE }
+
+it('speaks Chinese in the header on a Chinese page, with the language switch', () => {
+  renderWithIntl(<SiteHeader />, 'zh')
+
+  const main = screen.getByRole('navigation', { name: '主导航' })
+  expect(within(main).getByRole('link', { name: '帮助' })).toHaveAttribute(
+    'href',
+    '/help'
+  )
+  expect(screen.getByRole('link', { name: '登录' })).toBeInTheDocument()
+  // The bar offers the other language; the menu lists both.
+  expect(screen.getByRole('button', { name: 'English' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '打开菜单' }))
+  const menu = screen.getByRole('navigation', { name: '菜单' })
+  expect(
+    within(menu).getByRole('group', { name: '界面语言' })
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '关闭菜单' })).toBeInTheDocument()
+})
 
 it('offers public Help from the site header and footer', () => {
   const { unmount } = render(<SiteHeader />)

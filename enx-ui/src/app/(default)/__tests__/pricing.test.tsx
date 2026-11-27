@@ -1,5 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import PricingPage, { metadata } from '../pricing/page'
+import { renderWithIntl } from '@/test-utils/intl'
 import { pricingCtaHref } from '@/components/site/PricingCta'
 import {
   FREE_PLAN,
@@ -18,6 +19,10 @@ jest.mock('@/auth/context', () => ({
 jest.mock('@/hooks/useExtensionStatus', () => ({
   useExtensionStatus: () => 'not-installed',
 }))
+
+jest.mock('next/navigation', () =>
+  jest.requireActual('@/test-utils/navigation')
+)
 
 const originalFetch = global.fetch
 
@@ -45,8 +50,9 @@ const card = (name: string) =>
     .getAllByText(name, { selector: '[data-slot="card-title"]' })[0]
     .closest('[data-slot="card"]') as HTMLElement
 
+// The page's header and footer read UI messages (ADR-096).
 async function renderPricing() {
-  render(await PricingPage())
+  renderWithIntl(await PricingPage())
 }
 
 describe('/pricing', () => {
