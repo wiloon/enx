@@ -13,7 +13,7 @@ Another agent may be working in the main checkout at the same time. A session th
 ## Language
 
 - **Code, comments, config, docs:** English. ADRs in `docs/architecture/` are Chinese by convention; match the language of the doc you edit.
-- **UI copy in `enx-chrome` and `enx-ui`:** English, including every hint, toast and error, and the `message` strings enx-api returns for display. Chinese UI copy is a bug; fix it in place. The one exception is language-learning content aimed at the Chinese-speaking user (e.g. the notes from "地道表达", ADR-012).
+- **UI copy in `enx-chrome` and `enx-ui`:** write it in English, including every hint, toast and error, and the `message` strings enx-api returns for display. Pages localised under ADR-096 keep their copy in the message files, English and Simplified Chinese with identical keys. Chinese UI copy anywhere else is a bug; move it into the message files or replace it with English. Language-learning content aimed at the Chinese-speaking user (e.g. the notes from "地道表达", ADR-012) is not UI copy.
 - **Commit messages:** conventional, scoped by sub-project: `fix(enx-ui): …`, `feat(enx-api): …`, `docs(adr): …`.
 
 ## Changes across sub-projects
