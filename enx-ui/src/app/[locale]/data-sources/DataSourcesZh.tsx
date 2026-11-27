@@ -59,9 +59,8 @@ export default function DataSourcesZhPage() {
 
       <Section heading="ECDICT">
         <p>
-          当你把释义语言设为简体中文时，释义来自 <Term>ECDICT</Term>
-          （{SITE.name}{' '}
-          使用的英汉词典）；词典没有该词时，可选用 AI 补全。
+          当你把释义语言设为简体中文时，释义来自 <Term>ECDICT</Term>（
+          {SITE.name} 使用的英汉词典）；词典没有该词时，可选用 AI 补全。
         </p>
       </Section>
     </LegalPage>

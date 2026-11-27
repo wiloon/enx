@@ -2,10 +2,7 @@ import { Volume2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import LookupCount from '@/components/app/LookupCount'
 import { Button } from '@/components/ui/button'
-import {
-  englishPronunciation,
-  selectPopoverSenses,
-} from '@/lib/englishSenses'
+import { englishPronunciation, selectPopoverSenses } from '@/lib/englishSenses'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import type { LookupWord } from '@/lib/lookupAnswer'

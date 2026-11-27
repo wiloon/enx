@@ -58,8 +58,8 @@ export default function DataSourcesPage() {
 
       <Section heading="ECDICT">
         <p>
-          When your explanation language is Simplified Chinese, definitions
-          come from <Term>ECDICT</Term> (the English-Chinese dictionary used by{' '}
+          When your explanation language is Simplified Chinese, definitions come
+          from <Term>ECDICT</Term> (the English-Chinese dictionary used by{' '}
           {SITE.name}), with optional AI fallback when a word is missing.
         </p>
       </Section>

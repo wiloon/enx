@@ -50,7 +50,9 @@ it('passes English-English fields through', () => {
         English: 'left',
         ExplanationLanguage: 'en',
         Source: 'wiktionary',
-        Senses: [{ pos: 'n', gloss: 'The west side.', example: 'On the left.' }],
+        Senses: [
+          { pos: 'n', gloss: 'The west side.', example: 'On the left.' },
+        ],
         LemmaNote: 'past tense of leave',
         PronunciationUS: '/lɛft/',
         PronunciationUK: '/left/',

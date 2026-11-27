@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { useAtom } from 'jotai'
 import {
   ArrowPathRoundedSquareIcon,
@@ -31,10 +37,56 @@ import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
 import {
   englishPronunciation,
   selectPopoverSenses,
+  type Sense,
 } from '@/lib/englishSenses'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { popoverHasSpeaker } from '@/lib/speaker'
+
+// Renders the selected English senses and drops whole ones from the end
+// when the scroll area is short of room (ADR-098). Remount via `key` when
+// the senses change so the fit count starts fresh.
+function EnglishSensesList({
+  senses,
+  contentRef,
+}: {
+  senses: Sense[]
+  contentRef: RefObject<HTMLDivElement | null>
+}) {
+  const [visibleCount, setVisibleCount] = useState(senses.length)
+
+  useLayoutEffect(() => {
+    const content = contentRef.current
+    if (!content || visibleCount <= 1) return
+    if (content.scrollHeight > content.clientHeight + 1) {
+      setVisibleCount(count => Math.max(1, count - 1))
+    }
+  }, [visibleCount, contentRef, senses])
+
+  const visible = senses.slice(0, visibleCount)
+  if (visible.length === 0) return null
+  return (
+    <ul
+      data-testid="word-popover-senses"
+      className="space-y-2 text-sm leading-relaxed text-foreground"
+    >
+      {visible.map((sense, index) => (
+        <li
+          key={`${sense.pos}-${index}-${sense.gloss}`}
+          data-testid="word-popover-sense"
+        >
+          <span className="text-muted-foreground">{sense.pos}</span>{' '}
+          {sense.gloss}
+          {sense.example && (
+            <span className="mt-0.5 block text-muted-foreground italic">
+              {sense.example}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 interface WordPopoverProps {
   word: string
@@ -106,11 +158,6 @@ export default function WordPopover({
   const englishSenses = englishMode
     ? selectPopoverSenses(currentWord?.Senses ?? [])
     : []
-  // Drop whole senses from the end when the overlay is short of room
-  // (ADR-098); at least one stays, and anything still overflowing scrolls.
-  const [visibleSenseCount, setVisibleSenseCount] = useState(
-    englishSenses.length
-  )
 
   useEffect(() => {
     // Auto-focus for keyboard navigation. Uses a ref rather than
@@ -118,27 +165,6 @@ export default function WordPopover({
     // and document.getElementById cannot reach across the shadow boundary.
     rootRef.current?.focus()
   }, [])
-
-  useLayoutEffect(() => {
-    setVisibleSenseCount(englishSenses.length)
-  }, [currentWord?.Senses, currentWord?.ExplanationLanguage, englishSenses.length])
-
-  useLayoutEffect(() => {
-    if (!englishMode) return
-    const content = contentRef.current
-    if (!content || visibleSenseCount <= 1) return
-    if (content.scrollHeight > content.clientHeight + 1) {
-      setVisibleSenseCount(count => Math.max(1, count - 1))
-    }
-  }, [
-    englishMode,
-    visibleSenseCount,
-    currentWord?.Senses,
-    currentWord?.LemmaNote,
-    phonetic,
-  ])
-
-  const visibleSenses = englishSenses.slice(0, visibleSenseCount)
 
   const definition = splitDefinition(currentWord?.Chinese ?? '').map(
     (part, index) =>
@@ -349,28 +375,12 @@ export default function WordPopover({
                     {currentWord.LemmaNote}
                   </p>
                 )}
-                {visibleSenses.length > 0 ? (
-                  <ul
-                    data-testid="word-popover-senses"
-                    className="space-y-2 text-sm leading-relaxed text-foreground"
-                  >
-                    {visibleSenses.map((sense, index) => (
-                      <li
-                        key={`${sense.pos}-${index}-${sense.gloss}`}
-                        data-testid="word-popover-sense"
-                      >
-                        <span className="text-muted-foreground">
-                          {sense.pos}
-                        </span>{' '}
-                        {sense.gloss}
-                        {sense.example && (
-                          <span className="mt-0.5 block text-muted-foreground italic">
-                            {sense.example}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                {englishSenses.length > 0 ? (
+                  <EnglishSensesList
+                    key={`${currentWord?.LemmaNote ?? ''}:${englishSenses.map(s => s.gloss).join('|')}`}
+                    senses={englishSenses}
+                    contentRef={contentRef}
+                  />
                 ) : anonymousNotice ? null : (
                   <p
                     data-testid="word-popover-en-miss"
