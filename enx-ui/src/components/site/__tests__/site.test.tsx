@@ -30,7 +30,7 @@ import InstallCTA from '../InstallCTA'
 import HowItWorks from '../HowItWorks'
 import SiteFooter from '../SiteFooter'
 import SiteHeader from '../SiteHeader'
-import { dynamic, metadata } from '@/app/page'
+import { dynamic, metadata } from '@/app/(default)/page'
 
 jest.mock('@/lib/site', () => {
   const actual = jest.requireActual('@/lib/site')
