@@ -130,19 +130,19 @@ func (t tx) LiveWord(wordID string) (bool, error) {
 // review state when present. Candidates filters and orders them.
 func (Store) Schedules(ctx context.Context, userID string) ([]review.ScheduleRow, error) {
 	type row struct {
-		WordID     string
-		English    string
-		Known      bool
-		QueryCount int
-		UpdatedAt  int64
-		HasState   bool
-		Stability  float64
-		Difficulty float64
-		Phase      int
-		Due        *int64
-		LastReview *int64
-		Reps       int
-		Lapses     int
+		WordID              string
+		English             string
+		Known               bool
+		QueryCount          int
+		UpdatedAt           int64
+		HasState            bool
+		Stability           float64
+		Difficulty          float64
+		Phase               int
+		Due                 *int64
+		LastReview          *int64
+		Reps                int
+		Lapses              int
 		LastLapseAt         *int64
 		LookupRescheduledAt *int64
 	}
