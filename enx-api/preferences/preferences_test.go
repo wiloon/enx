@@ -9,21 +9,21 @@ import (
 )
 
 type fakeStore struct {
-	values map[Key]bool
+	values map[Key]any
 	err    error
 }
 
-func newFakeStore() *fakeStore { return &fakeStore{values: map[Key]bool{}} }
+func newFakeStore() *fakeStore { return &fakeStore{values: map[Key]any{}} }
 
-func (f *fakeStore) Load(context.Context, string) (map[Key]bool, error) {
-	out := make(map[Key]bool, len(f.values))
+func (f *fakeStore) Load(context.Context, string) (map[Key]any, error) {
+	out := make(map[Key]any, len(f.values))
 	for k, v := range f.values {
 		out[k] = v
 	}
 	return out, f.err
 }
 
-func (f *fakeStore) Save(_ context.Context, _ string, key Key, value bool) error {
+func (f *fakeStore) Save(_ context.Context, _ string, key Key, value any) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -51,8 +51,6 @@ var (
 	topupOnly  = entitlement.Status{CanUseAI: true}
 	free       = entitlement.Status{}
 )
-
-func ptr(b bool) *bool { return &b }
 
 func get(t *testing.T, store *fakeStore, status entitlement.Status, key Key) View {
 	t.Helper()
@@ -101,7 +99,7 @@ func TestAIWordFallbackExplicitChoice(t *testing.T) {
 			if got.Effective != tc.want {
 				t.Fatalf("Effective = %v, want %v", got.Effective, tc.want)
 			}
-			if got.Value == nil || *got.Value != tc.explicit {
+			if got.Value != tc.explicit {
 				t.Fatalf("Value = %v, want the stored %v kept", got.Value, tc.explicit)
 			}
 		})
@@ -111,13 +109,13 @@ func TestAIWordFallbackExplicitChoice(t *testing.T) {
 func TestNoticeAckIsNotTiedToPayment(t *testing.T) {
 	for _, status := range []entitlement.Status{subscriber, topupOnly, free} {
 		got := get(t, newFakeStore(), status, AIWordFallbackNoticeAck)
-		if got.Effective || !got.Editable {
+		if got.Effective != false || !got.Editable {
 			t.Fatalf("status %+v: view = %+v, want unset, effective false, editable", status, got)
 		}
 	}
 	store := newFakeStore()
 	store.values[AIWordFallbackNoticeAck] = true
-	if got := get(t, store, free, AIWordFallbackNoticeAck); !got.Effective {
+	if got := get(t, store, free, AIWordFallbackNoticeAck); got.Effective != true {
 		t.Fatal("a free user's acknowledged notice should be effective")
 	}
 }
@@ -125,16 +123,16 @@ func TestNoticeAckIsNotTiedToPayment(t *testing.T) {
 func TestOnboardingCompletedDefaultsOffAndIsWritable(t *testing.T) {
 	for _, status := range []entitlement.Status{subscriber, topupOnly, free} {
 		got := get(t, newFakeStore(), status, OnboardingCompleted)
-		if got.Value != nil || got.Effective || !got.Editable {
+		if got.Value != nil || got.Effective != false || !got.Editable {
 			t.Fatalf("status %+v: view = %+v, want unset, effective false, writable", status, got)
 		}
 	}
 	store := newFakeStore()
 	svc := NewService(store, fakeEnt{status: free})
-	if err := svc.Update(context.Background(), "u1", map[string]*bool{"onboardingCompleted": ptr(true)}); err != nil {
+	if err := svc.Update(context.Background(), "u1", map[string]any{"onboardingCompleted": true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := get(t, store, free, OnboardingCompleted); !got.Effective {
+	if got := get(t, store, free, OnboardingCompleted); got.Effective != true {
 		t.Fatal("a free user's completed onboarding should be effective")
 	}
 }
@@ -144,13 +142,13 @@ func TestUpdateStoresAndClears(t *testing.T) {
 	svc := NewService(store, fakeEnt{status: subscriber})
 	ctx := context.Background()
 
-	if err := svc.Update(ctx, "u1", map[string]*bool{"aiWordFallback": ptr(false)}); err != nil {
+	if err := svc.Update(ctx, "u1", map[string]any{"aiWordFallback": false}); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := store.values[AIWordFallback]; !ok || v {
+	if v, ok := store.values[AIWordFallback]; !ok || v != false {
 		t.Fatalf("stored = %v/%v, want an explicit false", v, ok)
 	}
-	if err := svc.Update(ctx, "u1", map[string]*bool{"aiWordFallback": nil}); err != nil {
+	if err := svc.Update(ctx, "u1", map[string]any{"aiWordFallback": nil}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := store.values[AIWordFallback]; ok {
@@ -162,10 +160,10 @@ func TestUpdateLeavesUntouchedKeysAlone(t *testing.T) {
 	store := newFakeStore()
 	store.values[AIWordFallback] = false
 	svc := NewService(store, fakeEnt{status: subscriber})
-	if err := svc.Update(context.Background(), "u1", map[string]*bool{"aiWordFallbackNoticeAck": ptr(true)}); err != nil {
+	if err := svc.Update(context.Background(), "u1", map[string]any{"aiWordFallbackNoticeAck": true}); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := store.values[AIWordFallback]; !ok || v {
+	if v, ok := store.values[AIWordFallback]; !ok || v != false {
 		t.Fatal("a key absent from the request must not change")
 	}
 }
@@ -174,17 +172,17 @@ func TestUpdateRejections(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		status  entitlement.Status
-		changes map[string]*bool
+		changes map[string]any
 		want    error
 	}{
-		{"unknown key", subscriber, map[string]*bool{"nope": ptr(true)}, ErrUnknownKey},
-		{"free user cannot change the AI fallback", free, map[string]*bool{"aiWordFallback": ptr(true)}, ErrNotEditable},
-		{"free user cannot clear it either", free, map[string]*bool{"aiWordFallback": nil}, ErrNotEditable},
+		{"unknown key", subscriber, map[string]any{"nope": true}, ErrUnknownKey},
+		{"free user cannot change the AI fallback", free, map[string]any{"aiWordFallback": true}, ErrNotEditable},
+		{"free user cannot clear it either", free, map[string]any{"aiWordFallback": nil}, ErrNotEditable},
 		{
 			// Validation happens before any write: the editable key in the
 			// same request must not be applied.
 			"one bad key rejects the whole request", free,
-			map[string]*bool{"aiWordFallbackNoticeAck": ptr(true), "aiWordFallback": ptr(true)}, ErrNotEditable,
+			map[string]any{"aiWordFallbackNoticeAck": true, "aiWordFallback": true}, ErrNotEditable,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,7 +220,107 @@ func TestErrorsFromDependenciesSurface(t *testing.T) {
 	if _, err := NewService(failing, fakeEnt{status: subscriber}).Get(ctx, "u1"); !errors.Is(err, boom) {
 		t.Fatalf("store error on Get: err = %v", err)
 	}
-	if err := NewService(failing, fakeEnt{status: subscriber}).Update(ctx, "u1", map[string]*bool{"aiWordFallback": ptr(true)}); !errors.Is(err, boom) {
+	if err := NewService(failing, fakeEnt{status: subscriber}).Update(ctx, "u1", map[string]any{"aiWordFallback": true}); !errors.Is(err, boom) {
 		t.Fatalf("store error on Update: err = %v", err)
+	}
+}
+
+func TestExplanationLanguageDefaultsToChineseForEveryone(t *testing.T) {
+	for _, status := range []entitlement.Status{subscriber, topupOnly, free} {
+		got := get(t, newFakeStore(), status, ExplanationLanguage)
+		want := View{Effective: "zh-Hans", Editable: true}
+		if got != want {
+			t.Fatalf("status %+v: view = %+v, want %+v", status, got, want)
+		}
+	}
+}
+
+func TestExplanationLanguageIsStoredReadBackAndCleared(t *testing.T) {
+	store := newFakeStore()
+	svc := NewService(store, fakeEnt{status: free})
+	ctx := context.Background()
+
+	if err := svc.Update(ctx, "u1", map[string]any{"explanationLanguage": "en"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(t, store, free, ExplanationLanguage); got.Value != "en" || got.Effective != "en" {
+		t.Fatalf("view = %+v, want en stored and effective", got)
+	}
+	if err := svc.Update(ctx, "u1", map[string]any{"explanationLanguage": nil}); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(t, store, free, ExplanationLanguage); got.Value != nil || got.Effective != "zh-Hans" {
+		t.Fatalf("view after null = %+v, want the default", got)
+	}
+}
+
+func TestUpdateRejectsInvalidValuesAndWritesNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		changes map[string]any
+		want    error
+	}{
+		{"a language not on the list", map[string]any{"explanationLanguage": "zh-Hant"}, ErrInvalidValue},
+		{"a boolean for the enum key", map[string]any{"explanationLanguage": true}, ErrInvalidValue},
+		{"a string for a boolean key", map[string]any{"aiWordFallback": "en"}, ErrInvalidValue},
+		{"a number for a boolean key", map[string]any{"onboardingCompleted": float64(1)}, ErrInvalidValue},
+		{"an unknown key whatever its value", map[string]any{"nope": "en"}, ErrUnknownKey},
+		{
+			"one bad value rejects the other keys too",
+			map[string]any{"onboardingCompleted": true, "aiWordFallback": true, "explanationLanguage": "fr"},
+			ErrInvalidValue,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Map order is random, so repeat: a write before the bad key is
+			// checked would show up in one of the runs.
+			for range 20 {
+				store := newFakeStore()
+				err := NewService(store, fakeEnt{status: subscriber}).Update(context.Background(), "u1", tc.changes)
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("err = %v, want %v", err, tc.want)
+				}
+				if len(store.values) != 0 {
+					t.Fatalf("a rejected update wrote %v", store.values)
+				}
+			}
+		})
+	}
+}
+
+func TestAnInvalidValueIsReportedBeforeEditability(t *testing.T) {
+	err := NewService(newFakeStore(), fakeEnt{status: free}).
+		Update(context.Background(), "u1", map[string]any{"aiWordFallback": "yes"})
+	if !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("err = %v, want ErrInvalidValue", err)
+	}
+}
+
+func TestStoredValueNoLongerAllowedReadsAsUnset(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		key    Key
+		stored any
+		want   View
+	}{
+		{"a language no longer allowed", ExplanationLanguage, "fr", View{Effective: "zh-Hans", Editable: true}},
+		{"a boolean under the enum key", ExplanationLanguage, true, View{Effective: "zh-Hans", Editable: true}},
+		{"a string under a boolean key", AIWordFallback, "yes", View{Effective: true, Editable: true}},
+		{"a JSON null row", OnboardingCompleted, nil, View{Effective: false, Editable: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newFakeStore()
+			store.values[tc.key] = tc.stored
+			if got := get(t, store, subscriber, tc.key); got != tc.want {
+				t.Fatalf("view = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveRefusesAnEnumKey(t *testing.T) {
+	svc := NewService(newFakeStore(), fakeEnt{status: subscriber})
+	if on, err := svc.Effective(context.Background(), "u1", ExplanationLanguage); err == nil {
+		t.Fatalf("Effective = %v with no error, want an error for a non-boolean key", on)
 	}
 }
