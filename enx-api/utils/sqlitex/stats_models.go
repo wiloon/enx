@@ -123,6 +123,22 @@ func (AnonymousDeviceUsage) TableName() string {
 	return "anonymous_device_usage"
 }
 
+// AnonymousLookupsDay is one finished UTC day's lookups without an account,
+// rolled up from anonymous_device_usage before its rows are deleted
+// (ADR-095). Only counts: no device hash. Kept indefinitely; a day's row is
+// written once and never overwritten.
+type AnonymousLookupsDay struct {
+	UTCDay string `gorm:"column:utc_day;primaryKey"` // YYYY-MM-DD
+	// Distinct device hashes with used > 0.
+	Devices int64 `gorm:"column:devices;not null"`
+	// Sum of used.
+	Lookups int64 `gorm:"column:lookups;not null"`
+}
+
+func (AnonymousLookupsDay) TableName() string {
+	return "anonymous_lookups_daily"
+}
+
 // ActiveUsersDay is one finished UTC day's site-wide active users, rolled up
 // from lookup_events before they expire (ADR-058, ADR-059 Decision 4). Only
 // counts: no user id. History starts the day this table shipped.
