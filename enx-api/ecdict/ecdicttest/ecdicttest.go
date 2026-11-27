@@ -16,6 +16,8 @@ import (
 // Row is one stardict entry; the columns enx reads.
 type Row struct {
 	Word, Sw, Phonetic, Translation, Exchange string
+	// Pos is the part-of-speech share field, e.g. "n:15/v:85".
+	Pos string
 }
 
 // schema is ECDICT 1.0.28's stardict table and indexes, verbatim.
@@ -61,8 +63,8 @@ func Create(t testing.TB, rows ...Row) string {
 		if sw == "" {
 			sw = r.Word
 		}
-		if _, err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange) VALUES (?, ?, ?, ?, ?)`,
-			r.Word, sw, r.Phonetic, r.Translation, r.Exchange); err != nil {
+		if _, err := db.Exec(`INSERT INTO stardict (word, sw, phonetic, translation, exchange, pos) VALUES (?, ?, ?, ?, ?, ?)`,
+			r.Word, sw, r.Phonetic, r.Translation, r.Exchange, r.Pos); err != nil {
 			t.Fatalf("insert %q: %v", r.Word, err)
 		}
 	}
