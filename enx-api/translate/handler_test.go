@@ -24,14 +24,14 @@ func (f fakeResolver) Resolve(context.Context, string, string, dictionary.Langua
 	return f.res, f.err
 }
 
-type fakeReviewLog struct {
+type fakeWordCounts struct {
 	count int
 	known bool
 	err   error
 	calls int
 }
 
-func (f *fakeReviewLog) ReviewState(string, string) (int, bool, error) {
+func (f *fakeWordCounts) CountAndKnown(string, string) (int, bool, error) {
 	f.calls++
 	return f.count, f.known, f.err
 }
@@ -75,7 +75,7 @@ func (r *countingResolver) Resolve(ctx context.Context, english, userID string, 
 // ADR-079 Decision 7: each lookup GET charges one before it resolves.
 func TestHandlerChargesOneBeforeResolving(t *testing.T) {
 	meter := &fakeMeter{}
-	reviews := &fakeReviewLog{count: 2, known: true}
+	reviews := &fakeWordCounts{count: 2, known: true}
 	res := dictionary.Result{ID: "w1", English: "run", Source: dictionary.SourceLocal}
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, meter, reviews), "run")
@@ -92,7 +92,7 @@ func TestHandlerOverQuotaResolvesNothing(t *testing.T) {
 	setupQuotaTestDB(t)
 	resolver := &countingResolver{}
 
-	code, _ := serve(t, NewHandler(resolver, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}), "run")
+	code, _ := serve(t, NewHandler(resolver, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeWordCounts{}), "run")
 
 	if code != http.StatusTooManyRequests || resolver.calls != 0 {
 		t.Fatalf("got %d with %d resolutions, want 429 and none", code, resolver.calls)
@@ -103,7 +103,7 @@ func TestHandlerOverQuotaResolvesNothing(t *testing.T) {
 func TestHandlerFailsOpenWhenTheMeterErrors(t *testing.T) {
 	res := dictionary.Result{ID: "w1", English: "run", Source: dictionary.SourceLocal}
 
-	code, _ := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{err: errors.New("db down")}, &fakeReviewLog{}), "run")
+	code, _ := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{err: errors.New("db down")}, &fakeWordCounts{}), "run")
 
 	if code != http.StatusOK {
 		t.Fatalf("got %d, want 200", code)
@@ -118,7 +118,7 @@ func TestHandlerMapsResolverErrorsToStatus(t *testing.T) {
 		{dictionary.ErrEcdictUnavailable, http.StatusServiceUnavailable},
 		{errors.New("db down"), http.StatusBadGateway},
 	} {
-		reviews := &fakeReviewLog{}
+		reviews := &fakeWordCounts{}
 		code, _ := serve(t, NewHandler(fakeResolver{err: tc.err}, &fakeMeter{}, reviews), "run")
 		if code != tc.want || reviews.calls != 0 {
 			t.Errorf("%v: got %d with %d review reads, want %d and none", tc.err, code, reviews.calls, tc.want)
@@ -127,7 +127,7 @@ func TestHandlerMapsResolverErrorsToStatus(t *testing.T) {
 }
 
 func TestHandlerReportsReviewCounts(t *testing.T) {
-	reviews := &fakeReviewLog{count: 4}
+	reviews := &fakeWordCounts{count: 4}
 	res := dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal}
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "run")
@@ -136,8 +136,8 @@ func TestHandlerReportsReviewCounts(t *testing.T) {
 	}
 }
 
-func TestHandlerSkipsReviewLogOnMiss(t *testing.T) {
-	reviews := &fakeReviewLog{}
+func TestHandlerSkipsWordCountsOnMiss(t *testing.T) {
+	reviews := &fakeWordCounts{}
 	res := dictionary.Result{English: "zzxqv", Source: dictionary.SourceMiss}
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "zzxqv")
@@ -147,8 +147,8 @@ func TestHandlerSkipsReviewLogOnMiss(t *testing.T) {
 }
 
 // A failed review read still answers with the definition.
-func TestHandlerAnswersWhenReviewLogFails(t *testing.T) {
-	reviews := &fakeReviewLog{err: errors.New("locked")}
+func TestHandlerAnswersWhenWordCountsFails(t *testing.T) {
+	reviews := &fakeWordCounts{err: errors.New("locked")}
 	res := dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal}
 
 	code, resp := serve(t, NewHandler(fakeResolver{res: res}, &fakeMeter{}, reviews), "run")
@@ -165,7 +165,7 @@ func TestLookupRoutesSendTheSource(t *testing.T) {
 		dictionary.SourceLocal, dictionary.SourceEcdict, dictionary.SourceMiss,
 		dictionary.SourceTimeout, dictionary.SourceError,
 	} {
-		h := NewHandler(fakeResolver{res: dictionary.Result{English: "run", Source: source}}, &fakeMeter{}, &fakeReviewLog{})
+		h := NewHandler(fakeResolver{res: dictionary.Result{English: "run", Source: source}}, &fakeMeter{}, &fakeWordCounts{})
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.GET("/api/translate", h.Translate)
@@ -200,7 +200,7 @@ func TestHandlerTagsLookupSource(t *testing.T) {
 	} {
 		gin.SetMode(gin.TestMode)
 		c, _ := translateCtx("run", "u1")
-		NewHandler(fakeResolver{res: tc.res, err: tc.err}, &fakeMeter{}, &fakeReviewLog{}).translateWord(c, "run")
+		NewHandler(fakeResolver{res: tc.res, err: tc.err}, &fakeMeter{}, &fakeWordCounts{}).translateWord(c, "run")
 		if got := c.GetString(metrics.LookupSourceKey); got != tc.want {
 			t.Errorf("source %q / err %v: tagged %q, want %q", tc.res.Source, tc.err, got, tc.want)
 		}
@@ -220,7 +220,7 @@ func TestQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		want   string
 	}{{true, "contact support"}, {false, "Upgrade"}} {
 		c, w := translateCtx("run", "u1")
-		h := NewHandler(fakeResolver{}, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeReviewLog{}).WithQuotaTiers(subscriberForQuota(tc.active))
+		h := NewHandler(fakeResolver{}, &fakeMeter{err: dictionary.ErrQuotaExceeded}, &fakeWordCounts{}).WithQuotaTiers(subscriberForQuota(tc.active))
 		h.Translate(c)
 		if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), tc.want) {
 			t.Fatalf("active %v: %d %s", tc.active, w.Code, w.Body.String())
@@ -241,7 +241,7 @@ func TestHandlerRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
 	meter := &fakeMeter{}
 	resolver := &countingResolver{}
 
-	code, _ := serve(t, NewHandler(resolver, meter, &fakeReviewLog{}).WithExplanationLanguages(failingLanguages{}), "run")
+	code, _ := serve(t, NewHandler(resolver, meter, &fakeWordCounts{}).WithExplanationLanguages(failingLanguages{}), "run")
 
 	if code != http.StatusServiceUnavailable || len(meter.charges) != 0 || resolver.calls != 0 {
 		t.Fatalf("got %d, charges %v, %d resolutions; want 503 and nothing done", code, meter.charges, resolver.calls)

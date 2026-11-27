@@ -19,11 +19,14 @@ import (
 // which no longer means anything (ADR-079 Decision 7) and is ignored.
 type wordLookupRequest struct {
 	WordID string `json:"wordId"`
+	// Source is where the lookup came from (ADR-097 Decision 4). It is any
+	// type so that a value the client gets wrong never fails the lookup.
+	Source any `json:"source"`
 }
 
 // WordLookupRecorder is the slice of dictionary.WordLookups the handler uses.
 type WordLookupRecorder interface {
-	Record(ctx context.Context, userID, wordID string) (queryCount int, known bool, err error)
+	Record(ctx context.Context, userID, wordID, source string) (queryCount int, known bool, err error)
 }
 
 // WordLookupHandler serves POST /api/me/word-lookups.
@@ -77,7 +80,8 @@ func (h *WordLookupHandler) Record(c *gin.Context) {
 		return
 	}
 
-	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID)
+	source, _ := req.Source.(string)
+	qc, known, err := h.lookups.Record(c.Request.Context(), userId, req.WordID, source)
 	switch {
 	case errors.Is(err, dictionary.ErrWordNotFound):
 		httpjson.Fail(c, http.StatusNotFound, "Word not found")

@@ -7,7 +7,10 @@ import (
 	"net/url"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"enx-api/review"
+	reviewadapters "enx-api/review/adapters"
 	"enx-api/utils/sqlitex"
 
 	"github.com/gin-gonic/gin"
@@ -23,13 +26,8 @@ type knownResponse struct {
 // as userID and returns the status and the decoded body.
 func knownRequest(t *testing.T, method, userID, english string) (int, knownResponse) {
 	t.Helper()
-	router := gin.New()
-	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
-	router.PUT("/api/me/words/:english/known", SetWordKnown)
-	router.DELETE("/api/me/words/:english/known", ClearWordKnown)
-
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest(method, "/api/me/words/"+url.PathEscape(english)+"/known", nil))
+	knownRouter(userID).ServeHTTP(w, httptest.NewRequest(method, "/api/me/words/"+url.PathEscape(english)+"/known", nil))
 	var resp knownResponse
 	if w.Code == http.StatusOK {
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -37,6 +35,25 @@ func knownRequest(t *testing.T, method, userID, english string) (int, knownRespo
 		}
 	}
 	return w.Code, resp
+}
+
+// knownRequestWithQuery is knownRequest with a query string, returning the
+// status only.
+func knownRequestWithQuery(t *testing.T, method, userID, english, query string) int {
+	t.Helper()
+	w := httptest.NewRecorder()
+	knownRouter(userID).ServeHTTP(w, httptest.NewRequest(method, "/api/me/words/"+url.PathEscape(english)+"/known"+query, nil))
+	return w.Code
+}
+
+// knownRouter serves the known endpoints as userID with the production wiring.
+func knownRouter(userID string) *gin.Engine {
+	h := NewKnownWordHandler(review.NewService(reviewadapters.Store{}, time.Now))
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
+	router.PUT("/api/me/words/:english/known", h.Set)
+	router.DELETE("/api/me/words/:english/known", h.Clear)
+	return router
 }
 
 func setupKnownTest(t *testing.T) {

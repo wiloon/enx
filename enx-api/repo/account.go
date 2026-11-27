@@ -42,6 +42,8 @@ func (Accounts) SetStatus(ctx context.Context, userID string, status account.Sta
 // active_users_daily (counts, no user ids).
 var personalTables = []struct{ table, column string }{
 	{"user_dicts", "user_id"},
+	{"review_states", "user_id"},
+	{"review_logs", "user_id"},
 	{"lookup_events", "user_id"},
 	{"dictionary_quota_usage", "user_id"},
 	{"daily_stats", "user_id"},

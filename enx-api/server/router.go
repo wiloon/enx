@@ -38,6 +38,8 @@ import (
 	"enx-api/referral"
 	refadapters "enx-api/referral/adapters"
 	"enx-api/repo"
+	"enx-api/review"
+	reviewadapters "enx-api/review/adapters"
 	"enx-api/savedpage"
 	"enx-api/stats"
 	"enx-api/translate"
@@ -165,7 +167,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// missed. The policy decides what that miss offers each user; the service
 	// itself is switched on below, once the AI provider exists.
 	aiPolicy := adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService}
-	lookupHandler := translate.NewHandlerWithQuotaTiers(dictionaryService, lookupQuota, repo.ReviewLog{}, quotaTiers).WithAI(
+	lookupHandler := translate.NewHandlerWithQuotaTiers(dictionaryService, lookupQuota, repo.WordCounts{}, quotaTiers).WithAI(
 		dictionaryService, aiPolicy,
 	).WithExplanationLanguages(explanationLanguages)
 	// Batch definitions (ADR-079 Decision 1): the quota, no lookup event.
@@ -313,8 +315,11 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.GET("/me/words", wordlist.ListHandler)
 	apiGroup.DELETE("/me/words/:english", wordlist.RemoveHandler)
 	// Mark Known (#133): idempotent, so the extension can retry it.
-	apiGroup.PUT("/me/words/:english/known", handlers.SetWordKnown)
-	apiGroup.DELETE("/me/words/:english/known", handlers.ClearWordKnown)
+	// Lookups and Know it are also review signals (ADR-097).
+	reviews := review.NewService(reviewadapters.Store{}, time.Now)
+	knownWordHandler := handlers.NewKnownWordHandler(reviews)
+	apiGroup.PUT("/me/words/:english/known", knownWordHandler.Set)
+	apiGroup.DELETE("/me/words/:english/known", knownWordHandler.Clear)
 	// The review list the extension underlines from (ADR-069 Decision 1):
 	// one request per page, no page text. Successful loads are the
 	// "pages enabled" count in Grafana.
@@ -324,7 +329,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// id, so an inflection counts against the headword the lookup resolved
 	// to. Not idempotent: the extension never retries it.
 	wordLookupHandler := handlers.NewWordLookupHandlerWithQuotaTiers(
-		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), quotaTiers).WithExplanationLanguages(explanationLanguages)
+		dictionary.NewWordLookups(adapters.WordLookupRecords{}, reviews, lookupQuota, adapters.LookupEvents{}, time.Now), quotaTiers).WithExplanationLanguages(explanationLanguages)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).

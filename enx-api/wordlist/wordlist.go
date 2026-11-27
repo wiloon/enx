@@ -1,7 +1,8 @@
 // Package wordlist reads back a user's word list: every word they have looked
 // up in an article (a user_dicts row), including the ones since marked known.
-// Rows are written by the lookup path (repo.RecordWordLookup) and by marking a
-// word known (PUT /api/me/words/:english/known); this package only reads them or removes them.
+// Rows are written by the review domain, on a lookup and on marking a word
+// known (PUT /api/me/words/:english/known); this package only reads them or
+// removes them.
 package wordlist
 
 import (
@@ -194,13 +195,24 @@ func List(ctx context.Context, userID string, q Query) (Page, error) {
 	return Page{Total: total, Entries: entries}, nil
 }
 
-// Remove takes english off userID's word list by deleting its user_dicts row,
-// so the word is back to never looked up: no lookup count, not known, not
-// underlined. Daily stats already reported for it stay as they were.
+// wordTables are the tables holding a user's rows for a word.
+var wordTables = []string{"user_dicts", "review_states", "review_logs"}
+
+// Remove takes english off userID's word list by deleting its user_dicts row
+// and its review state and logs (ADR-097), in one transaction, so the word is
+// back to never looked up: no lookup count, not known, not underlined, nothing
+// to review. Daily stats already reported for it stay as they were.
 func Remove(ctx context.Context, userID, english string) error {
-	return sqlitex.DB.WithContext(ctx).Exec(`
-		DELETE FROM user_dicts
-		WHERE user_id = ?
-		  AND word_id IN (SELECT id FROM words WHERE english = ?)`,
-		userID, english).Error
+	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, table := range wordTables {
+			err := tx.Exec("DELETE FROM "+table+`
+				WHERE user_id = ?
+				  AND word_id IN (SELECT id FROM words WHERE english = ?)`,
+				userID, english).Error
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

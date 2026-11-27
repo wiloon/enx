@@ -22,7 +22,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&Word{}, &UserDict{}); err != nil {
+	if err := db.AutoMigrate(&Word{}, &UserDict{}, &sqlitex.ReviewState{}, &sqlitex.ReviewLog{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlitex.DB = db

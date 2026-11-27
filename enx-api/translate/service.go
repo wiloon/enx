@@ -18,11 +18,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ReviewLog reads a user's review state for a word: repo.ReviewLog in
+// WordCounts reads a user's review state for a word: repo.WordCounts in
 // production. It is read-only on purpose: the lookup endpoints never change
 // the query count, POST /api/me/word-lookups does (ADR-059 Decision 3).
-type ReviewLog interface {
-	ReviewState(userID, wordID string) (queryCount int, known bool, err error)
+type WordCounts interface {
+	CountAndKnown(userID, wordID string) (queryCount int, known bool, err error)
 }
 
 // AIDefiner defines a word the dictionaries lack: dictionary.Service in
@@ -42,14 +42,14 @@ type Handler struct {
 	tiers   dictionary.QuotaTierSource
 	dict    dictionary.Resolver
 	meter   dictionary.Meter
-	reviews ReviewLog
+	reviews WordCounts
 	ai      AIDefiner
 	policy  AIPolicy
 
 	languages dictionary.ExplanationLanguages // nil: everyone is zh-Hans
 }
 
-func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
+func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews WordCounts) *Handler {
 	return NewHandlerWithQuotaTiers(dict, meter, reviews, entadapters.Billing{})
 }
 
@@ -58,7 +58,7 @@ func (h *Handler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *Handler {
 	return h
 }
 
-func NewHandlerWithQuotaTiers(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog, tiers dictionary.QuotaTierSource) *Handler {
+func NewHandlerWithQuotaTiers(dict dictionary.Resolver, meter dictionary.Meter, reviews WordCounts, tiers dictionary.QuotaTierSource) *Handler {
 	return &Handler{dict: dict, meter: meter, reviews: reviews, tiers: tiers}
 }
 
@@ -162,7 +162,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 	// so it never adds to the query count (ADR-059 Decision 3). A miss has
 	// no persisted word and so no state.
 	if word.Id != "" {
-		qc, known, err := h.reviews.ReviewState(userId, word.Id)
+		qc, known, err := h.reviews.CountAndKnown(userId, word.Id)
 		if err != nil {
 			// The definition is still worth answering with; the counts
 			// stay at zero for this response.

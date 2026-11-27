@@ -33,7 +33,7 @@ func (p fakePolicy) Fallback(context.Context, string) (bool, bool) { return p.ca
 // fakeReviews answers every word's review state as 3 lookups, not known.
 type fakeReviews struct{ read []string }
 
-func (r *fakeReviews) ReviewState(_, wordID string) (int, bool, error) {
+func (r *fakeReviews) CountAndKnown(_, wordID string) (int, bool, error) {
 	r.read = append(r.read, wordID)
 	return 3, false, nil
 }

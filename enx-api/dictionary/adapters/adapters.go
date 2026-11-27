@@ -21,15 +21,11 @@ import (
 )
 
 // WordLookupRecords is the dictionary.WordLookupRecords backed by the words
-// and user_dicts tables.
+// table.
 type WordLookupRecords struct{}
 
 func (WordLookupRecords) WordExists(_ context.Context, wordID string) (bool, error) {
 	return repo.WordExists(wordID)
-}
-
-func (WordLookupRecords) RecordWordLookup(_ context.Context, userID, wordID string) (int, bool, error) {
-	return repo.RecordWordLookup(userID, wordID)
 }
 
 // LookupEvents is the dictionary.LookupEventStore backed by the
