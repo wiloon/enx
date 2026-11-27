@@ -245,7 +245,17 @@ func TestLemmaNoteTakesTheFirstMatchingRule(t *testing.T) {
 		{[]string{"alt-of plural"}, "alternative form of x"},
 		{[]string{"alternative"}, "alternative form of x"},
 		{[]string{"plural", "present singular third-person"}, "third-person singular of x"},
-		{[]string{"plural past"}, "plural of x"},
+		{[]string{"plural past"}, "past tense of x"},
+		// A past row's person and number say nothing about the relation: "ran",
+		// "was", "were" and "went".
+		{[]string{"past singular third-person"}, "past tense of x"},
+		{[]string{"first-person past singular"}, "past tense of x"},
+		{[]string{"past plural"}, "past tense of x"},
+		{[]string{"past"}, "past tense of x"},
+		// A row that is not past still counts beside a past one.
+		{[]string{"past", "present singular third-person"}, "third-person singular of x"},
+		{[]string{"past singular third-person", "plural"}, "plural of x"},
+		{[]string{"past plural", "plural"}, "plural of x"},
 		{[]string{"participle past", "past"}, "past tense of x"},
 		{[]string{"participle past"}, "past participle of x"},
 		{[]string{"gerund"}, "present participle of x"},
