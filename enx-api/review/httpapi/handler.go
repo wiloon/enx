@@ -152,5 +152,7 @@ func hasDefinition(res dictionary.Result) bool {
 	case dictionary.SourceMiss, dictionary.SourceTimeout, dictionary.SourceError, "":
 		return false
 	}
-	return res.ID != "" || res.Chinese != "" || res.Pronunciation != "" || res.Definition != nil
+	// Review cards only carry Chinese (+ pronunciation) until #1235 adds English
+	// definition fields; skip results that would become blank cards.
+	return res.Chinese != ""
 }

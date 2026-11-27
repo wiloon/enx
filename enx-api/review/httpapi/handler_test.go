@@ -168,7 +168,7 @@ func TestSessionSkipsUnresolvedWordsAndUsesTheUsersLanguage(t *testing.T) {
 			"dog": {ID: "w2", English: "dog", Chinese: "狗", Source: dictionary.SourceLocal},
 		},
 	}
-	h := sessionHandler(svc, resolve, stubLanguages{lang: dictionary.LanguageEnglish}, paidTier{})
+	h := sessionHandler(svc, resolve, stubLanguages{lang: dictionary.LanguageZhHans}, paidTier{})
 
 	w := serve(t, h, "u1", http.MethodGet, "/api/me/review/session", "")
 
@@ -176,32 +176,57 @@ func TestSessionSkipsUnresolvedWordsAndUsesTheUsersLanguage(t *testing.T) {
 		Cards []cardJSON `json:"cards"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
-	if w.Code != http.StatusOK || len(body.Cards) != 1 || body.Cards[0].WordID != "w2" {
+	if w.Code != http.StatusOK || len(body.Cards) != 1 || body.Cards[0].WordID != "w2" || body.Cards[0].Chinese != "狗" {
 		t.Fatalf("status %d cards %+v", w.Code, body.Cards)
 	}
-	if resolve.lang != dictionary.LanguageEnglish {
-		t.Fatalf("resolve lang %q, want en", resolve.lang)
+	if resolve.lang != dictionary.LanguageZhHans {
+		t.Fatalf("resolve lang %q, want zh-Hans", resolve.lang)
 	}
 }
 
 func TestSessionNeverSendsChineseToAnEnglishUser(t *testing.T) {
-	svc := &fakeService{candidates: []review.Candidate{{WordID: "w1", English: "cat"}}}
-	resolve := &recordingResolver{
-		errs: map[string]error{"cat": dictionary.ErrWiktionaryUnavailable},
+	cases := []struct {
+		name   string
+		byWord map[string]dictionary.Result
+		errs   map[string]error
+	}{
+		{
+			name: "wiktionary unavailable",
+			errs: map[string]error{"cat": dictionary.ErrWiktionaryUnavailable},
+		},
+		{
+			name: "wiktionary english definition without chinese",
+			byWord: map[string]dictionary.Result{
+				"cat": {
+					ID:      "w1",
+					English: "cat",
+					Source:  dictionary.SourceWiktionary,
+					Definition: &dictionary.EnglishDefinition{
+						Senses: []dictionary.Sense{{POS: "n", Gloss: "a small domesticated carnivorous mammal"}},
+					},
+				},
+			},
+		},
 	}
-	h := sessionHandler(svc, resolve, stubLanguages{lang: dictionary.LanguageEnglish}, paidTier{})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &fakeService{candidates: []review.Candidate{{WordID: "w1", English: "cat"}}}
+			resolve := &recordingResolver{byWord: tc.byWord, errs: tc.errs}
+			h := sessionHandler(svc, resolve, stubLanguages{lang: dictionary.LanguageEnglish}, paidTier{})
 
-	w := serve(t, h, "u1", http.MethodGet, "/api/me/review/session", "")
+			w := serve(t, h, "u1", http.MethodGet, "/api/me/review/session", "")
 
-	var body struct {
-		Cards []cardJSON `json:"cards"`
-	}
-	_ = json.Unmarshal(w.Body.Bytes(), &body)
-	if w.Code != http.StatusOK || len(body.Cards) != 0 {
-		t.Fatalf("status %d cards %+v; want empty (no Chinese)", w.Code, body.Cards)
-	}
-	if resolve.lang != dictionary.LanguageEnglish {
-		t.Fatalf("resolve lang %q, want en", resolve.lang)
+			var body struct {
+				Cards []cardJSON `json:"cards"`
+			}
+			_ = json.Unmarshal(w.Body.Bytes(), &body)
+			if w.Code != http.StatusOK || len(body.Cards) != 0 {
+				t.Fatalf("status %d cards %+v; want empty (no Chinese)", w.Code, body.Cards)
+			}
+			if resolve.lang != dictionary.LanguageEnglish {
+				t.Fatalf("resolve lang %q, want en", resolve.lang)
+			}
+		})
 	}
 }
 
