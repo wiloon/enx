@@ -5,7 +5,9 @@ import {
   createEverSignedIn,
   createLearningAccess,
   learningAccessFor,
+  mayOpenAccountSidePanel,
   mayTurnOnLearningMode,
+  showsPopupLearningCardWhenSignedOut,
   type SessionState,
 } from '@/lib/learningAccess'
 
@@ -42,6 +44,22 @@ describe('mayTurnOnLearningMode', () => {
     expect(mayTurnOnLearningMode('signed-in')).toBe(true)
     expect(mayTurnOnLearningMode('anonymous')).toBe(true)
     expect(mayTurnOnLearningMode('signed-out')).toBe(false)
+  })
+})
+
+describe('mayOpenAccountSidePanel (ADR-095 Decision 1)', () => {
+  it('refuses only anonymous mode; a signed-out browser keeps today’s path', () => {
+    expect(mayOpenAccountSidePanel('signed-in')).toBe(true)
+    expect(mayOpenAccountSidePanel('anonymous')).toBe(false)
+    expect(mayOpenAccountSidePanel('signed-out')).toBe(true)
+  })
+})
+
+describe('showsPopupLearningCardWhenSignedOut', () => {
+  it('shows the card only in anonymous mode', () => {
+    expect(showsPopupLearningCardWhenSignedOut('anonymous')).toBe(true)
+    expect(showsPopupLearningCardWhenSignedOut('signed-out')).toBe(false)
+    expect(showsPopupLearningCardWhenSignedOut('signed-in')).toBe(false)
   })
 })
 

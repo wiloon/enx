@@ -234,12 +234,41 @@ const syncAndObserveClerk = async (): Promise<AuthClient> => {
   if (sync === 'unconfirmed') throw new SessionSyncUnconfirmed()
   await accountSession.observe(clerk.subject())
   if (requested !== clerkGeneration) throw new SessionChanged()
-  if (clerk.hasSession()) {
-    await everSignedIn.mark().catch(error => {
-      console.warn('[ENX] could not store the signed-in flag:', error)
-    })
-  }
+  if (clerk.hasSession()) await markSignedIn()
   return clerk
+}
+
+// Set once anyone was told to read anonymously; survives a worker restart.
+const ANONYMOUS_READER_KEY = 'enx-anonymous-reader'
+
+// ADR-095: a first sign-in is not always an account change (no owner is
+// recorded while the session is unconfirmed), so tabs reading anonymously are
+// told when the flag is first set. Not awaited: they ask for this very sync.
+const markSignedIn = async () => {
+  try {
+    const first = !(await everSignedIn.isSet())
+    await everSignedIn.mark()
+    const read = first
+      ? await chrome.storage.session.get(ANONYMOUS_READER_KEY)
+      : undefined
+    if (read?.[ANONYMOUS_READER_KEY]) {
+      void sendToAllTabs({ action: 'firstSignIn' }).catch(error => {
+        console.warn('[ENX] could not announce the sign-in:', error)
+      })
+    }
+  } catch (error) {
+    console.warn('[ENX] could not store the signed-in flag:', error)
+  }
+}
+
+// Tabs without an injected content script are tolerated.
+const sendToAllTabs = async (message: { action: string; cause?: string }) => {
+  const tabs = await chrome.tabs.query({})
+  await Promise.allSettled(
+    tabs
+      .filter(tab => tab.id !== undefined)
+      .map(tab => chrome.tabs.sendMessage(tab.id!, message))
+  )
 }
 
 // Cookie refreshes can supersede a check without changing accounts. Join the
@@ -508,13 +537,9 @@ const notifyAccountChange = async (cause: Invalidation) => {
   const notifyPages = Promise.resolve().then(() =>
     chrome.runtime.sendMessage(pages)
   )
-  const tabs = await chrome.tabs.query({})
-  const message = invalidationMessage(cause)
   await Promise.allSettled([
     notifyPages,
-    ...tabs
-      .filter(tab => tab.id !== undefined)
-      .map(tab => chrome.tabs.sendMessage(tab.id!, message)),
+    sendToAllTabs(invalidationMessage(cause)),
   ])
 }
 
@@ -1278,8 +1303,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleGetOneWord(request.word, request.refresh === true)
 
         // ADR-095: the content script asks which mode it reads in.
-        case 'learningAccess':
-          return { access: await learningAccess.current() }
+        case 'learningAccess': {
+          const access = await learningAccess.current()
+          if (access === 'anonymous') {
+            await chrome.storage.session
+              .set({ [ANONYMOUS_READER_KEY]: true })
+              ?.catch(error => {
+                console.warn('[ENX] could not store the reader mark:', error)
+              })
+          }
+          return { access }
+        }
 
         // ADR-095 Decision 3: never cached, so every click is one request
         // the server can count against the device's daily limit.

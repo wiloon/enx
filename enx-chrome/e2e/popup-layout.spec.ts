@@ -346,6 +346,11 @@ test('signed-out popup keeps the standalone version footer and hides the stats c
   await expect(
     popup.getByRole('button', { name: 'Sign in on the website' })
   ).toBeVisible()
+  // ADR-095: a fresh profile is anonymous, so "Read with Catglish" sits above
+  // the sign-in card; stats / feedback stay signed-in only.
+  await expect(
+    popup.getByRole('button', { name: 'Read with Catglish' })
+  ).toBeVisible({ timeout: 15_000 })
   await expect(popup.getByTestId('popup-stats-card')).toHaveCount(0)
   await expect(popup.getByRole('button', { name: /^v\d/ })).toHaveCount(1)
   await expect(

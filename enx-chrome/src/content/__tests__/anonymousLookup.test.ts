@@ -106,7 +106,8 @@ const anonymousFetches = () =>
   fetches().filter(([url]) => url.endsWith(ANONYMOUS_PATH))
 const headersOf = (init: RequestInit) =>
   (init.headers ?? {}) as Record<string, string>
-const paragraph = () => document.querySelector('article p')!
+const paragraph = () =>
+  document.querySelector('article p, #enx-reader-article p')!
 const overlays = () => document.querySelectorAll('#enx-anchored-overlay')
 const inPopover = (testId: string) =>
   overlays()[0]?.shadowRoot?.querySelector(`[data-testid="${testId}"]`) ?? null
@@ -200,17 +201,43 @@ beforeEach(() => {
   ;(chrome.tabs.query as jest.Mock).mockResolvedValue([{ id: 1 }])
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
   __resetClerkClientCacheForTests()
+  window.history.replaceState({}, '', '/')
   document.head.innerHTML = ''
   document.body.innerHTML = `<article><p>${ARTICLE_TEXT}</p></article>`
+  delete document.documentElement.dataset.enxLookedUp
 })
 
-afterEach(() => {
+afterEach(async () => {
   ;(chrome.runtime as { id?: string }).id = undefined
   document.dispatchEvent(new Event(STAND_DOWN_EVENT))
   ;(chrome.runtime as { id?: string }).id = LIVE_ID
   CSS.highlights.clear()
+  const { config } = await import('@/config/env')
+  Object.assign(config, {
+    rssxOrigins: [],
+    uiOrigins: ['http://localhost:3000'],
+  })
   jest.restoreAllMocks()
 })
+
+const selectText = async (from: string, to: string) => {
+  const text = paragraph().firstChild as Text
+  const range = document.createRange()
+  range.setStart(text, text.data.indexOf(from))
+  range.setEnd(text, text.data.indexOf(to) + to.length)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  paragraph().dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await settle()
+}
+
+const clickSelectionButton = async () => {
+  const button = document.querySelector('.enx-selection-translate-button')
+  expect(button).not.toBeNull()
+  button!.shadowRoot!.querySelector('button')!.click()
+  await settle()
+}
 
 const startReading = async () => {
   const send = await loadContentScript()
@@ -294,7 +321,10 @@ describe('anonymous mode: signed out in a browser that never signed in', () => {
   })
 
   it('shows not-found with Sign in and no AI lookup', async () => {
-    anonymous = () => ({ status: 200, body: { Word: 'fox', Status: 'not_found' } })
+    anonymous = () => ({
+      status: 200,
+      body: { Word: 'fox', Status: 'not_found' },
+    })
     await startReading()
 
     await clickFox()
@@ -353,5 +383,191 @@ describe('a sign-in sets the flag', () => {
     )
     await startReading()
     expect(localStorage['enx-ever-signed-in']).toBe(true)
+  })
+})
+
+describe('account-owned triggers in anonymous mode', () => {
+  // The reader never signed in, so the prompt says what signing in adds,
+  // not that a session ended.
+  const expectSentencePrompt = () => {
+    expect(inPopover('word-popover-anonymous')?.textContent).toContain(
+      'Sign in to translate sentences and phrases.'
+    )
+    expect(inPopover('word-popover-signed-out')).toBeNull()
+  }
+
+  it('shows Sign in for Translate sentence and sends no openSentencePanel', async () => {
+    const { send } = await startReading()
+    await clickFox()
+
+    ;(
+      inPopover('word-popover-sentence-translation') as HTMLButtonElement
+    ).click()
+    await settle()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expectSentencePrompt()
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+  })
+
+  it('shows Sign in in the anchored overlay for a selection, with no panel request', async () => {
+    const { send } = await startReading()
+    await selectText('quick', 'jumps')
+    await clickSelectionButton()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expectSentencePrompt()
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+  })
+
+  it('shows Sign in for a selected sentence, with no panel request', async () => {
+    await startReading()
+
+    await selectText('The', 'animals.')
+    await clickSelectionButton()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expectSentencePrompt()
+  })
+
+  it('shows Sign in for the hover button, with no panel request', async () => {
+    await startReading()
+    const text = paragraph().firstChild!
+    ;(
+      document as unknown as {
+        caretPositionFromPoint: (x: number, y: number) => unknown
+      }
+    ).caretPositionFromPoint = () => ({
+      offsetNode: text,
+      offset: text.textContent!.indexOf('fox') + 1,
+    })
+    paragraph().dispatchEvent(
+      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+    )
+    // The dwell before the button appears (ADR-068).
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const button = document.querySelector(
+      '.enx-hover-sentence-translate-button'
+    )
+    expect(button).not.toBeNull()
+
+    button!.shadowRoot!.querySelector('button')!.click()
+    await settle()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expectSentencePrompt()
+  })
+})
+
+describe('sign-in while reading anonymously', () => {
+  it('re-runs under the account when no accountChanged reaches the tab', async () => {
+    // The first sync cannot be confirmed: no owner is ever recorded, so the
+    // later sign-in is not an account change.
+    createClient.mockImplementation(async () => ({
+      ...signedOut,
+      classifySession: async () => 'unconfirmed' as const,
+    }))
+    const { send } = await startReading()
+    ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+      async (_tabId: number, message: unknown) => send(message)
+    )
+    expect(tracker.__currentSessionForTests()).toBeNull()
+
+    createClient.mockImplementation(async () =>
+      fakeSession('user-a', async () => 'token')
+    )
+    __resetClerkClientCacheForTests()
+    await clickFox()
+    showAllObserved()
+    await settle()
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, {
+      action: 'accountChanged',
+    })
+    expect(overlays()).toHaveLength(0)
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+    expect(sent.some(m => m.type === 'getReviewWords')).toBe(true)
+    expect(tracker.__currentSessionForTests()).not.toBeNull()
+  })
+
+  it('closes the popover and re-runs learning mode under the account', async () => {
+    const { send } = await startReading()
+    await clickFox()
+    expect(overlays()).toHaveLength(1)
+    expect(tracker.__currentSessionForTests()).toBeNull()
+
+    localStorage['enx-ever-signed-in'] = true
+    createClient.mockImplementation(async () =>
+      fakeSession('user-a', async () => 'token')
+    )
+    __resetClerkClientCacheForTests()
+    global.fetch = jest.fn(async (url: string) => {
+      if (String(url).includes('/api/')) {
+        return jsonResponse(200, { success: true, data: [], reviewWords: [] })
+      }
+      return jsonResponse(200, { success: true, data: [] })
+    }) as unknown as typeof fetch
+
+    await send({ action: 'accountChanged' })
+    showAllObserved()
+    await settle()
+
+    expect(overlays()).toHaveLength(0)
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+    expect(tracker.__currentSessionForTests()).not.toBeNull()
+    expect(sent.some(m => m.type === 'getReviewWords')).toBe(true)
+  })
+})
+
+describe('data-enx-looked-up on enx-ui', () => {
+  it('stamps the mark after a lookup on an enx-ui origin', async () => {
+    window.history.replaceState({}, '', '/welcome')
+    document.body.innerHTML = `<div id="enx-reader-article"><p>${ARTICLE_TEXT}</p></div>`
+    await jest.isolateModulesAsync(async () => {
+      const { config } = await import('@/config/env')
+      Object.assign(config, {
+        rssxOrigins: [],
+        uiOrigins: [window.location.origin],
+      })
+      await import('../content')
+      tracker = await import('@/content/readingTracker')
+    })
+    const calls = (chrome.runtime.onMessage.addListener as jest.Mock).mock.calls
+    const listener = calls[calls.length - 1][0] as Listener
+    const send = (request: unknown) =>
+      new Promise<Record<string, unknown>>(resolve => {
+        listener(request, {}, resolve as Callback)
+      })
+    const reply = await send({ action: 'enxRun' })
+    expect(reply).toEqual({ success: true, completed: true })
+    showAllObserved()
+    await settle()
+
+    expect(document.documentElement.hasAttribute('data-enx-looked-up')).toBe(
+      false
+    )
+    await clickFox()
+    expect(document.documentElement.getAttribute('data-enx-looked-up')).toBe(
+      '1'
+    )
+  })
+
+  it('does not stamp the mark on a non-enx-ui origin', async () => {
+    // Restore the mock env's uiOrigins in case a prior test widened them.
+    const { config } = await import('@/config/env')
+    Object.assign(config, { uiOrigins: ['http://localhost:3000'] })
+    await startReading()
+    await clickFox()
+    expect(document.documentElement.hasAttribute('data-enx-looked-up')).toBe(
+      false
+    )
   })
 })
