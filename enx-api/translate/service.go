@@ -3,6 +3,7 @@ package translate
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"enx-api/dictionary"
@@ -44,6 +45,8 @@ type Handler struct {
 	reviews ReviewLog
 	ai      AIDefiner
 	policy  AIPolicy
+
+	languages dictionary.ExplanationLanguages // nil: everyone is zh-Hans
 }
 
 func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews ReviewLog) *Handler {
@@ -67,6 +70,27 @@ func (h *Handler) WithAI(ai AIDefiner, policy AIPolicy) *Handler {
 	return h
 }
 
+// WithExplanationLanguages makes the endpoints, whose responses carry Chinese
+// only, refuse users who want another explanation language (ADR-098).
+func (h *Handler) WithExplanationLanguages(languages dictionary.ExplanationLanguages) *Handler {
+	h.languages = languages
+	return h
+}
+
+// wantsChinese reports whether userID may be answered in Chinese. A failed
+// read is a no.
+func (h *Handler) wantsChinese(c *gin.Context, userID string) bool {
+	if h.languages == nil {
+		return true
+	}
+	lang, err := h.languages.ExplanationLanguage(c.Request.Context(), userID)
+	if err != nil {
+		logger.Warnf("explanation language read failed for user %s, refusing the lookup: %v", userID, err)
+		return false
+	}
+	return lang == dictionary.LanguageZhHans
+}
+
 // Translate handles GET /api/translate?word=
 func (h *Handler) Translate(c *gin.Context) {
 	h.translateWord(c, c.Query("word"))
@@ -86,6 +110,12 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 
 	logger.Debugf("translate word: %s, user_id: %s", raw, userId)
 
+	// Before the quota: a refused lookup costs nothing.
+	if !h.wantsChinese(c, userId) {
+		httpjson.Fail(c, http.StatusServiceUnavailable, "Please update Catglish to the latest version to look up words.")
+		return
+	}
+
 	if isSentence(raw) {
 		respondSentenceUnavailable(c, raw)
 		return
@@ -103,7 +133,7 @@ func (h *Handler) translateWord(c *gin.Context, raw string) {
 		logger.Warnf("lookup quota charge failed for user %s, allowing lookup: %v", userId, err)
 	}
 
-	res, err := h.dict.Resolve(c.Request.Context(), word.English, userId)
+	res, err := h.dict.Resolve(c.Request.Context(), word.English, userId, dictionary.LanguageZhHans)
 	switch {
 	case errors.Is(err, dictionary.ErrEcdictUnavailable):
 		dictionaryhttp.RespondUnavailable(c)

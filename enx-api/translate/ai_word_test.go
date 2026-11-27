@@ -300,3 +300,16 @@ func TestLookupHitDoesNotMentionTheAIFallback(t *testing.T) {
 		t.Fatalf("body = %+v, want a plain hit with no fallback offer", body)
 	}
 }
+
+// ADR-098: the model writes Chinese, so it is not called for a user who may
+// want English.
+func TestAIWordRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
+	ai := &fakeAI{}
+	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, nil).WithExplanationLanguages(failingLanguages{})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+
+	if w.Code != http.StatusServiceUnavailable || decode(t, w)["code"] != "ai_unavailable" || len(ai.words) != 0 {
+		t.Fatalf("status %d body %s, asked %v; want ai_unavailable and no AI call", w.Code, w.Body, ai.words)
+	}
+}

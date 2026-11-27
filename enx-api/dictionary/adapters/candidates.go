@@ -46,7 +46,7 @@ func (AICandidates) HitCandidate(ctx context.Context, english string) error {
 }
 
 // AddCandidate is one statement: it inserts the row unless words has a live
-// row for the word, and on a conflict with an existing candidate (pending or
+// row with Chinese for the word, and on a conflict with an existing candidate (pending or
 // rejected) it keeps that row's status and definition and only counts a hit.
 func (AICandidates) AddCandidate(ctx context.Context, c dictionary.Candidate) (bool, error) {
 	now := time.Now().UnixMilli()
@@ -54,7 +54,7 @@ func (AICandidates) AddCandidate(ctx context.Context, c dictionary.Candidate) (b
 	result := sqlitex.DB.WithContext(ctx).Exec(
 		`INSERT INTO ai_candidates (english, chinese, quality, prompt_version, status, hit_count, first_hit_at, last_hit_at)
 		 SELECT ?, ?, ?, ?, ?, 1, ?, ?
-		 WHERE NOT EXISTS (SELECT 1 FROM words WHERE english = ? AND deleted_at IS NULL)
+		 WHERE NOT EXISTS (SELECT 1 FROM words WHERE english = ? AND deleted_at IS NULL AND COALESCE(chinese, '') <> '')
 		 ON CONFLICT(english) DO UPDATE SET hit_count = hit_count + 1, last_hit_at = excluded.last_hit_at`,
 		english, c.Chinese, c.Quality, c.PromptVersion, string(dictionary.CandidatePending), now, now, english)
 	return result.RowsAffected > 0, result.Error
@@ -65,8 +65,9 @@ func (AICandidates) AddCandidate(ctx context.Context, c dictionary.Candidate) (b
 //   - rejected candidate: nothing is written (stored false);
 //   - pending candidate: the words row is inserted and the candidate deleted;
 //   - no candidate: the words row is inserted;
-//   - a live words row already there: it is left unchanged and its id returned
-//     (a pending candidate is deleted, it has nothing left to add).
+//   - a live words row already there: its id is returned, and it is filled
+//     if it has no Chinese, else left unchanged (either way a pending
+//     candidate is deleted).
 func (AICandidates) AddAIWord(ctx context.Context, entry dictionary.Entry) (string, bool, error) {
 	english := repo.CanonicalEnglish(entry.English)
 	var (
@@ -104,6 +105,9 @@ func (AICandidates) AddAIWord(ctx context.Context, entry dictionary.Entry) (stri
 		switch {
 		case err == nil:
 			id = existing.Id
+			if err := fillEmptyWord(tx, id, row); err != nil {
+				return err
+			}
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			if err := tx.Create(&row).Error; err != nil {
 				return err

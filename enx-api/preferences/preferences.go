@@ -187,6 +187,23 @@ func (s *Service) Effective(ctx context.Context, userID string, key Key) (bool, 
 	return on, nil
 }
 
+// EffectiveEnum is Effective for an enum key. Asked for a boolean key it
+// errors rather than answering "".
+func (s *Service) EffectiveEnum(ctx context.Context, userID string, key Key) (string, error) {
+	if _, ok := registry[key]; !ok {
+		return "", fmt.Errorf("%w: %q", ErrUnknownKey, key)
+	}
+	views, err := s.Get(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	value, ok := views[key].Effective.(string)
+	if !ok {
+		return "", fmt.Errorf("preferences: %q is not an enum preference", key)
+	}
+	return value, nil
+}
+
 // Update applies changes, given as decoded JSON values: a non-nil value
 // stores an explicit choice, a nil value clears it (back to the default). It
 // validates every key before writing any, so a rejected request changes

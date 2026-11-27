@@ -111,12 +111,15 @@ func InsertWord(row *Word) error {
 // in the query rather than applied after reading, so a hidden row is never
 // loaded and cannot leak through a caller that forgets to filter it.
 //
+// A row with no Chinese is a miss (ADR-098 Decision 5): the caller goes on to
+// the dictionaries and fills it.
+//
 // A miss returns an empty Word and no error. Any other failure is returned,
 // never folded into a miss: a lookup that reads a miss goes on to paid AI
 // fallback (#1037).
 func FindWordForLookup(english string, includeAI bool) (*Word, error) {
 	english = CanonicalEnglish(english)
-	query := sqlitex.DB.Where("english = ? AND deleted_at IS NULL", english)
+	query := sqlitex.DB.Where("english = ? AND deleted_at IS NULL AND COALESCE(chinese, '') <> ''", english)
 	if !includeAI {
 		query = query.Where("(source <> ? OR admin_edited_at IS NOT NULL)", WordSourceAI)
 	}

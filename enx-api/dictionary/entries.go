@@ -45,13 +45,17 @@ type EntryResult struct {
 	// Result is set when Status is EntryFound; its ID is empty when the
 	// ECDICT hit could not be cached.
 	Result Result
-	// AIFallback is set when Status is EntryNotFound and a policy exists.
+	// AIFallback is set when Status is EntryNotFound, in zh-Hans only, and a
+	// policy exists.
 	AIFallback *AIFallbackOffer
+	// Language is the explanation language the word was answered in; empty
+	// when the user's could not be read.
+	Language Language
 }
 
 // Resolver resolves one normalized word for a user: Service in production.
 type Resolver interface {
-	Resolve(ctx context.Context, english, userID string) (Result, error)
+	Resolve(ctx context.Context, english, userID string, lang Language) (Result, error)
 }
 
 // AIFallbackPolicy says what the AI fallback offers a user.
@@ -72,10 +76,12 @@ type Entries struct {
 	lookedUp LookedUpWords
 	meter    Meter
 	policy   AIFallbackPolicy // nil: misses offer no AI fallback
+
+	languages ExplanationLanguages
 }
 
-func NewEntries(resolver Resolver, meter Meter, policy AIFallbackPolicy, lookedUp LookedUpWords) *Entries {
-	return &Entries{resolver: resolver, meter: meter, policy: policy, lookedUp: lookedUp}
+func NewEntries(resolver Resolver, meter Meter, policy AIFallbackPolicy, lookedUp LookedUpWords, languages ExplanationLanguages) *Entries {
+	return &Entries{resolver: resolver, meter: meter, policy: policy, lookedUp: lookedUp, languages: languages}
 }
 
 // Lookup normalizes raw like the lookup GET, drops exact duplicates, charges
@@ -84,6 +90,9 @@ func NewEntries(resolver Resolver, meter Meter, policy AIFallbackPolicy, lookedU
 // over-quota one ErrQuotaExceeded; neither is charged or resolved. Any other
 // meter error fails open (ADR-029 E2). Looked-up words match without case;
 // a failed read charges the whole batch. An all-looked-up batch skips the meter.
+// The explanation language is read once per batch; if it cannot be read, every
+// word is EntryFailed rather than answered in a language the user may not
+// want (ADR-098).
 func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]EntryResult, error) {
 	words, err := distinctWords(raw)
 	if err != nil {
@@ -114,11 +123,20 @@ func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]En
 		}
 	}
 
-	var offer *AIFallbackOffer
 	results := make([]EntryResult, len(words))
+	lang, err := e.languages.ExplanationLanguage(ctx, userID)
+	if err != nil {
+		logger.Warnf("dictionary: explanation language read failed for user %s, failing the batch: %v", userID, err)
+		for i, word := range words {
+			results[i] = EntryResult{Word: word, Status: EntryFailed}
+		}
+		return results, nil
+	}
+	var offer *AIFallbackOffer
 	for i, word := range words {
-		results[i] = e.resolve(ctx, word, userID)
-		if results[i].Status == EntryNotFound && e.policy != nil {
+		results[i] = resolveEntry(ctx, e.resolver, word, userID, lang)
+		// The AI fallback writes Chinese definitions.
+		if results[i].Status == EntryNotFound && lang == LanguageZhHans && e.policy != nil {
 			if offer == nil {
 				canUse, auto := e.policy.Fallback(ctx, userID)
 				offer = &AIFallbackOffer{CanUse: canUse, Auto: auto}
@@ -129,16 +147,18 @@ func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]En
 	return results, nil
 }
 
-func (e *Entries) resolve(ctx context.Context, word, userID string) EntryResult {
-	return resolveEntry(ctx, e.resolver, word, userID)
-}
-
 // resolveEntry resolves one normalized word into its batch status: found,
 // not found, or failed (never passed off as not found).
-func resolveEntry(ctx context.Context, resolver Resolver, word, userID string) EntryResult {
-	res, err := resolver.Resolve(ctx, word, userID)
+func resolveEntry(ctx context.Context, resolver Resolver, word, userID string, lang Language) EntryResult {
+	result := resolveStatus(ctx, resolver, word, userID, lang)
+	result.Language = lang
+	return result
+}
+
+func resolveStatus(ctx context.Context, resolver Resolver, word, userID string, lang Language) EntryResult {
+	res, err := resolver.Resolve(ctx, word, userID, lang)
 	switch {
-	case errors.Is(err, ErrEcdictUnavailable):
+	case errors.Is(err, ErrEcdictUnavailable), errors.Is(err, ErrWiktionaryUnavailable):
 		return EntryResult{Word: word, Status: EntryFailed}
 	case err != nil:
 		logger.Warnf("dictionary: batch lookup of %s failed: %v", word, err)

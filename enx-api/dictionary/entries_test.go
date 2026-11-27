@@ -28,9 +28,11 @@ type fakeResolver struct {
 	errs    map[string]error
 	log     *callLog
 	asked   []string
+	langs   []Language
 }
 
-func (f *fakeResolver) Resolve(_ context.Context, english, _ string) (Result, error) {
+func (f *fakeResolver) Resolve(_ context.Context, english, _ string, lang Language) (Result, error) {
+	f.langs = append(f.langs, lang)
 	*f.log = append(*f.log, "resolve")
 	f.asked = append(f.asked, english)
 	if err := f.errs[english]; err != nil {
@@ -40,6 +42,25 @@ func (f *fakeResolver) Resolve(_ context.Context, english, _ string) (Result, er
 		return res, nil
 	}
 	return Result{English: english, Source: SourceMiss}, nil
+}
+
+// fakeLanguages is everyone's explanation language, zh-Hans when unset,
+// counting reads.
+type fakeLanguages struct {
+	lang  Language
+	err   error
+	reads int
+}
+
+func (f *fakeLanguages) ExplanationLanguage(context.Context, string) (Language, error) {
+	f.reads++
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.lang == "" {
+		return LanguageZhHans, nil
+	}
+	return f.lang, nil
 }
 
 // fakeAIPolicy offers the AI fallback to the users in can, counting asks.
@@ -60,6 +81,7 @@ type entriesFixture struct {
 	policy   *fakeAIPolicy
 	log      *callLog
 	lookedUp *fakeLookedUpWords
+	language *fakeLanguages
 }
 
 func newEntriesFixture() *entriesFixture {
@@ -70,8 +92,9 @@ func newEntriesFixture() *entriesFixture {
 		policy:   &fakeAIPolicy{can: map[string]bool{}},
 		log:      log,
 		lookedUp: &fakeLookedUpWords{},
+		language: &fakeLanguages{},
 	}
-	f.entries = NewEntries(f.resolver, f.meter, f.policy, f.lookedUp)
+	f.entries = NewEntries(f.resolver, f.meter, f.policy, f.lookedUp, f.language)
 	return f
 }
 
@@ -244,7 +267,7 @@ func TestEntriesReturnsLocalHitsWhenECDICTIsUnavailable(t *testing.T) {
 	svc, words, external := newTestService()
 	external.unavailable = true
 	words.seed("w1", Entry{English: "serendipity", Chinese: "机缘巧合"})
-	entries := NewEntries(svc, &fakeMeter{}, &fakeAIPolicy{}, &fakeLookedUpWords{})
+	entries := NewEntries(svc, &fakeMeter{}, &fakeAIPolicy{}, &fakeLookedUpWords{}, &fakeLanguages{})
 
 	results, err := entries.Lookup(context.Background(), "u1", []string{"serendipity", "run"})
 	if err != nil {
@@ -263,7 +286,7 @@ func TestEntriesReturnsLocalHitsWhenECDICTIsUnavailable(t *testing.T) {
 // nothing.
 func TestEntriesWithoutAPolicyOffersNoAIFallback(t *testing.T) {
 	log := &callLog{}
-	entries := NewEntries(&fakeResolver{log: log}, &fakeMeter{}, nil, &fakeLookedUpWords{})
+	entries := NewEntries(&fakeResolver{log: log}, &fakeMeter{}, nil, &fakeLookedUpWords{}, &fakeLanguages{})
 
 	results, err := entries.Lookup(context.Background(), "u1", []string{"zzxqv"})
 
@@ -363,5 +386,47 @@ func TestEntriesReadsOnlyNormalizedDistinctBatchWords(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.meter.charges, []int{2}) {
 		t.Fatalf("charges %v, want [2]", f.meter.charges)
+	}
+}
+
+// ADR-098: the explanation language is read once for the whole batch, passed
+// to every resolution and named on every result.
+func TestEntriesReadsTheExplanationLanguageOncePerBatch(t *testing.T) {
+	f := newEntriesFixture()
+	f.language.lang = LanguageEnglish
+	f.resolver.errs["run"] = ErrWiktionaryUnavailable
+	f.policy.can["u1"] = true
+
+	results, err := f.entries.Lookup(context.Background(), "u1", []string{"run", "zzxqv"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.language.reads != 1 || !reflect.DeepEqual(f.resolver.langs, []Language{LanguageEnglish, LanguageEnglish}) {
+		t.Fatalf("reads %d, resolved in %v; want one read and en twice", f.language.reads, f.resolver.langs)
+	}
+	if results[0].Status != EntryFailed || results[0].Language != LanguageEnglish {
+		t.Fatalf("unavailable Wiktionary: %+v, want failed in en", results[0])
+	}
+	// The AI fallback writes Chinese, so an en miss offers none.
+	if results[1].Status != EntryNotFound || results[1].AIFallback != nil || f.policy.calls != 0 {
+		t.Fatalf("en miss: %+v, want no AI offer", results[1])
+	}
+}
+
+func TestEntriesFailsEveryWordWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
+	f := newEntriesFixture()
+	f.language.err = errors.New("db down")
+
+	results, err := f.entries.Lookup(context.Background(), "u1", []string{"run", "ran"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if r.Status != EntryFailed || r.Language != "" || r.AIFallback != nil {
+			t.Fatalf("result %+v, want failed with no language", r)
+		}
+	}
+	if len(results) != 2 || len(f.resolver.asked) != 0 || !reflect.DeepEqual(*f.log, callLog{"charge"}) {
+		t.Fatalf("%d results, log %v; want the usual charge and no resolution", len(results), *f.log)
 	}
 }

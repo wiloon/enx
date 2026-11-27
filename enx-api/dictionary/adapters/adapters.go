@@ -64,7 +64,7 @@ func (WordsTable) Find(_ context.Context, english string, includeAI bool) (strin
 	}, true, nil
 }
 
-func (WordsTable) Add(_ context.Context, entry dictionary.Entry) (string, error) {
+func (WordsTable) Add(ctx context.Context, entry dictionary.Entry) (string, error) {
 	row := repo.Word{
 		English:       entry.English,
 		Chinese:       entry.Chinese,
@@ -81,6 +81,9 @@ func (WordsTable) Add(_ context.Context, entry dictionary.Entry) (string, error)
 		// words.english is UNIQUE: the headword is already cached.
 		existing := repo.GetWordByEnglish(entry.English)
 		if existing.Id == "" {
+			return "", err
+		}
+		if err := fillEmptyWord(sqlitex.DB.WithContext(ctx), existing.Id, row); err != nil {
 			return "", err
 		}
 		return existing.Id, nil
@@ -146,6 +149,19 @@ func (b TokenBilling) Settle(ctx context.Context, userID string, usage dictionar
 	cost := b.Pricing.Cost(usage.PromptTokens, usage.CompletionTokens)
 	logger.Infof("dictionary: %s billed user=%s cost=%d", b.Feature, userID, cost)
 	return cost, credit.Settle(ctx, userID, b.Feature, cost)
+}
+
+// ExplanationLanguages is the dictionary.ExplanationLanguages backed by the
+// user's explanationLanguage preference.
+type ExplanationLanguages struct {
+	Preferences interface {
+		EffectiveEnum(ctx context.Context, userID string, key preferences.Key) (string, error)
+	}
+}
+
+func (l ExplanationLanguages) ExplanationLanguage(ctx context.Context, userID string) (dictionary.Language, error) {
+	value, err := l.Preferences.EffectiveEnum(ctx, userID, preferences.ExplanationLanguage)
+	return dictionary.Language(value), err
 }
 
 // AIPolicy tells the lookup response what the AI fallback offers a user who

@@ -74,8 +74,9 @@ func (AICandidates) setStatus(ctx context.Context, english string, status dictio
 }
 
 // ApproveCandidate moves the candidate into words as an admin-reviewed AI row
-// and deletes it, in one transaction. A live words row is left untouched
-// (created false); a soft-deleted row is revived and overwritten. Any failure
+// and deletes it, in one transaction. A live words row with Chinese is left
+// untouched (created false); one without is filled, and a soft-deleted row is
+// revived and overwritten. Any failure
 // rolls everything back.
 func (AICandidates) ApproveCandidate(ctx context.Context, english string) (created bool, err error) {
 	english = repo.CanonicalEnglish(english)
@@ -115,8 +116,16 @@ func (AICandidates) ApproveCandidate(ctx context.Context, english string) (creat
 			created = true
 		case err != nil:
 			return err
-		case existing.DeletedAt == nil:
+		case existing.DeletedAt == nil && existing.Chinese != "":
 			// A live row wins; the candidate has nothing left to add.
+		case existing.DeletedAt == nil:
+			if err := fillEmptyWord(tx, existing.Id, repo.Word{
+				Chinese: cand.Chinese, Source: repo.WordSourceAI,
+				AdminEditedAt: &now, AIQuality: &quality, AIPromptVersion: &version,
+			}); err != nil {
+				return err
+			}
+			created = true
 		default:
 			err := tx.Model(&repo.Word{}).Where("id = ?", existing.Id).Updates(map[string]any{
 				"english":           cand.English,

@@ -29,6 +29,9 @@ type aiWordRequest struct {
 //
 // The lookup request already counted against the daily lookup quota, so this
 // one does not.
+//
+// The model writes Chinese definitions, so a user who wants another
+// explanation language is refused before it is called (ADR-098).
 func (h *Handler) AIWord(c *gin.Context) {
 	userID, ok := middleware.RequireUserID(c, "Invalid session")
 	if !ok {
@@ -46,6 +49,11 @@ func (h *Handler) AIWord(c *gin.Context) {
 
 	// Normalised exactly as the lookup that missed normalised it, so both
 	// requests mean the same words row.
+	if !h.wantsChinese(c, userID) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "code": "ai_unavailable", "message": "AI lookup is not available for English explanations yet."})
+		return
+	}
+
 	word := enx.Word{}
 	word.SetEnglish(req.Word)
 

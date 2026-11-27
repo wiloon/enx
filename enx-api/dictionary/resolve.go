@@ -141,16 +141,23 @@ func (s *Service) findCached(ctx context.Context, english, userID string) (strin
 	return s.words.Find(ctx, english, true)
 }
 
-// Resolve turns a normalized English word into its definition: the local
+// Resolve turns a normalized English word into its definition in lang. In
+// zh-Hans it reads the local
 // words table first (AI-made definitions only for users who may use AI), then
-// the external dictionary, caching an external hit in the words table.
+// the external dictionary, caching an external hit in the words table. An
+// English explanation is never answered from either, which hold Chinese
+// (ADR-098): it is ErrWiktionaryUnavailable.
 //
 // It does not meter: each caller charges the daily quota before it resolves
 // (ADR-079, revising ADR-018 B2).
 //
-// Besides a WordStore read error, it returns only the sentinel
-// ErrEcdictUnavailable (not cached, and no external dictionary configured).
-func (s *Service) Resolve(ctx context.Context, english, userID string) (Result, error) {
+// Besides a WordStore read error, it returns only the sentinels
+// ErrEcdictUnavailable (not cached, and no external dictionary configured)
+// and ErrWiktionaryUnavailable.
+func (s *Service) Resolve(ctx context.Context, english, userID string, lang Language) (Result, error) {
+	if lang == LanguageEnglish {
+		return Result{}, ErrWiktionaryUnavailable
+	}
 	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {
 		return Result{}, err

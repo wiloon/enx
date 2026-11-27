@@ -158,6 +158,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		dictionaryService.RecordAIWordOutcomes(m)
 	}
 	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
+	explanationLanguages := adapters.ExplanationLanguages{Preferences: preferencesService}
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
 	// missed. The policy decides what that miss offers each user; the service
@@ -165,9 +166,9 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	aiPolicy := adapters.AIPolicy{Service: dictionaryService, Entitlements: entitlements, Preferences: preferencesService}
 	lookupHandler := translate.NewHandlerWithQuotaTiers(dictionaryService, lookupQuota, repo.ReviewLog{}, quotaTiers).WithAI(
 		dictionaryService, aiPolicy,
-	)
+	).WithExplanationLanguages(explanationLanguages)
 	// Batch definitions (ADR-079 Decision 1): the quota, no lookup event.
-	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy, adapters.LookedUpWords{}), quotaTiers)
+	entriesHandler := dictionaryhttp.NewHandler(dictionary.NewEntries(dictionaryService, lookupQuota, aiPolicy, adapters.LookedUpWords{}, explanationLanguages), quotaTiers)
 
 	// Sentence translation is an optional feature: if sentence-translate.provider
 	// is unset, it stays disabled (same "unconfigured but not fatal" pattern as
@@ -322,7 +323,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	// id, so an inflection counts against the headword the lookup resolved
 	// to. Not idempotent: the extension never retries it.
 	wordLookupHandler := handlers.NewWordLookupHandlerWithQuotaTiers(
-		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), quotaTiers)
+		dictionary.NewWordLookups(adapters.WordLookupRecords{}, lookupQuota, adapters.LookupEvents{}, time.Now), quotaTiers).WithExplanationLanguages(explanationLanguages)
 	apiGroup.POST("/me/word-lookups", wordLookupHandler.Record)
 
 	// Billing (Stripe) — requires authentication (Clerk session JWT).
