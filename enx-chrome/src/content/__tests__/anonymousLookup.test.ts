@@ -220,6 +220,25 @@ afterEach(async () => {
   jest.restoreAllMocks()
 })
 
+const selectText = async (from: string, to: string) => {
+  const text = paragraph().firstChild as Text
+  const range = document.createRange()
+  range.setStart(text, text.data.indexOf(from))
+  range.setEnd(text, text.data.indexOf(to) + to.length)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  paragraph().dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await settle()
+}
+
+const clickSelectionButton = async () => {
+  const button = document.querySelector('.enx-selection-translate-button')
+  expect(button).not.toBeNull()
+  button!.shadowRoot!.querySelector('button')!.click()
+  await settle()
+}
+
 const startReading = async () => {
   const send = await loadContentScript()
   const reply = await send({ action: 'enxRun' })
@@ -383,20 +402,8 @@ describe('account-owned triggers in anonymous mode', () => {
 
   it('shows Sign in in the anchored overlay for a selection, with no panel request', async () => {
     const { send } = await startReading()
-    const text = paragraph().firstChild as Text
-    const range = document.createRange()
-    range.setStart(text, text.data.indexOf('quick'))
-    range.setEnd(text, text.data.indexOf('jumps') + 'jumps'.length)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
-    paragraph().dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
-    await settle()
-
-    const button = document.querySelector('.enx-selection-translate-button')
-    expect(button).not.toBeNull()
-    button!.shadowRoot!.querySelector('button')!.click()
-    await settle()
+    await selectText('quick', 'jumps')
+    await clickSelectionButton()
 
     expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
     expect(inPopover('word-popover-signed-out')).not.toBeNull()
@@ -404,9 +411,79 @@ describe('account-owned triggers in anonymous mode', () => {
       isEnxEnabled: true,
     })
   })
+
+  it('shows Sign in for a selected sentence, with no panel request', async () => {
+    await startReading()
+
+    await selectText('The', 'animals.')
+    await clickSelectionButton()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+  })
+
+  it('shows Sign in for the hover button, with no panel request', async () => {
+    await startReading()
+    const text = paragraph().firstChild!
+    ;(
+      document as unknown as {
+        caretPositionFromPoint: (x: number, y: number) => unknown
+      }
+    ).caretPositionFromPoint = () => ({
+      offsetNode: text,
+      offset: text.textContent!.indexOf('fox') + 1,
+    })
+    paragraph().dispatchEvent(
+      new MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 })
+    )
+    // The dwell before the button appears (ADR-068).
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const button = document.querySelector(
+      '.enx-hover-sentence-translate-button'
+    )
+    expect(button).not.toBeNull()
+
+    button!.shadowRoot!.querySelector('button')!.click()
+    await settle()
+
+    expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
+    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+  })
 })
 
 describe('sign-in while reading anonymously', () => {
+  it('re-runs under the account when no accountChanged reaches the tab', async () => {
+    // The first sync cannot be confirmed: no owner is ever recorded, so the
+    // later sign-in is not an account change.
+    createClient.mockImplementation(async () => ({
+      ...signedOut,
+      classifySession: async () => 'unconfirmed' as const,
+    }))
+    const { send } = await startReading()
+    ;(chrome.tabs.sendMessage as jest.Mock).mockImplementation(
+      async (_tabId: number, message: unknown) => send(message)
+    )
+    expect(tracker.__currentSessionForTests()).toBeNull()
+
+    createClient.mockImplementation(async () =>
+      fakeSession('user-a', async () => 'token')
+    )
+    __resetClerkClientCacheForTests()
+    await clickFox()
+    showAllObserved()
+    await settle()
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, {
+      action: 'accountChanged',
+    })
+    expect(overlays()).toHaveLength(0)
+    expect(await send({ action: 'getPageInfo' })).toMatchObject({
+      isEnxEnabled: true,
+    })
+    expect(sent.some(m => m.type === 'getReviewWords')).toBe(true)
+    expect(tracker.__currentSessionForTests()).not.toBeNull()
+  })
+
   it('closes the popover and re-runs learning mode under the account', async () => {
     const { send } = await startReading()
     await clickFox()

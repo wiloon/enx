@@ -48,10 +48,10 @@ describe('mayTurnOnLearningMode', () => {
 })
 
 describe('mayOpenAccountSidePanel (ADR-095 Decision 1)', () => {
-  it('opens only when signed in; anonymous and signed-out show Sign in', () => {
+  it('refuses only anonymous mode; a signed-out browser keeps today’s path', () => {
     expect(mayOpenAccountSidePanel('signed-in')).toBe(true)
     expect(mayOpenAccountSidePanel('anonymous')).toBe(false)
-    expect(mayOpenAccountSidePanel('signed-out')).toBe(false)
+    expect(mayOpenAccountSidePanel('signed-out')).toBe(true)
   })
 })
 

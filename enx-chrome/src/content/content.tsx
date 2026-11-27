@@ -91,7 +91,10 @@ import {
   signedOutAtom,
   anonymousNoticeAtom,
 } from '@/store/atoms'
-import type { LearningAccess } from '@/lib/learningAccess'
+import {
+  mayOpenAccountSidePanel,
+  type LearningAccess,
+} from '@/lib/learningAccess'
 import { showAnonymousLookup, type AnonymousLookup } from '@/lib/anonymousLookup'
 import {
   isSignedOutFailure,
@@ -206,9 +209,9 @@ let currentOverlay: HTMLElement | null = null
 let currentRoot: Root | null = null
 // Word states keyed by wordKey: the review list plus every lookup since.
 const wordCache: Record<string, WordData> = {}
-// ADR-095: set by each run from the worker's answer; true only while the
-// browser has never signed in.
-let readingAnonymously = false
+// ADR-095: set by each run from the worker's answer; 'anonymous' only while
+// the browser has never signed in.
+let runAccess: LearningAccess = 'signed-in'
 // Bumped whenever learning mode stops, so a processing run still in flight
 // abandons instead of painting.
 let learningModeLifecycle = 0
@@ -587,7 +590,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   const handleOpenSentencePanel = async () => {
     // ADR-095: anonymous mode never opens the Side Panel; Sign in stays in
     // this popover.
-    if (readingAnonymously) {
+    if (!mayOpenAccountSidePanel(runAccess)) {
       showSignedOut(contentScriptStore)
       return
     }
@@ -712,7 +715,7 @@ const showWordPopover = async (word: string, reference: Range) => {
 
   async function fetchTranslation() {
     // ADR-095 Decision 3: one request per click, nothing cached or counted.
-    if (readingAnonymously) {
+    if (runAccess === 'anonymous') {
       const response = (await sendToBackground({
         type: 'getAnonymousEntry',
         word: word.trim(),
@@ -1140,7 +1143,8 @@ const processArticleContent = async (
     const access = (await sendToBackground({ type: 'learningAccess' })) as {
       access?: LearningAccess
     }
-    readingAnonymously = access?.access === 'anonymous'
+    runAccess = access?.access ?? 'signed-in'
+    const readingAnonymously = runAccess === 'anonymous'
     const loaded: ReviewListLoad = readingAnonymously
       ? { ok: true }
       : await reviewList.load()
@@ -1312,7 +1316,7 @@ const hoverSession = createHoverSentenceSession({
       wordStates,
     }),
   // ADR-095: hover sentence translation needs an account.
-  mayOpenSidePanel: () => !readingAnonymously,
+  mayOpenSidePanel: () => mayOpenAccountSidePanel(runAccess),
   showSignInInstead: range => showAnonymousSignInOverlay(range),
   isCurrentArticle: () => isEnxEnabled && !standDown.isStoodDown(),
   captureAccount: () => accountScope.capture(),
@@ -1430,7 +1434,7 @@ const triggerSelectionTranslation = async (
   selectedText: string,
   reference: Range
 ) => {
-  if (readingAnonymously) {
+  if (!mayOpenAccountSidePanel(runAccess)) {
     showAnonymousSignInOverlay(reference)
     return
   }
@@ -1467,7 +1471,7 @@ const triggerPhraseContextLookup = async (
   selectedText: string,
   reference: Range
 ) => {
-  if (readingAnonymously) {
+  if (!mayOpenAccountSidePanel(runAccess)) {
     showAnonymousSignInOverlay(reference)
     return
   }
@@ -2052,7 +2056,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       pagePrefetch.reset()
       // ADR-095: signing in while anonymous learning mode is on keeps it on
       // and re-runs under the account (review list, paint, reading tracker).
-      const resumeAfterAnonymous = isEnxEnabled && readingAnonymously
+      const resumeAfterAnonymous = isEnxEnabled && runAccess === 'anonymous'
       hideCurrentOverlay()
       if (resumeAfterAnonymous) {
         void runLearningMode()
@@ -2062,6 +2066,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       sendResponse({ success: true })
       break
     }
+
+    // ADR-095: the browser's first sign-in. Only a tab reading anonymously
+    // re-runs; the others are left as they are.
+    case 'firstSignIn':
+      if (isEnxEnabled && runAccess === 'anonymous') {
+        hideCurrentOverlay()
+        void runLearningMode()
+      }
+      sendResponse({ success: true })
+      break
 
     // #236: the session ended. Learning mode stops, an open word popover
     // stays and shows the signed-out state; nothing goes on the page.

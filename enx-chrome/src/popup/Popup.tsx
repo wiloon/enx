@@ -228,10 +228,10 @@ function usePopupLearningMode(options?: {
   }
 }
 
-// ADR-095: above the sign-in card; no stats, save page or feedback.
+// ADR-095: above the sign-in card; no stats, save page or feedback. The
+// sign-in card below shows the error.
 function AnonymousLearningMode() {
   const {
-    error,
     learningStatus,
     shortcut,
     handleEnableLearning,
@@ -239,12 +239,7 @@ function AnonymousLearningMode() {
   } = usePopupLearningMode()
 
   return (
-    <div className="space-y-2 p-3 pb-0">
-      {error && (
-        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      )}
+    <div className="p-3 pb-0">
       <LearningModeCard
         status={learningStatus}
         shortcut={shortcut}
