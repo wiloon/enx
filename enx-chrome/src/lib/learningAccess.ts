@@ -22,6 +22,18 @@ export const learningAccessFor = (
 export const mayTurnOnLearningMode = (access: LearningAccess): boolean =>
   access !== 'signed-out'
 
+// ADR-095 Decision 1: sentence, phrase and hover translation need an account.
+// Anonymous mode shows Sign in in place and never opens the Side Panel.
+export const mayOpenAccountSidePanel = (access: LearningAccess): boolean =>
+  access === 'signed-in'
+
+// The popup's "Read with Catglish" sits above the sign-in card only while
+// anonymous; a browser that has signed in before keeps today's signed-out
+// popup (sign-in card alone).
+export const showsPopupLearningCardWhenSignedOut = (
+  access: LearningAccess
+): boolean => access === 'anonymous'
+
 export interface KeyValueStorage {
   get: (key: string) => Promise<unknown>
   set: (key: string, value: unknown) => Promise<void>

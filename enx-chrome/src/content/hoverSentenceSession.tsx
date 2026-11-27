@@ -44,6 +44,9 @@ export type HoverSentenceDeps = {
     sentence: string
     wordStates: ReturnType<typeof sentenceWordStates>
   }) => Promise<BackgroundResponse>
+  // ADR-095: anonymous mode shows Sign in instead of opening the panel.
+  mayOpenSidePanel?: () => boolean
+  showSignInInstead?: (range: Range) => void
   isCurrentArticle: () => boolean
   // Captures the account generation at click time; the returned checker is
   // consulted when the panel reply arrives.
@@ -352,6 +355,12 @@ export const createHoverSentenceSession = (
     const accountStillCurrent = deps.captureAccount()
     rules.dismiss('click', deps.now())
     afterRules()
+
+    // ADR-095: anonymous mode never opens the Side Panel.
+    if (deps.mayOpenSidePanel && !deps.mayOpenSidePanel()) {
+      deps.showSignInInstead?.(target.range)
+      return
+    }
 
     deps.recordReadingPosition(target.range)
     deps.setActiveSentenceHighlight(target.range)

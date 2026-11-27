@@ -46,6 +46,7 @@ import { pageFeedbackContext } from '@/lib/feedback'
 import {
   stampExtensionPresence,
   stampLearningMode,
+  stampLookedUp,
 } from '@/lib/extensionPresence'
 import {
   runWithStatus,
@@ -584,6 +585,12 @@ const showWordPopover = async (word: string, reference: Range) => {
   // "please click/right-click the toolbar icon" guidance if the click's user
   // gesture didn't survive being forwarded through runtime.sendMessage.
   const handleOpenSentencePanel = async () => {
+    // ADR-095: anonymous mode never opens the Side Panel; Sign in stays in
+    // this popover.
+    if (readingAnonymously) {
+      showSignedOut(contentScriptStore)
+      return
+    }
     contentScriptStore.set(sentencePanelHintAtom, null)
 
     const sentenceContext = WordProcessor.extractSentenceContext(
@@ -711,12 +718,15 @@ const showWordPopover = async (word: string, reference: Range) => {
         word: word.trim(),
       })) as unknown as AnonymousLookup | undefined
       if (currentOverlay !== overlay) return
-      showAnonymousLookup(
-        contentScriptStore,
+      const result =
         response && 'outcome' in response
           ? response
-          : { outcome: 'failed', error: LOOKUP_FAILED_MESSAGE }
-      )
+          : { outcome: 'failed' as const, error: LOOKUP_FAILED_MESSAGE }
+      showAnonymousLookup(contentScriptStore, result)
+      // ADR-095 Decision 9: welcome reads this on enx-ui only.
+      if (result.outcome === 'found') {
+        stampLookedUp(document, window.location, config.uiOrigins)
+      }
       return
     }
     try {
@@ -737,6 +747,7 @@ const showWordPopover = async (word: string, reference: Range) => {
           onDefinition: data => {
             contentScriptStore.set(currentWordAtom, data)
             contentScriptStore.set(isTranslatingAtom, false)
+            stampLookedUp(document, window.location, config.uiOrigins)
           },
           onCounted: data => {
             wordCache[wordKey(word)] = data
@@ -1300,6 +1311,9 @@ const hoverSession = createHoverSentenceSession({
       sentence,
       wordStates,
     }),
+  // ADR-095: hover sentence translation needs an account.
+  mayOpenSidePanel: () => !readingAnonymously,
+  showSignInInstead: range => showAnonymousSignInOverlay(range),
   isCurrentArticle: () => isEnxEnabled && !standDown.isStoodDown(),
   captureAccount: () => accountScope.capture(),
   mountShadowRoot: host => mountShadowRoot(host),
@@ -1374,6 +1388,36 @@ const showSelectionHint = (hint: string, reference: Range) => {
   setupOverlayEventHandlers(overlay, reference, root, cleanup)
 }
 
+// ADR-095: sentence / phrase / hover triggers in anonymous mode show Sign in
+// in the page's anchored overlay and send nothing.
+const showAnonymousSignInOverlay = (reference: Range) => {
+  hoverSession.invalidatePendingFeedback()
+  hideCurrentOverlay()
+
+  const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
+  currentRoot = root
+  contentScriptStore.set(sentencePanelHintAtom, null)
+  contentScriptStore.set(anonymousNoticeAtom, null)
+  showSignedOut(contentScriptStore)
+
+  root.render(
+    <Provider store={contentScriptStore}>
+      <WordPopover
+        word=""
+        onClose={() => overlay.hidePopover()}
+        onMarkKnown={() => {}}
+        onOpenSentencePanel={() => {}}
+        onSignIn={() => void sendRuntimeMessage({ action: 'openWebSignIn' })}
+      />
+    </Provider>
+  )
+
+  mount()
+  currentOverlay = overlay
+
+  setupOverlayEventHandlers(overlay, reference, root, cleanup)
+}
+
 // Drag-select translation (ADR-007): sends the selected text straight to
 // the Side Panel via the same 'openSentencePanel' message the "🔤 整句翻译"
 // button uses, skipping extractSentenceContext entirely -- the user's own
@@ -1386,6 +1430,10 @@ const triggerSelectionTranslation = async (
   selectedText: string,
   reference: Range
 ) => {
+  if (readingAnonymously) {
+    showAnonymousSignInOverlay(reference)
+    return
+  }
   readingPositions.record(reference)
   try {
     const response = await sendToBackground({
@@ -1419,6 +1467,10 @@ const triggerPhraseContextLookup = async (
   selectedText: string,
   reference: Range
 ) => {
+  if (readingAnonymously) {
+    showAnonymousSignInOverlay(reference)
+    return
+  }
   const anchor = reference.cloneRange()
   anchor.collapse(true)
   const sentenceContext = WordProcessor.extractSentenceContext(
@@ -1993,16 +2045,23 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       })
       break
 
-    case 'accountChanged':
+    case 'accountChanged': {
       articleChoice.abandon()
       accountScope.clear()
       reviewList.clear()
       pagePrefetch.reset()
-      disableEnx()
-      // Also a signed-out popover, so it closes on sign-in.
+      // ADR-095: signing in while anonymous learning mode is on keeps it on
+      // and re-runs under the account (review list, paint, reading tracker).
+      const resumeAfterAnonymous = isEnxEnabled && readingAnonymously
       hideCurrentOverlay()
+      if (resumeAfterAnonymous) {
+        void runLearningMode()
+      } else {
+        disableEnx()
+      }
       sendResponse({ success: true })
       break
+    }
 
     // #236: the session ended. Learning mode stops, an open word popover
     // stays and shows the signed-out state; nothing goes on the page.

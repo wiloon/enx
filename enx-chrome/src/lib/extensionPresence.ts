@@ -31,3 +31,14 @@ export function stampLearningMode(
     delete doc.documentElement.dataset.enxLearning
   }
 }
+
+// ADR-095 Decision 9: /welcome reads this after a lookup on an enx-ui page
+// (anonymous or signed-in). Set once; never cleared in this tab.
+export function stampLookedUp(
+  doc: Document,
+  location: PageLocation,
+  uiOrigins: string[]
+): void {
+  if (!isEnxUiHost(location, uiOrigins)) return
+  doc.documentElement.dataset.enxLookedUp = '1'
+}

@@ -1,6 +1,7 @@
 import {
   stampExtensionPresence,
   stampLearningMode,
+  stampLookedUp,
 } from '@/lib/extensionPresence'
 import type { PageLocation } from '@/lib/siteAdapters'
 
@@ -19,6 +20,7 @@ const at = (host: string, pathname = '/welcome'): PageLocation => ({
 beforeEach(() => {
   delete html().dataset.enxExtension
   delete html().dataset.enxLearning
+  delete html().dataset.enxLookedUp
 })
 
 // ADR-047 Decision 4a: /welcome ticks "Read with Catglish" when learning
@@ -62,6 +64,26 @@ describe('stampLearningMode', () => {
       status: 'ready',
     })
     expect(html().hasAttribute('data-enx-learning')).toBe(false)
+  })
+})
+
+// ADR-095 Decision 9: /welcome ticks "looked a word up" from this mark.
+describe('stampLookedUp', () => {
+  it('marks <html data-enx-looked-up="1"> on an enx-ui host', () => {
+    stampLookedUp(document, at('catglish.com'), PRODUCTION_UI)
+    expect(html().getAttribute('data-enx-looked-up')).toBe('1')
+  })
+
+  it('never marks a page that is not enx-ui', () => {
+    stampLookedUp(document, at('www.infoq.com'), PRODUCTION_UI)
+    expect(html().hasAttribute('data-enx-looked-up')).toBe(false)
+  })
+
+  it('never marks an origin the build does not declare as enx-ui', () => {
+    stampLookedUp(document, at('localhost:8765'), HOMELAB_UI)
+    expect(html().hasAttribute('data-enx-looked-up')).toBe(false)
+    stampLookedUp(document, at('localhost:3000'), PRODUCTION_UI)
+    expect(html().hasAttribute('data-enx-looked-up')).toBe(false)
   })
 })
 

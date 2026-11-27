@@ -9,13 +9,19 @@ interface LoginProps {
   onLoginSuccess?: () => void
   /** Rendered once the user is signed in. */
   children?: ReactNode
+  /** ADR-095: above the sign-in card in anonymous mode (e.g. LearningModeCard). */
+  beforeSignIn?: ReactNode
 }
 
 /**
  * Auth gate for the popup. Shows a loading placeholder, then either the
  * sign-in card (signed out) or `children` (signed in).
  */
-export default function Login({ onLoginSuccess, children }: LoginProps) {
+export default function Login({
+  onLoginSuccess,
+  children,
+  beforeSignIn,
+}: LoginProps) {
   const { isLoaded, isSignedIn } = useAuthSession()
   const [error] = useAtom(errorAtom)
   const signingOut = useAtomValue(signingOutAtom)
@@ -53,35 +59,38 @@ export default function Login({ onLoginSuccess, children }: LoginProps) {
   }
 
   return (
-    <div className="px-4 py-7">
-      <div className="flex flex-col items-center text-center">
-        <CatglishLogo className="h-14 w-14 rounded-2xl shadow-lg shadow-brand/20" />
-        <h2 className="mt-4 text-base font-semibold text-foreground">
-          Sign in to Catglish
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-          Sign in to highlight new words and look them up as you read.
+    <>
+      {beforeSignIn}
+      <div className="px-4 py-7">
+        <div className="flex flex-col items-center text-center">
+          <CatglishLogo className="h-14 w-14 rounded-2xl shadow-lg shadow-brand/20" />
+          <h2 className="mt-4 text-base font-semibold text-foreground">
+            Sign in to Catglish
+          </h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+            Sign in to highlight new words and look them up as you read.
+          </p>
+        </div>
+
+        {error && (
+          <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={openWebSignIn}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-medium text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99]"
+        >
+          Sign in on the website
+          <ArrowRightIcon className="h-4 w-4" />
+        </button>
+        <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
+          This opens a new tab. Finish signing in there, then come back here and
+          the popup will refresh automatically.
         </p>
       </div>
-
-      {error && (
-        <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="button"
-        onClick={openWebSignIn}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-medium text-brand-foreground shadow-md shadow-brand/25 transition hover:brightness-105 active:scale-[0.99]"
-      >
-        Sign in on the website
-        <ArrowRightIcon className="h-4 w-4" />
-      </button>
-      <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
-        This opens a new tab. Finish signing in there, then come back here and
-        the popup will refresh automatically.
-      </p>
-    </div>
+    </>
   )
 }

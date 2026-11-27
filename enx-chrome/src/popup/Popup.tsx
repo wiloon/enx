@@ -19,12 +19,19 @@ import SaveLinkCard from '@/components/SaveLinkCard'
 import SendFeedback from '@/components/SendFeedback'
 import SignOutButton from '@/components/SignOutButton'
 import { config } from '@/config/env'
-import { isReportableFailure } from '@/lib/enableOutcome'
+import {
+  isReportableFailure,
+  type EnableFailureReason,
+} from '@/lib/enableOutcome'
 import {
   disableLearningModeOnTab,
   enableLearningModeOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
+import {
+  showsPopupLearningCardWhenSignedOut,
+  type LearningAccess,
+} from '@/lib/learningAccess'
 import {
   learningModeShortcut,
   openShortcutSettings,
@@ -128,6 +135,127 @@ function AuthUserSync() {
   return null
 }
 
+// Shared by the signed-in body and the anonymous popup (ADR-095): status,
+// shortcut, and turning learning mode on or off for the active tab.
+function usePopupLearningMode(options?: {
+  onEnableFailure?: (
+    tab: chrome.tabs.Tab,
+    response: {
+      reason?: EnableFailureReason
+      adapter?: string
+      error?: string
+    }
+  ) => void
+}) {
+  const [error, setError] = useAtom(errorAtom)
+  const [learningStatus, setLearningStatus] =
+    useState<LearningModeCardStatus>('off')
+  const [shortcut, setShortcut] = useState<LearningModeShortcut>()
+
+  useEffect(() => {
+    chrome.commands
+      .getAll()
+      .then(commands => setShortcut(learningModeShortcut(commands)))
+      .catch(err => console.warn('Failed to read the shortcut:', err))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
+      if (!tab?.id) return
+      const status = await getLearningModeStatusOnTab(tab.id)
+      if (cancelled) return
+      if (isLearningModeOn(status)) setLearningStatus('on')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleEnableLearning = async () => {
+    setLearningStatus('enabling')
+    setError(null)
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
+      if (!tab?.id) {
+        throw new Error('No active tab found')
+      }
+      const response = await enableLearningModeOnTab(tab.id)
+      if (!response?.success) {
+        options?.onEnableFailure?.(tab, response ?? {})
+        throw new Error(response?.error || "Couldn't turn on Catglish")
+      }
+      setLearningStatus('on')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setError(message || "Couldn't turn on Catglish on this page")
+      setLearningStatus('off')
+    }
+  }
+
+  const handleTurnOffLearning = async () => {
+    setLearningStatus('turning-off')
+    setError(null)
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      })
+      if (tab?.id) await disableLearningModeOnTab(tab.id)
+      setLearningStatus('off')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setError(message || "Couldn't turn off Catglish on this page")
+      setLearningStatus('on')
+    }
+  }
+
+  return {
+    error,
+    setError,
+    learningStatus,
+    setLearningStatus,
+    shortcut,
+    handleEnableLearning,
+    handleTurnOffLearning,
+  }
+}
+
+// ADR-095: above the sign-in card; no stats, save page or feedback.
+function AnonymousLearningMode() {
+  const {
+    error,
+    learningStatus,
+    shortcut,
+    handleEnableLearning,
+    handleTurnOffLearning,
+  } = usePopupLearningMode()
+
+  return (
+    <div className="space-y-2 p-3 pb-0">
+      {error && (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+      <LearningModeCard
+        status={learningStatus}
+        shortcut={shortcut}
+        onEnable={() => void handleEnableLearning()}
+        onTurnOff={() => void handleTurnOffLearning()}
+        onSetShortcut={() => void openShortcutSettings(chrome.tabs)}
+      />
+    </div>
+  )
+}
+
 interface SignedInBodyProps {
   footerEnd: ReactNode
   wordHighlightEnabled: boolean
@@ -148,45 +276,6 @@ function SignedInBody({
   // popup.html (and its login/logout flow) stays reachable by left-clicking
   // the toolbar icon. Toggles the current tab's own panel (ADR-050).
   const sidePanel = useActiveTabSidePanel()
-  const [error, setError] = useAtom(errorAtom)
-  const [learningStatus, setLearningStatus] =
-    useState<LearningModeCardStatus>('off')
-  const [shortcut, setShortcut] = useState<LearningModeShortcut>()
-
-  // Read on every open: the user may have rebound the key, or Chrome may have
-  // left it unbound because Alt+C was taken (#230).
-  useEffect(() => {
-    chrome.commands
-      .getAll()
-      .then(commands => setShortcut(learningModeShortcut(commands)))
-      .catch(error => console.warn('Failed to read the shortcut:', error))
-  }, [])
-
-  // Start from the page's real state: an auto-enabled site, or a page enabled
-  // from an earlier popup, is already on before this button is ever clicked.
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      })
-      if (!tab?.id) return
-      const status = await getLearningModeStatusOnTab(tab.id)
-      if (cancelled) return
-      // Not 'processing': the popup would never hear it finish and the
-      // button would stay disabled.
-      if (isLearningModeOn(status)) setLearningStatus('on')
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const displayName =
-    user?.fullName || user?.username || user?.primaryEmail || 'there'
-  const email = user?.primaryEmail || ''
-  const initial = (displayName || 'U').trim().charAt(0).toUpperCase()
 
   // Set only after a failure on a page we could not read; the user decides
   // whether it is sent (ADR-010 Decision 8).
@@ -194,6 +283,30 @@ function SignedInBody({
     useState<PageReportPayload | null>(null)
   const [reportStatus, setReportStatus] = useState<PageReportStatus>('idle')
   const [reportError, setReportError] = useState<string>()
+
+  const {
+    error,
+    learningStatus,
+    setLearningStatus,
+    shortcut,
+    handleEnableLearning,
+    handleTurnOffLearning,
+  } = usePopupLearningMode({
+    onEnableFailure: (tab, response) => {
+      setReportCandidate(null)
+      setReportStatus('idle')
+      const reason = response.reason
+      const url = sanitizePageUrl(tab.url)
+      if (reason && isReportableFailure(reason) && url) {
+        setReportCandidate({ url, reason, adapter: response.adapter ?? '' })
+      }
+    },
+  })
+
+  const displayName =
+    user?.fullName || user?.username || user?.primaryEmail || 'there'
+  const email = user?.primaryEmail || ''
+  const initial = (displayName || 'U').trim().charAt(0).toUpperCase()
 
   const handleSendReport = async () => {
     if (!reportCandidate) return
@@ -210,59 +323,10 @@ function SignedInBody({
   // (ADR-032 Decision 4/4a). Subject comes from the selected auth adapter.
   const savedPage = useSavedPage(user?.id)
 
-  const handleEnableLearning = async () => {
-    setLearningStatus('enabling')
-    setError(null)
+  const onEnable = async () => {
     setReportCandidate(null)
     setReportStatus('idle')
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      })
-      if (!tab?.id) {
-        throw new Error('No active tab found')
-      }
-      const response = await enableLearningModeOnTab(tab.id)
-      if (!response?.success) {
-        // Only failures that say "this page's layout defeated us" are worth
-        // offering; a network error or expired session is not the page's fault.
-        const reason = response?.reason
-        const url = sanitizePageUrl(tab.url)
-        if (reason && isReportableFailure(reason) && url) {
-          setReportCandidate({ url, reason, adapter: response.adapter ?? '' })
-        }
-        throw new Error(response?.error || "Couldn't turn on Catglish")
-      }
-      setLearningStatus('on')
-    } catch (e) {
-      // enableLearningModeOnTab already turns "no content script yet" into an
-      // inject-and-retry, so anything still thrown here is a genuine failure
-      // (no active tab, or the injected/retried enxRun call itself rejected).
-      const message = e instanceof Error ? e.message : ''
-      setError(message || "Couldn't turn on Catglish on this page")
-      setLearningStatus('off')
-    }
-  }
-
-  // Leaves the page as it was before learning mode, without a reload. On an
-  // auto-enabled site this lasts until the next page load; the site toggle
-  // below is what stops it for good.
-  const handleTurnOffLearning = async () => {
-    setLearningStatus('turning-off')
-    setError(null)
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      })
-      if (tab?.id) await disableLearningModeOnTab(tab.id)
-      setLearningStatus('off')
-    } catch (e) {
-      const message = e instanceof Error ? e.message : ''
-      setError(message || "Couldn't turn off Catglish on this page")
-      setLearningStatus('on')
-    }
+    await handleEnableLearning()
   }
 
   return (
@@ -303,8 +367,8 @@ function SignedInBody({
       <LearningModeCard
         status={learningStatus}
         shortcut={shortcut}
-        onEnable={handleEnableLearning}
-        onTurnOff={handleTurnOffLearning}
+        onEnable={() => void onEnable()}
+        onTurnOff={() => void handleTurnOffLearning()}
         onSetShortcut={() => void openShortcutSettings(chrome.tabs)}
       />
 
@@ -393,9 +457,34 @@ function SignedInBody({
 }
 
 function PopupContent() {
-  const { isSignedIn } = useAuthSession()
+  const { isLoaded, isSignedIn } = useAuthSession()
   const { enabled: wordHighlightEnabled, setEnabled: setWordHighlightEnabled } =
     useWordHighlightEnabled()
+  // ADR-095: only a never-signed-in browser shows "Read with Catglish" above
+  // the sign-in card; a prior sign-in keeps today's signed-out popup.
+  const [showAnonymousLearning, setShowAnonymousLearning] = useState(false)
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn) {
+      setShowAnonymousLearning(false)
+      return
+    }
+    let cancelled = false
+    void chrome.runtime
+      .sendMessage({ type: 'learningAccess' })
+      .then((reply: { access?: LearningAccess } | undefined) => {
+        if (cancelled) return
+        setShowAnonymousLearning(
+          showsPopupLearningCardWhenSignedOut(reply?.access ?? 'signed-out')
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setShowAnonymousLearning(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isLoaded, isSignedIn])
 
   const versionFooter = (
     <PopupVersion
@@ -419,7 +508,12 @@ function PopupContent() {
       <AuthUserSync />
       <PopupHeader />
       <div className="min-h-[180px]">
-        <Login onLoginSuccess={handleLoginSuccess}>
+        <Login
+          onLoginSuccess={handleLoginSuccess}
+          beforeSignIn={
+            showAnonymousLearning ? <AnonymousLearningMode /> : null
+          }
+        >
           <SignedInBody
             footerEnd={versionFooter}
             wordHighlightEnabled={wordHighlightEnabled}
