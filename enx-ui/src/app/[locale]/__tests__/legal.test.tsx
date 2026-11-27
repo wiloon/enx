@@ -624,12 +624,14 @@ describe('bilingual legal pages', () => {
       ).toHaveAttribute('href', licenceHref)
       expect(screen.getByText(/CC BY-SA 4.0/)).toBeInTheDocument()
       expect(screen.getByText(modified)).toBeInTheDocument()
-      expect(
-        screen.getByRole('link', { name: 'Wiktextract' })
-      ).toHaveAttribute('href', 'https://github.com/tatuylonen/wiktextract')
-      expect(
-        screen.getByRole('link', { name: 'kaikki.org' })
-      ).toHaveAttribute('href', 'https://kaikki.org/')
+      expect(screen.getByRole('link', { name: 'Wiktextract' })).toHaveAttribute(
+        'href',
+        'https://github.com/tatuylonen/wiktextract'
+      )
+      expect(screen.getByRole('link', { name: 'kaikki.org' })).toHaveAttribute(
+        'href',
+        'https://kaikki.org/'
+      )
     }
   )
 
@@ -638,18 +640,15 @@ describe('bilingual legal pages', () => {
     ['terms zh', TermsZhPage, '数据来源', '/zh/data-sources'],
     ['privacy', PrivacyPolicyPage, 'Data sources', '/data-sources'],
     ['privacy zh', PrivacyPolicyZhPage, '数据来源', '/zh/data-sources'],
-  ])(
-    '%s links to the data-sources page',
-    (_name, Page, linkName, href) => {
-      const { container } = render(<Page />)
-      const main = container.querySelector('main')
-      expect(main).not.toBeNull()
-      const link = Array.from(main!.querySelectorAll('a')).find(
-        a => a.textContent?.trim() === linkName
-      )
-      expect(link).toHaveAttribute('href', href)
-    }
-  )
+  ])('%s links to the data-sources page', (_name, Page, linkName, href) => {
+    const { container } = render(<Page />)
+    const main = container.querySelector('main')
+    expect(main).not.toBeNull()
+    const link = Array.from(main!.querySelectorAll('a')).find(
+      (a) => a.textContent?.trim() === linkName
+    )
+    expect(link).toHaveAttribute('href', href)
+  })
 
   it('says which language governs, so a drifted translation is still resolvable', () => {
     render(<TermsZhPage />)
