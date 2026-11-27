@@ -52,8 +52,23 @@ interface EntryItem {
   Chinese?: string
   WordType?: number
   Origin?: WordData['Origin']
+  ExplanationLanguage?: WordData['ExplanationLanguage']
+  Senses?: WordData['Senses']
+  LemmaNote?: string
+  PronunciationUS?: string
+  PronunciationUK?: string
   AIFallback?: WordData['AIFallback']
 }
+
+const englishFields = (entry: EntryItem): Partial<WordData> => ({
+  ...(entry.ExplanationLanguage
+    ? { ExplanationLanguage: entry.ExplanationLanguage }
+    : {}),
+  ...(entry.Senses ? { Senses: entry.Senses } : {}),
+  ...(entry.LemmaNote ? { LemmaNote: entry.LemmaNote } : {}),
+  ...(entry.PronunciationUS ? { PronunciationUS: entry.PronunciationUS } : {}),
+  ...(entry.PronunciationUK ? { PronunciationUK: entry.PronunciationUK } : {}),
+})
 
 // One entry as the popover's WordData, for the word the user asked about.
 // `found` is the definition (Id absent when the server could not store it);
@@ -76,6 +91,7 @@ export const entryToWordData = (
       Chinese: entry.Chinese ?? '',
       WordType: entry.WordType ?? 0,
       ...(entry.Origin ? { Origin: entry.Origin } : {}),
+      ...englishFields(entry),
     }
   }
   if (entry.Status === 'not_found') {
@@ -85,6 +101,7 @@ export const entryToWordData = (
       Pronunciation: '',
       Chinese: '',
       WordType: 0,
+      ...englishFields(entry),
       ...(entry.AIFallback ? { AIFallback: entry.AIFallback } : {}),
     }
   }

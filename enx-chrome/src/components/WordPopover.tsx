@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import {
   ArrowPathRoundedSquareIcon,
@@ -28,6 +28,10 @@ import {
 } from '@/store/atoms'
 import SignedOutNotice from '@/components/SignedOutNotice'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
+import {
+  englishPronunciation,
+  selectPopoverSenses,
+} from '@/lib/englishSenses'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import { popoverHasSpeaker } from '@/lib/speaker'
@@ -48,6 +52,9 @@ interface WordPopoverProps {
   // The "Retry" button of the unverified state (#686): re-sends the lookup
   // or AI lookup that came back unverified.
   onRetryUnverified?: () => void
+  // After 中 / EN is saved: re-read the open word in the new language with
+  // no recordWordLookup (ADR-098).
+  onExplanationLanguageChanged?: (language: string) => void
   // 'hint': renders only the sentencePanelHint text, no dictionary UI.
   // Used by the drag-select translation flow (ADR-007 Decision §4) when
   // there's nothing to define -- either the selection was rejected for
@@ -64,6 +71,7 @@ export default function WordPopover({
   onReloadPage = () => window.location.reload(),
   onSignIn = () => {},
   onRetryUnverified = () => {},
+  onExplanationLanguageChanged,
   variant = 'dictionary',
 }: WordPopoverProps) {
   const [currentWord] = useAtom(currentWordAtom)
@@ -76,6 +84,7 @@ export default function WordPopover({
   const [anonymousNotice] = useAtom(anonymousNoticeAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   // No switch next to a notice saying there is no usable session.
   const showLanguageSwitch = !(
     signedOut ||
@@ -83,12 +92,25 @@ export default function WordPopover({
     lookupNotice?.sessionExpired ||
     lookupNotice?.sessionUnverified
   )
-  const phonetic = formatPhonetic(currentWord?.Pronunciation)
+  const englishMode = currentWord?.ExplanationLanguage === 'en'
+  const phonetic = formatPhonetic(
+    englishMode
+      ? englishPronunciation(currentWord ?? {})
+      : currentWord?.Pronunciation
+  )
   const hasSpeaker = popoverHasSpeaker({
     word: currentWord,
     isTranslating,
     error,
   })
+  const englishSenses = englishMode
+    ? selectPopoverSenses(currentWord?.Senses ?? [])
+    : []
+  // Drop whole senses from the end when the overlay is short of room
+  // (ADR-098); at least one stays, and anything still overflowing scrolls.
+  const [visibleSenseCount, setVisibleSenseCount] = useState(
+    englishSenses.length
+  )
 
   useEffect(() => {
     // Auto-focus for keyboard navigation. Uses a ref rather than
@@ -96,6 +118,27 @@ export default function WordPopover({
     // and document.getElementById cannot reach across the shadow boundary.
     rootRef.current?.focus()
   }, [])
+
+  useLayoutEffect(() => {
+    setVisibleSenseCount(englishSenses.length)
+  }, [currentWord?.Senses, currentWord?.ExplanationLanguage, englishSenses.length])
+
+  useLayoutEffect(() => {
+    if (!englishMode) return
+    const content = contentRef.current
+    if (!content || visibleSenseCount <= 1) return
+    if (content.scrollHeight > content.clientHeight + 1) {
+      setVisibleSenseCount(count => Math.max(1, count - 1))
+    }
+  }, [
+    englishMode,
+    visibleSenseCount,
+    currentWord?.Senses,
+    currentWord?.LemmaNote,
+    phonetic,
+  ])
+
+  const visibleSenses = englishSenses.slice(0, visibleSenseCount)
 
   const definition = splitDefinition(currentWord?.Chinese ?? '').map(
     (part, index) =>
@@ -212,7 +255,9 @@ export default function WordPopover({
             </span>
           )}
         </div>
-        {showLanguageSwitch && <ExplanationLanguageSwitch />}
+        {showLanguageSwitch && (
+          <ExplanationLanguageSwitch onSaved={onExplanationLanguageChanged} />
+        )}
         <button
           data-testid="word-popover-close"
           onClick={onClose}
@@ -227,6 +272,7 @@ export default function WordPopover({
       {/* Only this part scrolls when the overlay is short of room; the
           header above and the actions below always stay in view. */}
       <div
+        ref={contentRef}
         data-testid="word-popover-content"
         className="min-h-0 overflow-y-auto"
       >
@@ -293,9 +339,50 @@ export default function WordPopover({
         {/* Word content */}
         {currentWord && !isTranslating && !error && !sessionUnverified && (
           <div className="space-y-2">
-            {/* Chinese translation; a definition a model wrote is marked as
-                such (ADR-045). With none, the AI fallback's state is shown. */}
-            {currentWord.Chinese ? (
+            {englishMode ? (
+              <>
+                {currentWord.LemmaNote && (
+                  <p
+                    data-testid="word-popover-lemma-note"
+                    className="text-sm text-muted-foreground"
+                  >
+                    {currentWord.LemmaNote}
+                  </p>
+                )}
+                {visibleSenses.length > 0 ? (
+                  <ul
+                    data-testid="word-popover-senses"
+                    className="space-y-2 text-sm leading-relaxed text-foreground"
+                  >
+                    {visibleSenses.map((sense, index) => (
+                      <li
+                        key={`${sense.pos}-${index}-${sense.gloss}`}
+                        data-testid="word-popover-sense"
+                      >
+                        <span className="text-muted-foreground">
+                          {sense.pos}
+                        </span>{' '}
+                        {sense.gloss}
+                        {sense.example && (
+                          <span className="mt-0.5 block text-muted-foreground italic">
+                            {sense.example}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : anonymousNotice ? null : (
+                  <p
+                    data-testid="word-popover-en-miss"
+                    className="text-sm text-muted-foreground"
+                  >
+                    No definition found.
+                  </p>
+                )}
+              </>
+            ) : /* Chinese translation; a definition a model wrote is marked as
+                such (ADR-045). With none, the AI fallback's state is shown. */
+            currentWord.Chinese ? (
               <div>
                 {currentWord.Origin === 'ai' ? (
                   <AiDefinition>{definition}</AiDefinition>
@@ -308,7 +395,7 @@ export default function WordPopover({
             ) : anonymousNotice ? null : (
               <AiMissPanel onLookup={onAiLookup} />
             )}
-            <AiNotice />
+            {!englishMode && <AiNotice />}
             {anonymousNotice && (
               <SignedOutNotice
                 testId="word-popover-anonymous"

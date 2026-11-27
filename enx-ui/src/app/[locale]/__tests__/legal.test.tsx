@@ -2,9 +2,11 @@ import { screen } from '@testing-library/react'
 import PrivacyPolicyPage from '../privacy/PrivacyEn'
 import TermsPage from '../terms/TermsEn'
 import RefundPolicyPage from '../refund/RefundEn'
+import DataSourcesPage from '../data-sources/DataSourcesEn'
 import PrivacyPolicyZhPage from '../privacy/PrivacyZh'
 import TermsZhPage from '../terms/TermsZh'
 import RefundPolicyZhPage from '../refund/RefundZh'
+import DataSourcesZhPage from '../data-sources/DataSourcesZh'
 import SiteFooter from '@/components/site/SiteFooter'
 import { renderWithIntl } from '@/test-utils/intl'
 import { AI_PROVIDER, LEGAL, SUBPROCESSORS } from '@/lib/legal'
@@ -559,6 +561,7 @@ describe('bilingual legal pages', () => {
     ['privacy', PrivacyPolicyPage, PrivacyPolicyZhPage],
     ['terms', TermsPage, TermsZhPage],
     ['refund', RefundPolicyPage, RefundPolicyZhPage],
+    ['data-sources', DataSourcesPage, DataSourcesZhPage],
   ]
 
   it.each(pairs)(

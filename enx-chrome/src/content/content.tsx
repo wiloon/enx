@@ -682,6 +682,49 @@ const showWordPopover = async (word: string, reference: Range) => {
     void fetchTranslation()
   }
 
+  // ADR-098: after 中 / EN is saved, re-read this word with no count. A late
+  // answer for another word or the previous language is dropped by isCurrent.
+  let shownLanguage: string | undefined
+  const handleExplanationLanguageChanged = (language: string) => {
+    shownLanguage = language
+    contentScriptStore.set(isTranslatingAtom, true)
+    contentScriptStore.set(errorAtom, null)
+    contentScriptStore.set(lookupNoticeAtom, null)
+    void runDictionaryLookup(
+      word.trim(),
+      { counts: false },
+      {
+        get: (w, refresh) =>
+          sendToBackground({
+            type: 'getOneWord',
+            word: w,
+            ...(refresh ? { refresh } : {}),
+          }),
+        record: wordId => sendToBackground({ type: 'recordWordLookup', wordId }),
+        isActive: isCurrentAccount,
+        isCurrent: () =>
+          currentOverlay === overlay &&
+          isCurrentAccount() &&
+          shownLanguage === language,
+        onDefinition: data => {
+          if (data.ExplanationLanguage && data.ExplanationLanguage !== language)
+            return
+          contentScriptStore.set(currentWordAtom, data)
+          contentScriptStore.set(isTranslatingAtom, false)
+        },
+        onCounted: () => {},
+        onRecordFailure: () => {},
+        onFailure: response => {
+          contentScriptStore.set(
+            errorAtom,
+            response.error || 'Translation service unavailable'
+          )
+          contentScriptStore.set(isTranslatingAtom, false)
+        },
+      }
+    )
+  }
+
   root.render(
     <Provider store={contentScriptStore}>
       <WordPopover
@@ -692,6 +735,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         onAiLookup={handleAiLookup}
         onSignIn={() => void sendRuntimeMessage({ action: 'openWebSignIn' })}
         onRetryUnverified={handleRetryUnverified}
+        onExplanationLanguageChanged={handleExplanationLanguageChanged}
       />
     </Provider>
   )
@@ -752,6 +796,7 @@ const showWordPopover = async (word: string, reference: Range) => {
           isActive: isCurrentAccount,
           isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
           onDefinition: data => {
+            shownLanguage = data.ExplanationLanguage ?? 'zh-Hans'
             contentScriptStore.set(currentWordAtom, data)
             contentScriptStore.set(isTranslatingAtom, false)
             stampLookedUp(document, window.location, config.uiOrigins)

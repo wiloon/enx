@@ -6,7 +6,11 @@ import {
 
 // The word popover's 中 / EN switch (ADR-098 Decision 1): saves on click.
 // Rendered into the header row; the error wraps onto its own line below.
-export default function ExplanationLanguageSwitch() {
+export default function ExplanationLanguageSwitch({
+  onSaved,
+}: {
+  onSaved?: (language: string) => void
+} = {}) {
   const { state, control, choose } = useExplanationLanguage()
   if (!control) return null
 
@@ -27,7 +31,11 @@ export default function ExplanationLanguageSwitch() {
               aria-pressed={selected}
               title={`Explanation language: ${name}`}
               disabled={control.disabled}
-              onClick={() => void choose(value)}
+              onClick={() =>
+                void choose(value).then(saved => {
+                  if (saved) onSaved?.(value)
+                })
+              }
               className={`min-w-7 px-1.5 py-1 text-xs font-medium leading-none first:rounded-l-[3px] last:rounded-r-[3px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand disabled:cursor-default disabled:opacity-60 ${
                 selected
                   ? 'bg-brand text-brand-foreground'

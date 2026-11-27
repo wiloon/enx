@@ -34,11 +34,12 @@ export const useExplanationLanguage = () => {
 
   const control = explanationLanguageControl(state)
 
-  const choose = async (value: string) => {
-    if (!control || control.disabled || control.selected === value) return
+  const choose = async (value: string): Promise<boolean> => {
+    if (!control || control.disabled || control.selected === value) return false
     setState(current => saveStarted(current, value))
     const result = await updatePreferences({ explanationLanguage: value })
     setState(current => afterSave(current, result))
+    return result.ok
   }
 
   return { state, control, choose }

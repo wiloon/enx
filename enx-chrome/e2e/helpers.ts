@@ -372,6 +372,12 @@ export async function mockBackendFetch(
       LoadCount: number
       Known: boolean
       WordType: number
+      Origin: string
+      ExplanationLanguage: 'zh-Hans' | 'en'
+      Senses: { pos: string; gloss: string; example?: string }[]
+      LemmaNote: string
+      PronunciationUS: string
+      PronunciationUK: string
     }>
     /**
      * The GET /api/me/review-words answer, as [english, queryCount] pairs
@@ -570,6 +576,7 @@ export async function mockBackendFetch(
             JSON.stringify({
               queryCount: wordData.LoadCount + 1,
               known: false,
+              ...(language ? { explanationLanguage: language } : {}),
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           )

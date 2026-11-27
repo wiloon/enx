@@ -2,6 +2,10 @@ import { Volume2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import LookupCount from '@/components/app/LookupCount'
 import { Button } from '@/components/ui/button'
+import {
+  englishPronunciation,
+  selectPopoverSenses,
+} from '@/lib/englishSenses'
 import { formatPhonetic } from '@/lib/phonetic'
 import { playPronunciation } from '@/lib/pronunciation'
 import type { LookupWord } from '@/lib/lookupAnswer'
@@ -21,7 +25,11 @@ export default function WordResultCard({
   clearing = false,
   source,
 }: WordResultCardProps) {
-  const phonetic = formatPhonetic(data.Pronunciation)
+  const englishMode = data.ExplanationLanguage === 'en'
+  const phonetic = formatPhonetic(
+    englishMode ? englishPronunciation(data) : data.Pronunciation
+  )
+  const senses = englishMode ? selectPopoverSenses(data.Senses ?? []) : []
 
   return (
     <Card className="gap-0 py-0">
@@ -45,6 +53,14 @@ export default function WordResultCard({
               <Volume2 aria-hidden="true" />
             </Button>
           </div>
+          {englishMode && data.LemmaNote && (
+            <p
+              data-testid="lookup-lemma-note"
+              className="text-sm text-muted-foreground"
+            >
+              {data.LemmaNote}
+            </p>
+          )}
         </div>
         {onClear && (
           <Button
@@ -59,10 +75,35 @@ export default function WordResultCard({
         )}
       </div>
 
-      {data.Chinese && (
-        <p className="px-6 pt-4 pb-6 text-lg leading-relaxed whitespace-pre-line">
-          {data.Chinese}
-        </p>
+      {englishMode ? (
+        senses.length > 0 ? (
+          <ul
+            data-testid="lookup-senses"
+            className="space-y-3 px-6 pt-4 pb-6 text-lg leading-relaxed"
+          >
+            {senses.map((sense, index) => (
+              <li key={`${sense.pos}-${index}-${sense.gloss}`}>
+                <span className="text-muted-foreground">{sense.pos}</span>{' '}
+                {sense.gloss}
+                {sense.example && (
+                  <span className="mt-1 block text-base text-muted-foreground italic">
+                    {sense.example}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-6 pt-4 pb-6 text-muted-foreground">
+            No definition found.
+          </p>
+        )
+      ) : (
+        data.Chinese && (
+          <p className="px-6 pt-4 pb-6 text-lg leading-relaxed whitespace-pre-line">
+            {data.Chinese}
+          </p>
+        )
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-xs text-muted-foreground">

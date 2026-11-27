@@ -87,6 +87,7 @@ describe('createDefinitionPrefetcher', () => {
   const prefetcher = () =>
     createDefinitionPrefetcher({
       cache: { peek, put },
+      language: () => 'zh-Hans',
       send,
       generation: () => generation,
     })
@@ -134,8 +135,12 @@ describe('createDefinitionPrefetcher', () => {
     })
     await prefetcher().prefetch(['ran', 'cat'])
     expect(put.mock.calls).toEqual([
-      ['cat', expect.objectContaining({ Id: 'cat-id', Key: 'cat' })],
-      ['ran', expect.objectContaining({ Id: 'run-id', English: 'run' })],
+      ['cat', expect.objectContaining({ Id: 'cat-id', Key: 'cat' }), 'zh-Hans'],
+      [
+        'ran',
+        expect.objectContaining({ Id: 'run-id', English: 'run' }),
+        'zh-Hans',
+      ],
     ])
   })
 

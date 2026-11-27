@@ -1,6 +1,7 @@
 import * as privacy from '../privacy/page'
 import * as terms from '../terms/page'
 import * as refund from '../refund/page'
+import * as dataSources from '../data-sources/page'
 
 // ADR-096: each language version of a legal page names itself as canonical
 // and lists both versions, so search engines treat them as translations.
@@ -14,6 +15,7 @@ describe.each([
   ['/privacy', privacy, /Privacy Policy/, /隐私政策/],
   ['/terms', terms, /Terms of Service/, /用户协议/],
   ['/refund', refund, /Refund Policy/, /退款政策/],
+  ['/data-sources', dataSources, /Data sources/, /数据来源/],
 ])('%s metadata', (path, page, enTitle, zhTitle) => {
   it('is prerendered', () => {
     expect(page.dynamic).toBe('force-static')

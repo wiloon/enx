@@ -514,6 +514,19 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
+      <Section heading="Dictionary data">
+        <p>
+          Word definitions come from third-party dictionaries. The{' '}
+          <a
+            href="/data-sources"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Data sources
+          </a>{' '}
+          page names each source and how it is licensed.
+        </p>
+      </Section>
+
       <Section heading="Contact">
         <p>
           Privacy questions and data requests: <Term>{LEGAL.privacyEmail}</Term>

@@ -35,6 +35,17 @@ export const lookupAnswer = (
       Chinese: entry.Chinese ?? '',
       WordType: entry.WordType ?? 0,
       Source: entry.Source,
+      ...(entry.ExplanationLanguage
+        ? { ExplanationLanguage: entry.ExplanationLanguage }
+        : {}),
+      ...(entry.Senses ? { Senses: entry.Senses } : {}),
+      ...(entry.LemmaNote ? { LemmaNote: entry.LemmaNote } : {}),
+      ...(entry.PronunciationUS
+        ? { PronunciationUS: entry.PronunciationUS }
+        : {}),
+      ...(entry.PronunciationUK
+        ? { PronunciationUK: entry.PronunciationUK }
+        : {}),
     },
   }
 }

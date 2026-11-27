@@ -1,3 +1,4 @@
+import { asExplanationLanguage } from '@/lib/assumedExplanationLanguage'
 import type { BackgroundResponse, WordData } from '@/types'
 
 export interface DictionaryLookupDeps {
@@ -76,6 +77,22 @@ export async function runDictionaryLookup(
   }
   if (counted.success) {
     data = { ...data, LoadCount: counted.queryCount, Known: counted.known }
+    // A cache hit sends no entries request, so the count answer may be the
+    // first to say the preference moved; re-read under the new language
+    // without a second count (ADR-098 Decision 8).
+    const countedLanguage = asExplanationLanguage(counted.explanationLanguage)
+    const shownLanguage =
+      asExplanationLanguage(data.ExplanationLanguage) ?? 'zh-Hans'
+    if (countedLanguage && countedLanguage !== shownLanguage) {
+      const fresh = await deps.get(word)
+      if (deps.isActive() && fresh.success && fresh.ecp) {
+        data = {
+          ...fresh.ecp,
+          LoadCount: counted.queryCount,
+          Known: counted.known,
+        }
+      }
+    }
     if (deps.isCurrent()) deps.onDefinition(data)
     deps.onCounted(data)
   } else if (

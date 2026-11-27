@@ -70,3 +70,37 @@ it('has no Known badge: a counted lookup always leaves the word in review', () =
   expect(screen.queryByText('Learning')).not.toBeInTheDocument()
   expect(screen.queryByText('Mastered')).not.toBeInTheDocument()
 })
+
+it('renders an English-English answer with lemma note, senses and US IPA', () => {
+  render(
+    <WordResultCard
+      data={{
+        ...data,
+        Chinese: '',
+        Pronunciation: '',
+        ExplanationLanguage: 'en',
+        LemmaNote: 'past tense of leave',
+        PronunciationUS: '/lɛft/',
+        PronunciationUK: '/left/',
+        Senses: [
+          { pos: 'n', gloss: 'The west side.', example: 'On the left.' },
+          { pos: 'n', gloss: 'Permission to go.' },
+          { pos: 'n', gloss: 'A leftover.' },
+          { pos: 'adj', gloss: 'Remaining.' },
+          { pos: 'adj', gloss: 'Of the left hand.' },
+          { pos: 'v', gloss: 'Past of leave.' },
+        ],
+      }}
+    />
+  )
+  expect(screen.getByTestId('lookup-lemma-note')).toHaveTextContent(
+    'past tense of leave'
+  )
+  expect(screen.getByText('/lɛft/')).toBeInTheDocument()
+  const senses = screen.getByTestId('lookup-senses')
+  expect(senses.children).toHaveLength(4)
+  expect(senses).toHaveTextContent('n The west side.')
+  expect(senses).toHaveTextContent('On the left.')
+  expect(senses).not.toHaveTextContent('A leftover.')
+  expect(senses).not.toHaveTextContent('Past of leave.')
+})

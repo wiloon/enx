@@ -19,6 +19,7 @@ export const LOCALISED_PATHS: readonly string[] = [
   '/privacy',
   '/terms',
   '/refund',
+  '/data-sources',
 ]
 
 // Pages without a language prefix that have been translated, so they follow

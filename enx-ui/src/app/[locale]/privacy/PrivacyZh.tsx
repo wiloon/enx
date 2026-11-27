@@ -435,6 +435,19 @@ export default function PrivacyPolicyZhPage() {
         </p>
       </Section>
 
+      <Section heading="词典数据">
+        <p>
+          单词释义来自第三方词典。各来源与许可见{' '}
+          <a
+            href="/zh/data-sources"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            数据来源
+          </a>{' '}
+          页。
+        </p>
+      </Section>
+
       <Section heading="联系方式">
         <p>
           隐私问题与数据请求：<Term>{LEGAL.privacyEmail}</Term>。 其他事宜：

@@ -40,3 +40,37 @@ it.each(['miss', 'timeout', 'error', undefined, '', 'Local', 'later'])(
   'hides source %s',
   (source) => expect(shownLookupSource(source)).toBeNull()
 )
+
+it('passes English-English fields through', () => {
+  expect(
+    lookupAnswer('left', [
+      {
+        Status: 'found',
+        Id: 'w-left',
+        English: 'left',
+        ExplanationLanguage: 'en',
+        Source: 'wiktionary',
+        Senses: [{ pos: 'n', gloss: 'The west side.', example: 'On the left.' }],
+        LemmaNote: 'past tense of leave',
+        PronunciationUS: '/lɛft/',
+        PronunciationUK: '/left/',
+      },
+    ])
+  ).toEqual({
+    kind: 'result',
+    word: {
+      Id: 'w-left',
+      Key: 'left',
+      English: 'left',
+      Chinese: '',
+      Pronunciation: '',
+      WordType: 0,
+      Source: 'wiktionary',
+      ExplanationLanguage: 'en',
+      Senses: [{ pos: 'n', gloss: 'The west side.', example: 'On the left.' }],
+      LemmaNote: 'past tense of leave',
+      PronunciationUS: '/lɛft/',
+      PronunciationUK: '/left/',
+    },
+  })
+})

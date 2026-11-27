@@ -4,7 +4,7 @@ import sitemap from '../sitemap'
 // names the other as its alternate.
 it('lists both language versions of each legal page, linked as alternates', () => {
   const entries = sitemap()
-  for (const path of ['/privacy', '/terms', '/refund']) {
+  for (const path of ['/privacy', '/terms', '/refund', '/data-sources']) {
     const languages = {
       en: `https://enx.wiloon.lab${path}`,
       zh: `https://enx.wiloon.lab/zh${path}`,

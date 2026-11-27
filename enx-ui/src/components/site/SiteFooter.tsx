@@ -90,6 +90,14 @@ export default function SiteFooter() {
               </Link>
             </li>
             <li>
+              <Link
+                href={href('/data-sources')}
+                className="hover:text-foreground"
+              >
+                {t('dataSources')}
+              </Link>
+            </li>
+            <li>
               {/* One link is enough: each legal page carries its own
                   language switch, so this only has to get the reader to
                   the set in the other language. */}
