@@ -1,19 +1,8 @@
 // Package rephrase holds the contract for turning Chinese / mixed / rough
-// English into idiomatic workplace American English (ADR-012): the
-// Rephraser interface every provider implements, the structured Result it
-// returns, and ParseResult, which turns a provider's raw JSON reply into a
-// Result. It is a leaf package -- both aitranslate and the provider
-// packages (kimi, ...) import it, so the provider's Rephrase method can
-// name Result as its return type without an import cycle.
+// English into idiomatic workplace American English (ADR-012): Call, which
+// runs it on a provider's chat, the structured Result it returns, and
+// ParseResult, which turns the raw JSON reply into a Result.
 package rephrase
-
-import "context"
-
-// Rephraser rewrites one short piece of text into idiomatic workplace
-// American English. Input may be Chinese, mixed, or ungrammatical English.
-type Rephraser interface {
-	Rephrase(ctx context.Context, input string) (Result, error)
-}
 
 // Result is the structured rephrasing. Usage is filled by the provider from
 // its API response, not by ParseResult.

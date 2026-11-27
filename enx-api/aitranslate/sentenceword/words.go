@@ -4,9 +4,8 @@
 // one LLM call returns the sentence translation plus an in-context gloss for
 // every word card the Side Panel's sentence card absorbed.
 //
-// It is a leaf package -- both aitranslate and the provider packages import
-// it, so a provider's TranslateSentenceWithWords method can name WordsResult
-// as its return type without an import cycle. Mirrors aitranslate/rephrase.
+// It is a leaf package: it runs on any llm.Chat and knows no provider.
+// Mirrors aitranslate/rephrase.
 package sentenceword
 
 import (

@@ -1,6 +1,6 @@
-// Package llm names the one call the feature packages (sentenceword,
-// wordcontext, worddef, rephrase) need from a provider: send a system and a
-// user prompt, get back the reply text and its token usage. Each provider
+// Package llm names the one call a provider offers and the feature packages
+// (sentence, sentenceword, wordcontext, worddef, rephrase) need: send a
+// system and a user prompt, get back the reply text and its token usage. Each provider
 // adapts its own request (Chat Completions, Bedrock Converse) to Chat, so a
 // feature's prompt-and-parse steps live once in its own package.
 package llm

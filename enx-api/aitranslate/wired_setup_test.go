@@ -40,7 +40,7 @@ func wiredRephraseHandler(t *testing.T, cfg config.SentenceTranslate, ledger Tok
 	if err != nil {
 		t.Fatalf("NewRephraser: %v", err)
 	}
-	return NewRephraseHandler(InstrumentRephraser(r, cfg.Provider, obs), ledger, tokenTestPricing)
+	return NewRephraseHandler(Instrument(r, cfg.Provider, obs), ledger, tokenTestPricing)
 }
 
 func wiredDefiner(t *testing.T, cfg config.SentenceTranslate, obs AIObserver) (WordDefiner, bool) {

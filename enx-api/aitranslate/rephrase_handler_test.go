@@ -11,7 +11,6 @@ import (
 
 	"enx-api/ailimit"
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/llm/llmtest"
 	"enx-api/aitranslate/rephrase"
 	"enx-api/billing/credit"
@@ -29,10 +28,18 @@ type fakeRephraser struct {
 	callCount int
 }
 
-func (f *fakeRephraser) Rephrase(ctx context.Context, input string) (rephrase.Result, error) {
-	f.callCount++
-	f.callInput = input
-	return f.result, f.err
+// provider is a provider whose rephrase chat replies with f.result.
+func (f *fakeRephraser) provider() *Provider {
+	return &Provider{RephraseChat: func(_ context.Context, _ string, _ float64, _, user string) (string, Usage, error) {
+		f.callCount++
+		f.callInput = user
+		reply, err := json.Marshal(f.result)
+		if err != nil {
+			return "", Usage{}, err
+		}
+		u := f.result.Usage
+		return string(reply), Usage{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens, TotalTokens: u.TotalTokens}, f.err
+	}}
 }
 
 type settleCall struct {
@@ -82,7 +89,7 @@ func okResult() rephrase.Result {
 func TestRephraseHandlerSuccess(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -120,7 +127,7 @@ func TestRephraseHandlerSuccess(t *testing.T) {
 func TestRephraseHandlerMissingInput(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{}`)
 
@@ -135,7 +142,7 @@ func TestRephraseHandlerMissingInput(t *testing.T) {
 func TestRephraseHandlerInputTooLong(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	long := ""
 	for i := 0; i < 201; i++ {
@@ -180,7 +187,7 @@ func TestRephraseHandlerUnpricedConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rp.callCount = 0
 			ledger.settleCalls = nil
-			h := NewRephraseHandler(rp, ledger, tc.pricing)
+			h := NewRephraseHandler(rp.provider(), ledger, tc.pricing)
 
 			w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -197,7 +204,7 @@ func TestRephraseHandlerUnpricedConfig(t *testing.T) {
 func TestRephraseHandlerInsufficientBalance(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 0}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -212,7 +219,7 @@ func TestRephraseHandlerInsufficientBalance(t *testing.T) {
 func TestRephraseHandlerNegativeBalanceIsBlocked(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: -3}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -224,7 +231,7 @@ func TestRephraseHandlerNegativeBalanceIsBlocked(t *testing.T) {
 func TestRephraseHandlerBalanceLookupError(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balanceErr: errors.New("db down")}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -240,18 +247,11 @@ func TestRephraseHandlerProviderErrorWithoutUsageIsNotBilled(t *testing.T) {
 	logs := observeLogs(t)
 	rp := &fakeRephraser{err: errors.New("provider timeout")}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
 	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "rephrase_to_english", "provider timeout")
-}
-
-// chatRephraser is a provider's Rephrase: rephrase.Call on its chat.
-type chatRephraser struct{ chat llm.Chat }
-
-func (r chatRephraser) Rephrase(ctx context.Context, input string) (rephrase.Result, error) {
-	return rephrase.Call(ctx, r.chat, input)
 }
 
 func TestRephraseHandlerFailedCallWithUsageIsBilled(t *testing.T) {
@@ -268,7 +268,7 @@ func TestRephraseHandlerFailedCallWithUsageIsBilled(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := observeLogs(t)
 			ledger := &fakeRephraseLedger{balance: 100}
-			h := NewRephraseHandler(chatRephraser{tc.fake.Chat}, ledger, testPricing)
+			h := NewRephraseHandler(chatProvider(&tc.fake), ledger, testPricing)
 
 			w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -281,7 +281,7 @@ func TestRephraseHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
 	logs := observeLogs(t)
 	rp := &fakeRephraser{err: errors.New("unusable reply"), result: rephrase.Result{Usage: rephrase.Usage{PromptTokens: 600, CompletionTokens: 900}}}
 	ledger := &fakeRephraseLedger{balance: 100, settleErr: errors.New("db write failed")}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -291,7 +291,7 @@ func TestRephraseHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
 func TestRephraseHandlerCancelledRequestWithoutUsageIsNotAnOpsAlert(t *testing.T) {
 	logs := observeLogs(t)
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(&fakeRephraser{err: context.Canceled}, ledger, testPricing)
+	h := NewRephraseHandler((&fakeRephraser{err: context.Canceled}).provider(), ledger, testPricing)
 
 	w := doPostWithContext(t, cancelledContext(), "/api/rephrase", h.Rephrase, `{"input":"帮我看下这个"}`)
 
@@ -301,7 +301,7 @@ func TestRephraseHandlerCancelledRequestWithoutUsageIsNotAnOpsAlert(t *testing.T
 func TestRephraseHandlerSettleErrorStillReturnsResult(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 100, settleErr: errors.New("db write failed")}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
@@ -318,7 +318,7 @@ func TestRephraseHandlerCostFloorsAtOne(t *testing.T) {
 	res.Usage = rephrase.Usage{PromptTokens: 1, CompletionTokens: 1}
 	rp := &fakeRephraser{result: res}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing)
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing)
 
 	w := doRephrase(t, h, `{"input":"hi"}`)
 
@@ -333,7 +333,7 @@ func TestRephraseHandlerCostFloorsAtOne(t *testing.T) {
 func TestRephraseHandlerTrialLimitReturns429(t *testing.T) {
 	rp := &fakeRephraser{result: okResult()}
 	ledger := &fakeRephraseLedger{balance: 100}
-	h := NewRephraseHandler(rp, ledger, testPricing).WithTrialGate(&fakeGate{verdict: ailimit.LimitedPerDay})
+	h := NewRephraseHandler(rp.provider(), ledger, testPricing).WithTrialGate(&fakeGate{verdict: ailimit.LimitedPerDay})
 	w := doRephrase(t, h, `{"input":"帮我看下这个"}`)
 
 	if w.Code != http.StatusTooManyRequests {

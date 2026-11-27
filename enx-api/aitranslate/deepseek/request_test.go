@@ -3,11 +3,14 @@ package deepseek
 import (
 	"context"
 	"encoding/json"
-	"enx-api/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"enx-api/aitranslate/rephrase"
+	"enx-api/aitranslate/sentence"
+	"enx-api/config"
 )
 
 // sentRequest is the part of the Chat Completions body these tests inspect.
@@ -47,7 +50,7 @@ func TestRequestsUseDeepSeekFlashByDefault(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, _, err := d.TranslateSentence(context.Background(), "Hello"); err != nil {
+	if _, _, err := sentence.Call(context.Background(), d.Chat, "Hello"); err != nil {
 		t.Fatalf("TranslateSentence: %v", err)
 	}
 	if (*got)[0].Model != "deepseek-flash" {
@@ -64,11 +67,11 @@ func TestRequestsTurnThinkingOff(t *testing.T) {
 		call  func(d *DeepSeek) error
 	}{
 		{"translate sentence", translateReply, func(d *DeepSeek) error {
-			_, _, err := d.TranslateSentence(context.Background(), "Hello")
+			_, _, err := sentence.Call(context.Background(), d.Chat, "Hello")
 			return err
 		}},
 		{"rephrase", rephraseReply, func(d *DeepSeek) error {
-			_, err := d.Rephrase(context.Background(), "你好")
+			_, err := rephrase.Call(context.Background(), d.RephraseChat, "你好")
 			return err
 		}},
 	}

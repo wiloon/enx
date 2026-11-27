@@ -11,6 +11,7 @@ import (
 
 	"enx-api/ailimit"
 	"enx-api/aitranslate/aifailure"
+	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/sentence"
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
@@ -58,17 +59,17 @@ type TokenLedger interface {
 	Settle(ctx context.Context, userID, feature string, cost int64) error
 }
 
-// Handler wraps a Translator (which may be nil if sentence translation is
+// Handler wraps a Provider (which may be nil if sentence translation is
 // not configured, see New) so it can be registered as gin route handlers.
 // All three endpoints bill by actual token usage through the same
 // TokenPricing (ADR-014): translate_sentence, translate_word_in_context and
 // translate_sentence_with_word share one model and a near-identical token
 // profile, so one price fits all three.
 type Handler struct {
-	translator Translator
-	ledger     TokenLedger
-	pricing    credit.TokenPricing
-	trialGate  CallGate
+	provider  *Provider
+	ledger    TokenLedger
+	pricing   credit.TokenPricing
+	trialGate CallGate
 }
 
 // CallGate holds trial-only users to the trial's call rate (ADR-048
@@ -102,8 +103,8 @@ func refuseOverTrialLimit(c *gin.Context, gate CallGate, userID string) bool {
 	return false
 }
 
-func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenPricing) *Handler {
-	return &Handler{translator: translator, ledger: ledger, pricing: pricing}
+func NewHandler(provider *Provider, ledger TokenLedger, pricing credit.TokenPricing) *Handler {
+	return &Handler{provider: provider, ledger: ledger, pricing: pricing}
 }
 
 // billedCall runs the shared pre-flight for a token-billed translate call
@@ -115,7 +116,7 @@ func NewHandler(translator Translator, ledger TokenLedger, pricing credit.TokenP
 // Settle write never costs the user their result (ADR-014, same convention
 // as rephrase).
 func (h *Handler) billedCall(c *gin.Context, feature string, fn func(ctx context.Context) (Usage, error)) bool {
-	if h.translator == nil {
+	if h.provider == nil {
 		aifailure.Internal(c)
 		return false
 	}
@@ -199,7 +200,11 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 	ok := h.billedCall(c, "translate_sentence", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
-		chinese, u, err = h.translator.TranslateSentence(ctx, req.Sentence)
+		chinese, u, err = observe(h.provider, "translate_sentence", func() (string, Usage, error) {
+			return sentence.Call(ctx, h.provider.Chat, req.Sentence)
+		})
+		// After the observed call: a reply that fails the check is still
+		// billed (ADR-094) and its metric outcome stays ok.
 		if err == nil {
 			err = sentence.Check(chinese)
 		}
@@ -233,7 +238,11 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 	ok := h.billedCall(c, "translate_word_in_context", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
-		res, u, err = h.translator.TranslateWordInContext(ctx, req.Sentence, req.Word, req.DictionaryChinese)
+		res, u, err = observe(h.provider, "word_in_context", func() (wordcontext.Result, Usage, error) {
+			return retryParse(ctx, h.provider.ParseAttempts, h.provider.Chat, func(ctx context.Context, chat llm.Chat) (wordcontext.Result, Usage, error) {
+				return wordcontext.Call(ctx, chat, req.Sentence, req.Word, req.DictionaryChinese)
+			})
+		})
 		return u, err
 	})
 	if !ok {
@@ -276,7 +285,9 @@ func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
 	ok := h.billedCall(c, "translate_sentence_with_word", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
-		res, u, err = h.translator.TranslateSentenceWithWords(ctx, req.Sentence, words)
+		res, u, err = observe(h.provider, "sentence_with_words", func() (sentenceword.WordsResult, Usage, error) {
+			return sentenceword.CallWords(ctx, h.provider.Chat, req.Sentence, words)
+		})
 		return u, err
 	})
 	if !ok {

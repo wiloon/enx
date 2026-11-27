@@ -1,4 +1,4 @@
-// Package deepseek implements aitranslate.Translator against DeepSeek's
+// Package deepseek offers the AI provider's chats on DeepSeek's
 // OpenAI-compatible Chat Completions API (https://api.deepseek.com). There is
 // no separate "international" vs "China" DeepSeek account/endpoint (unlike
 // MiniMax, see minimax.go) -- one api-key, one base URL, used globally.
@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/openaicompat"
-	"enx-api/aitranslate/sentence"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -44,7 +42,7 @@ func (d *DeepSeek) modelForRephrase() string {
 	return d.model
 }
 
-// New builds a DeepSeek translator from config.toml (sentence-translate.deepseek.*)
+// New builds a DeepSeek client from config.toml (sentence-translate.deepseek.*)
 // and the DEEPSEEK_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = deepseek"
 // misconfiguration is caught at startup rather than on the first request.
@@ -82,10 +80,6 @@ type thinking struct {
 
 var thinkingDisabled = thinking{Type: "disabled"}
 
-func (d *DeepSeek) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return d.chat(ctx, "translate_sentence", d.model, sentence.Temperature, sentence.SystemPrompt, text)
-}
-
 func (d *DeepSeek) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	return openaicompat.Chat(ctx, d.client, openaicompat.Endpoint{
 		Provider: "deepseek",
@@ -95,10 +89,12 @@ func (d *DeepSeek) chat(ctx context.Context, feature, model string, temperature 
 	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }
 
-// chatWith binds chat to one model, giving the feature packages the
-// llm.Chat they call.
-func (d *DeepSeek) chatWith(model string) llm.Chat {
-	return func(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-		return d.chat(ctx, feature, model, temperature, systemPrompt, userContent)
-	}
+// Chat is the llm.Chat for every feature except rephrase.
+func (d *DeepSeek) Chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return d.chat(ctx, feature, d.model, temperature, systemPrompt, userContent)
+}
+
+// RephraseChat is the llm.Chat for rephrase, on the rephrase model (ADR-012).
+func (d *DeepSeek) RephraseChat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return d.chat(ctx, feature, d.modelForRephrase(), temperature, systemPrompt, userContent)
 }

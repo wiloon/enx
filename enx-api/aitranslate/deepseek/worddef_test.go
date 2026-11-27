@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"enx-api/aitranslate/worddef"
 )
 
 func defineWordServer(t *testing.T, status int, body string, captured *string) *httptest.Server {
@@ -30,7 +32,7 @@ func TestDefineWordSuccess(t *testing.T) {
 	var sent string
 	srv := defineWordServer(t, http.StatusOK, goodDefinition, &sent)
 
-	res, u, err := newTestDeepSeek(srv.URL).DefineWord(context.Background(), "rizzler")
+	res, u, err := worddef.Call(context.Background(), newTestDeepSeek(srv.URL).Chat, "rizzler")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +52,7 @@ func TestDefineWordNotAWord(t *testing.T) {
 	srv := defineWordServer(t, http.StatusOK,
 		`{"choices":[{"message":{"content":"{\"is_word\": false, \"quality\": 0, \"senses\": []}"}}],"usage":{"prompt_tokens":150,"completion_tokens":12,"total_tokens":162}}`, nil)
 
-	res, u, err := newTestDeepSeek(srv.URL).DefineWord(context.Background(), "asdfgh")
+	res, u, err := worddef.Call(context.Background(), newTestDeepSeek(srv.URL).Chat, "asdfgh")
 	if err != nil || res.IsWord {
 		t.Fatalf("got %+v, %v; want a clean not-a-word", res, err)
 	}
@@ -65,7 +67,7 @@ func TestDefineWordRejectsAnInvalidReplyButReportsUsage(t *testing.T) {
 	srv := defineWordServer(t, http.StatusOK,
 		`{"choices":[{"message":{"content":"It means something nice."}}],"usage":{"prompt_tokens":150,"completion_tokens":9,"total_tokens":159}}`, nil)
 
-	_, u, err := newTestDeepSeek(srv.URL).DefineWord(context.Background(), "rizzler")
+	_, u, err := worddef.Call(context.Background(), newTestDeepSeek(srv.URL).Chat, "rizzler")
 	if err == nil {
 		t.Fatal("expected an error for a reply that is not the JSON contract")
 	}
@@ -77,7 +79,7 @@ func TestDefineWordRejectsAnInvalidReplyButReportsUsage(t *testing.T) {
 func TestDefineWordNon200(t *testing.T) {
 	srv := defineWordServer(t, http.StatusUnauthorized, `{"error":"invalid api key"}`, nil)
 
-	if _, _, err := newTestDeepSeek(srv.URL).DefineWord(context.Background(), "rizzler"); err == nil {
+	if _, _, err := worddef.Call(context.Background(), newTestDeepSeek(srv.URL).Chat, "rizzler"); err == nil {
 		t.Fatal("expected an error")
 	}
 }

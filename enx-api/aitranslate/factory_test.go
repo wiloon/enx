@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"enx-api/aitranslate/deepseek"
 	"enx-api/config"
 	"enx-api/utils/logger"
 
@@ -76,8 +75,8 @@ func TestNewBuildsTheSelectedProviderFromItsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, ok := got.(*deepseek.DeepSeek); !ok {
-		t.Fatalf("New() = %T, want *deepseek.DeepSeek", got)
+	if got.Chat == nil || got.RephraseChat == nil || !got.DefinesWords || got.ParseAttempts != 1 {
+		t.Fatalf("New() = %+v, want the deepseek provider", got)
 	}
 }
 

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"enx-api/aitranslate/rephrase"
 )
 
 func TestRephraseSuccess(t *testing.T) {
@@ -20,7 +22,7 @@ func TestRephraseSuccess(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDeepSeek(srv.URL)
-	got, err := d.Rephrase(context.Background(), "帮我看下这个 PR")
+	got, err := rephrase.Call(context.Background(), d.RephraseChat, "帮我看下这个 PR")
 	if err != nil {
 		t.Fatalf("Rephrase: %v", err)
 	}
@@ -46,7 +48,7 @@ func TestRephraseNon200(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDeepSeek(srv.URL)
-	if _, err := d.Rephrase(context.Background(), "帮我看下这个 PR"); err == nil {
+	if _, err := rephrase.Call(context.Background(), d.RephraseChat, "帮我看下这个 PR"); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -60,7 +62,7 @@ func TestRephrasePropagatesParseFailure(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDeepSeek(srv.URL)
-	if _, err := d.Rephrase(context.Background(), "帮我看下这个 PR"); err == nil {
+	if _, err := rephrase.Call(context.Background(), d.RephraseChat, "帮我看下这个 PR"); err == nil {
 		t.Fatal("expected a parse error to propagate, got nil")
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"enx-api/aitranslate/rephrase"
 )
 
 func TestRephraseSuccess(t *testing.T) {
@@ -20,7 +22,7 @@ func TestRephraseSuccess(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	got, err := m.Rephrase(context.Background(), "帮我看下这个 PR")
+	got, err := rephrase.Call(context.Background(), m.Chat, "帮我看下这个 PR")
 	if err != nil {
 		t.Fatalf("Rephrase: %v", err)
 	}
@@ -53,7 +55,7 @@ func TestRephraseStripsThinkReasoning(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	got, err := m.Rephrase(context.Background(), "帮我看下这个问题")
+	got, err := rephrase.Call(context.Background(), m.Chat, "帮我看下这个问题")
 	if err != nil {
 		t.Fatalf("Rephrase: %v", err)
 	}
@@ -73,7 +75,7 @@ func TestRephraseNon200(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	if _, err := m.Rephrase(context.Background(), "帮我看下这个 PR"); err == nil {
+	if _, err := rephrase.Call(context.Background(), m.Chat, "帮我看下这个 PR"); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -87,7 +89,7 @@ func TestRephrasePropagatesParseFailure(t *testing.T) {
 	defer srv.Close()
 
 	m := newTestMiniMax(srv.URL)
-	if _, err := m.Rephrase(context.Background(), "帮我看下这个 PR"); err == nil {
+	if _, err := rephrase.Call(context.Background(), m.Chat, "帮我看下这个 PR"); err == nil {
 		t.Fatal("expected a parse error to propagate, got nil")
 	}
 }

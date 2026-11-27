@@ -9,8 +9,8 @@
 // Anything that does not pass is an error, which the caller treats as "no
 // definition".
 //
-// Like wordcontext and sentenceword it is a leaf package, so a provider's
-// DefineWord can name Result without an import cycle.
+// Like wordcontext and sentenceword it is a leaf package: it runs on any
+// llm.Chat and knows no provider.
 package worddef
 
 import (

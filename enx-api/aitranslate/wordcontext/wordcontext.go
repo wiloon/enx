@@ -4,13 +4,12 @@
 // along so the model can relate the contextual meaning to that dictionary
 // definition when the definition doesn't cover it -- which sense it comes
 // from and how -- rather than guessing blind. Used by
-// TranslateWordInContext once the dictionary lookup this word's card
+// the word-in-context endpoint once the dictionary lookup this word's card
 // depends on has resolved (or failed -- an empty dictionary definition is a
 // valid input, just one the model can't compare against).
 //
-// It is a leaf package -- both aitranslate and the provider packages import
-// it, so a provider's TranslateWordInContext method can name Result as its
-// return type without an import cycle. Mirrors aitranslate/sentenceword.
+// It is a leaf package: it runs on any llm.Chat and knows no provider.
+// Mirrors aitranslate/sentenceword.
 package wordcontext
 
 import (

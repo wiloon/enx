@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"enx-api/aitranslate/llm/llmtest"
 	"enx-api/billing/credit"
 )
 
@@ -34,11 +35,11 @@ func TestAIFailureSaysWhichSideFailed(t *testing.T) {
 
 	translate := func(post func(*testing.T, *Handler, string) *httptest.ResponseRecorder, body string) func(*testing.T, setup) *httptest.ResponseRecorder {
 		return func(t *testing.T, s setup) *httptest.ResponseRecorder {
-			var tr Translator
+			var p *Provider
 			if !s.notWired {
-				tr = &fakeTranslator{err: s.modelErr}
+				p = chatProvider(&llmtest.Fake{Err: s.modelErr})
 			}
-			return post(t, NewHandler(tr, &fakeTokenLedger{balance: 100, balanceErr: s.balanceErr}, s.pricing), body)
+			return post(t, NewHandler(p, &fakeTokenLedger{balance: 100, balanceErr: s.balanceErr}, s.pricing), body)
 		}
 	}
 	endpoints := map[string]func(*testing.T, setup) *httptest.ResponseRecorder{
@@ -47,7 +48,7 @@ func TestAIFailureSaysWhichSideFailed(t *testing.T) {
 		"sentence-with-words": translate(doPostSentenceWithWords, `{"sentence":"I bank.","words":[{"word":"bank"}]}`),
 		"rephrase": func(t *testing.T, s setup) *httptest.ResponseRecorder {
 			ledger := &fakeRephraseLedger{balance: 100, balanceErr: s.balanceErr}
-			h := NewRephraseHandler(&fakeRephraser{err: s.modelErr}, ledger, s.pricing)
+			h := NewRephraseHandler((&fakeRephraser{err: s.modelErr}).provider(), ledger, s.pricing)
 			if s.notWired {
 				h = NewRephraseHandler(nil, ledger, s.pricing)
 			}

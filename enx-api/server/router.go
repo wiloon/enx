@@ -194,7 +194,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	}
 
 	// The AI word fallback (ADR-045) rides on the same provider, but only a
-	// provider that implements DefineWord can serve it; others leave it off,
+	// provider that serves define-word can; others leave it off,
 	// like any optional feature that is not configured.
 	if sentenceTranslator != nil {
 		if definer, ok := aitranslate.AsWordDefiner(sentenceTranslator); ok {
@@ -221,7 +221,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 				logger.Warnf("AI word lookup is off: define-word has no price; set a complete [stripe.costs.default] (STRIPE_COSTS_DEFAULT_WEIGHT_IN/_WEIGHT_OUT/_DIVISOR) or a complete [stripe.costs.define-word] block")
 			}
 		} else {
-			logger.Warnf("AI word lookup is off: provider %q does not implement DefineWord", cfg.SentenceTranslate.Provider)
+			logger.Warnf("AI word lookup is off: provider %q does not serve define-word", cfg.SentenceTranslate.Provider)
 		}
 	}
 
@@ -232,7 +232,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	).WithTrialGate(trialGate)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
-	// but the provider must also implement rephrase support. Same
+	// but the provider must also serve rephrase. Same
 	// "unconfigured is not fatal, misconfigured is" contract as above.
 	rephraser, rephraseErr := aitranslate.NewRephraser(context.Background(), cfg.SentenceTranslate)
 	if rephraseErr != nil {
@@ -243,7 +243,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		logger.Warnf("rephrase disabled: %v", rephraseErr)
 		rephraser = nil
 	} else {
-		rephraser = aitranslate.InstrumentRephraser(rephraser, cfg.SentenceTranslate.Provider, m)
+		rephraser = aitranslate.Instrument(rephraser, cfg.SentenceTranslate.Provider, m)
 	}
 	rephraseHandler := aitranslate.NewRephraseHandler(
 		rephraser,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate"
+	"enx-api/aitranslate/wordcontext"
 	"enx-api/config"
 )
 
@@ -137,7 +138,7 @@ func TestLiveWordContextWhyRelatesMeaningToDictionary(t *testing.T) {
 	cfg.SentenceTranslate.Provider = "openrouter"
 
 	ctx := context.Background()
-	translator, err := aitranslate.New(ctx, cfg.SentenceTranslate)
+	provider, err := aitranslate.New(ctx, cfg.SentenceTranslate)
 	if err != nil {
 		t.Fatalf("aitranslate.New: %v", err)
 	}
@@ -154,9 +155,9 @@ func TestLiveWordContextWhyRelatesMeaningToDictionary(t *testing.T) {
 			callCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 			defer cancel()
 
-			got, usage, err := translator.TranslateWordInContext(callCtx, s.sentence, s.word, s.dictionaryChinese)
+			got, usage, err := wordcontext.Call(callCtx, provider.Chat, s.sentence, s.word, s.dictionaryChinese)
 			if err != nil {
-				t.Fatalf("TranslateWordInContext: %v", err)
+				t.Fatalf("wordcontext.Call: %v", err)
 			}
 			totalPromptTokens += usage.PromptTokens
 			t.Logf("model=%s\nsentence: %s\nword: %s\ndictionary: %q\n-> word: %s\n-> why: %s\nprompt tokens: %d",

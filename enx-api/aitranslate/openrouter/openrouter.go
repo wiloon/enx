@@ -1,4 +1,4 @@
-// Package openrouter implements aitranslate.Translator against OpenRouter's
+// Package openrouter offers the AI provider's chats on OpenRouter's
 // OpenAI-compatible Chat Completions API
 // (https://openrouter.ai/api/v1/chat/completions). Auth is an OpenRouter API
 // key (https://openrouter.ai/settings/keys), sent as Authorization: Bearer --
@@ -18,9 +18,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/openaicompat"
-	"enx-api/aitranslate/sentence"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -66,7 +64,7 @@ func (o *OpenRouter) modelForRephrase() string {
 	return o.model
 }
 
-// New builds an OpenRouter translator from config.toml
+// New builds an OpenRouter client from config.toml
 // (sentence-translate.openrouter.*) and the OPENROUTER_API_KEY environment
 // variable. It returns an error immediately if the API key is missing, so a
 // "provider = openrouter" misconfiguration is caught at startup rather than
@@ -107,10 +105,6 @@ type reasoning struct {
 
 var reasoningDisabled = reasoning{Enabled: false}
 
-func (o *OpenRouter) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return o.chat(ctx, "translate_sentence", o.model, sentence.Temperature, sentence.SystemPrompt, text)
-}
-
 func (o *OpenRouter) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	return openaicompat.Chat(ctx, o.client, openaicompat.Endpoint{
 		Provider: "openrouter",
@@ -121,10 +115,12 @@ func (o *OpenRouter) chat(ctx context.Context, feature, model string, temperatur
 	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }
 
-// chatWith binds chat to one model, giving the feature packages the
-// llm.Chat they call.
-func (o *OpenRouter) chatWith(model string) llm.Chat {
-	return func(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-		return o.chat(ctx, feature, model, temperature, systemPrompt, userContent)
-	}
+// Chat is the llm.Chat for every feature except rephrase.
+func (o *OpenRouter) Chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return o.chat(ctx, feature, o.model, temperature, systemPrompt, userContent)
+}
+
+// RephraseChat is the llm.Chat for rephrase, on the rephrase model (ADR-012).
+func (o *OpenRouter) RephraseChat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return o.chat(ctx, feature, o.modelForRephrase(), temperature, systemPrompt, userContent)
 }
