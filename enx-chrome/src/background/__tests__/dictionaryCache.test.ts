@@ -431,3 +431,144 @@ it('still serves the cached definition when updating its last-used timestamp fai
     fail.mockRestore()
   }
 })
+
+describe('per-language dictionary cache (ADR-098)', () => {
+  const flag = { value: null, effective: false, editable: true }
+  const prefs = (language: string) => ({
+    aiWordFallback: flag,
+    aiWordFallbackNoticeAck: flag,
+    explanationLanguage: {
+      value: language,
+      effective: language,
+      editable: true,
+    },
+  })
+  const enEntry = {
+    ...entry,
+    Chinese: '',
+    ExplanationLanguage: 'en',
+    Senses: [{ pos: 'n', gloss: 'A small animal.' }],
+  }
+
+  it('keeps languages side by side and switches back without a network request', async () => {
+    await send({ type: 'getOneWord', word: 'cat' })
+    ;(fetch as jest.Mock).mockClear()
+    ;(fetch as jest.Mock)
+      .mockResolvedValueOnce(reply(200, prefs('en')))
+      .mockResolvedValueOnce(reply(200, [enEntry]))
+      .mockResolvedValueOnce(reply(200, prefs('zh-Hans')))
+
+    await send({
+      type: 'updatePreferences',
+      changes: { explanationLanguage: 'en' },
+    })
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+      ecp: {
+        ExplanationLanguage: 'en',
+        Senses: [{ pos: 'n', gloss: 'A small animal.' }],
+      },
+    })
+    await send({
+      type: 'updatePreferences',
+      changes: { explanationLanguage: 'zh-Hans' },
+    })
+    ;(fetch as jest.Mock).mockClear()
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+      ecp: { Chinese: '猫', ExplanationLanguage: 'zh-Hans' },
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('updates the assumed language from a recordWordLookup answer', async () => {
+    ;(fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        reply(200, {
+          queryCount: 3,
+          known: false,
+          explanationLanguage: 'en',
+        })
+      )
+      .mockResolvedValueOnce(reply(200, [enEntry]))
+
+    expect(await send({ type: 'recordWordLookup', wordId: 'cat-id' })).toEqual(
+      {
+        success: true,
+        queryCount: 3,
+        known: false,
+        explanationLanguage: 'en',
+      }
+    )
+    expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+      ecp: { ExplanationLanguage: 'en' },
+    })
+    expect(calls().map(({ body }) => body)).toEqual([
+      { wordId: 'cat-id' },
+      { words: ['cat'] },
+    ])
+  })
+
+  it('updates the assumed language from a prefetch entries answer', async () => {
+    ;(fetch as jest.Mock).mockResolvedValueOnce(
+      reply(200, [
+        {
+          ...enEntry,
+          Word: 'fox',
+          Id: 'fox-id',
+          English: 'fox',
+        },
+      ])
+    )
+    await send({ type: 'prefetchDefinitions', words: ['fox'] })
+    ;(fetch as jest.Mock).mockClear()
+    expect(await send({ type: 'getOneWord', word: 'fox' })).toMatchObject({
+      ecp: { Id: 'fox-id', ExplanationLanguage: 'en' },
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not let a slow preferences read overwrite a fresher assumed language', async () => {
+    let releasePreferences!: () => void
+    const preferencesHeld = new Promise<void>(resolve => {
+      releasePreferences = resolve
+    })
+    ;(chrome.storage.local.get as jest.Mock).mockImplementation(
+      async (key: unknown) => {
+        if (key === 'enx-server-preferences-cache') {
+          await preferencesHeld
+          return { 'enx-server-preferences-cache': prefs('zh-Hans') }
+        }
+        return {}
+      }
+    )
+    try {
+      const pending = send({ type: 'getOneWord', word: 'cat' })
+      // Let getOneWord reach the held preferences read.
+      await new Promise(resolve => setTimeout(resolve, 20))
+
+      ;(fetch as jest.Mock)
+        .mockResolvedValueOnce(
+          reply(200, {
+            queryCount: 1,
+            known: false,
+            explanationLanguage: 'en',
+          })
+        )
+        .mockResolvedValueOnce(reply(200, [enEntry]))
+
+      await send({ type: 'recordWordLookup', wordId: 'cat-id' })
+      releasePreferences()
+      expect(await pending).toMatchObject({
+        ecp: { ExplanationLanguage: 'en' },
+      })
+
+      ;(fetch as jest.Mock).mockClear()
+      expect(await send({ type: 'getOneWord', word: 'cat' })).toMatchObject({
+        ecp: { ExplanationLanguage: 'en' },
+      })
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      releasePreferences()
+      ;(chrome.storage.local.get as jest.Mock).mockReset()
+    }
+  })
+})

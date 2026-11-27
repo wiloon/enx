@@ -502,6 +502,10 @@ describe('site footer', () => {
       'href',
       '/refund'
     )
+    expect(screen.getByRole('link', { name: 'Data sources' })).toHaveAttribute(
+      'href',
+      '/data-sources'
+    )
     expect(screen.getByRole('link', { name: '中文条款' })).toHaveAttribute(
       'href',
       '/zh/terms'
@@ -524,6 +528,10 @@ describe('site footer', () => {
     expect(screen.getByRole('link', { name: '退款政策' })).toHaveAttribute(
       'href',
       '/zh/refund'
+    )
+    expect(screen.getByRole('link', { name: '数据来源' })).toHaveAttribute(
+      'href',
+      '/zh/data-sources'
     )
     expect(screen.getByRole('link', { name: 'English terms' })).toHaveAttribute(
       'href',
@@ -586,6 +594,62 @@ describe('bilingual legal pages', () => {
     render(<Zh />)
     expect(screen.getByRole('link', { name: /英文/ })).toBeInTheDocument()
   })
+
+  // ADR-098: Wiktionary CC BY-SA 4.0 attribution on /data-sources.
+  it.each([
+    [
+      'English',
+      DataSourcesPage,
+      'https://creativecommons.org/licenses/by-sa/4.0/',
+      /modified/i,
+    ],
+    [
+      'Chinese',
+      DataSourcesZhPage,
+      'https://creativecommons.org/licenses/by-sa/4.0/deed.zh',
+      /修改/,
+    ],
+  ])(
+    'credits Wiktionary under CC BY-SA 4.0 on the %s data-sources page',
+    (_locale, Page, licenceHref, modified) => {
+      render(<Page />)
+
+      expect(
+        screen.getByRole('heading', { name: 'English Wiktionary' })
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('link', {
+          name: /Creative Commons Attribution-ShareAlike 4.0 International|知识共享署名-相同方式共享 4.0/,
+        })
+      ).toHaveAttribute('href', licenceHref)
+      expect(screen.getByText(/CC BY-SA 4.0/)).toBeInTheDocument()
+      expect(screen.getByText(modified)).toBeInTheDocument()
+      expect(
+        screen.getByRole('link', { name: 'Wiktextract' })
+      ).toHaveAttribute('href', 'https://github.com/tatuylonen/wiktextract')
+      expect(
+        screen.getByRole('link', { name: 'kaikki.org' })
+      ).toHaveAttribute('href', 'https://kaikki.org/')
+    }
+  )
+
+  it.each([
+    ['terms', TermsPage, 'Data sources', '/data-sources'],
+    ['terms zh', TermsZhPage, '数据来源', '/zh/data-sources'],
+    ['privacy', PrivacyPolicyPage, 'Data sources', '/data-sources'],
+    ['privacy zh', PrivacyPolicyZhPage, '数据来源', '/zh/data-sources'],
+  ])(
+    '%s links to the data-sources page',
+    (_name, Page, linkName, href) => {
+      const { container } = render(<Page />)
+      const main = container.querySelector('main')
+      expect(main).not.toBeNull()
+      const link = Array.from(main!.querySelectorAll('a')).find(
+        a => a.textContent?.trim() === linkName
+      )
+      expect(link).toHaveAttribute('href', href)
+    }
+  )
 
   it('says which language governs, so a drifted translation is still resolvable', () => {
     render(<TermsZhPage />)

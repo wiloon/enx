@@ -78,7 +78,8 @@ test.describe('English-English popover senses in a short viewport', () => {
 
     const senseCount = await senses.count()
     expect(senseCount).toBeGreaterThanOrEqual(1)
-    expect(senseCount).toBeLessThanOrEqual(4)
+    // P-5 / issue: a short viewport must drop at least one whole sense.
+    expect(senseCount).toBeLessThan(ENGLISH_SENSES.length)
 
     const headerBox = await header.boundingBox()
     const actionsBox = await actions.boundingBox()

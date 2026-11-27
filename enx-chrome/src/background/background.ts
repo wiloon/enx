@@ -7,7 +7,7 @@ import {
 } from '@/lib/dictionaryCache'
 import { createDefinitionPrefetcher } from '@/lib/definitionPrefetch'
 import {
-  applyResponseLanguage,
+  asExplanationLanguage,
   languageFromPreferences,
   storageLanguageForResponse,
   type ExplanationLanguage,
@@ -170,6 +170,7 @@ export const __resetClerkClientCacheForTests = (): void => {
   everSignedIn = createEverSignedIn(localStore)
   learningAccess = makeLearningAccess()
   anonymousDeviceId = createAnonymousDeviceId(localStore)
+  resetAssumedExplanationLanguage()
 }
 
 // Test-only: a worker restart drops the writer's pending actions.
@@ -1338,6 +1339,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           })
 
         case 'prefetchDefinitions':
+          await ensureAssumedLanguage()
           await definitionPrefetcher.prefetch(
             Array.isArray(request.words) ? request.words : []
           )
@@ -1357,6 +1359,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           resetClerkSession()
           await accountSession.clear('signed-out')
           dictionaryCacheGeneration++
+          resetAssumedExplanationLanguage()
           try {
             await workerDictionaryCache().clear()
           } catch {
@@ -1756,24 +1759,38 @@ let dictionaryCacheGeneration = 0
 // preferences or entries answer says otherwise.
 let assumedExplanationLanguage: ExplanationLanguage = 'zh-Hans'
 let assumedLanguageReady: Promise<void> | undefined
+// Set when preferences or a response authoritatively notes the language, so a
+// slow chrome.storage read started earlier cannot overwrite it with a stale
+// cached copy.
+let assumedLanguageAuthoritative = false
+
+const resetAssumedExplanationLanguage = () => {
+  assumedExplanationLanguage = 'zh-Hans'
+  assumedLanguageReady = undefined
+  assumedLanguageAuthoritative = false
+}
 
 const noteAssumedLanguage = (value: unknown) => {
-  assumedExplanationLanguage = applyResponseLanguage(
-    assumedExplanationLanguage,
-    value
-  )
+  const parsed = asExplanationLanguage(value)
+  if (!parsed) return
+  assumedExplanationLanguage = parsed
+  assumedLanguageAuthoritative = true
+  assumedLanguageReady ??= Promise.resolve()
 }
 
 const noteAssumedFromPreferences = (data: PreferencesData | null) => {
   assumedExplanationLanguage = languageFromPreferences(
     data?.explanationLanguage?.effective
   )
+  assumedLanguageAuthoritative = true
+  assumedLanguageReady ??= Promise.resolve()
 }
 
 const ensureAssumedLanguage = () =>
   (assumedLanguageReady ??= (async () => {
     try {
       const stored = await chrome.storage.local.get(PREFERENCES_CACHE_KEY)
+      if (assumedLanguageAuthoritative) return
       const cached = stored[PREFERENCES_CACHE_KEY]
       if (cached && typeof cached === 'object') {
         noteAssumedFromPreferences(cached as PreferencesData)
@@ -1806,6 +1823,7 @@ const definitionPrefetcher = createDefinitionPrefetcher({
       { retry: false, gatewayRetry: false }
     ),
   generation: () => dictionaryCacheGeneration,
+  noteLanguage: noteAssumedLanguage,
 })
 
 const handleGetOneWord = async (word: string, refresh = false) => {

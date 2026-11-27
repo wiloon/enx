@@ -159,6 +159,23 @@ describe('createDefinitionPrefetcher', () => {
     expect(put.mock.calls.map(([word]) => word)).toEqual(['fox'])
   })
 
+  it('notes the response language from each cached entry', async () => {
+    const noteLanguage = jest.fn()
+    send.mockResolvedValueOnce({
+      success: true,
+      data: [found('fox', { ExplanationLanguage: 'en' })],
+    })
+    await createDefinitionPrefetcher({
+      cache: { peek, put },
+      language: () => 'zh-Hans',
+      send,
+      generation: () => generation,
+      noteLanguage,
+    }).prefetch(['fox'])
+    expect(noteLanguage).toHaveBeenCalledWith('en')
+    expect(put.mock.calls[0][2]).toBe('en')
+  })
+
   it.each([
     ['405', { success: false, status: 405 }],
     ['a network error', { success: false, networkError: true }],

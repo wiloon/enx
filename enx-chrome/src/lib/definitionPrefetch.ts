@@ -72,6 +72,8 @@ export interface DefinitionPrefetcherDeps<R extends EntriesTransportResult> {
   send: EntriesTransport<R>
   /** Bumped on sign-out: a batch that sees it change writes nothing. */
   generation: () => number
+  /** An entries answer may move the worker's assumed language. */
+  noteLanguage?: (value: unknown) => void
 }
 
 export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
@@ -107,9 +109,11 @@ export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
       const data = entryToWordData(key, item)
       if (!data?.Id || data.Origin === 'ai') continue
       if (generation !== deps.generation()) return
-      const language = storageLanguageForResponse(
-        (item as { ExplanationLanguage?: unknown }).ExplanationLanguage
-      )
+      const responseLanguage = (
+        item as { ExplanationLanguage?: unknown }
+      ).ExplanationLanguage
+      const language = storageLanguageForResponse(responseLanguage)
+      deps.noteLanguage?.(responseLanguage)
       try {
         await deps.cache.put(key, data, language)
       } catch {

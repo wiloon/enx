@@ -55,6 +55,10 @@ import {
 } from '@/lib/learningModeStatus'
 import { autoEnableOnSignInReturn, maybeAutoEnable } from './autoEnable'
 import { runDictionaryLookup } from '@/lib/dictionaryLookup'
+import {
+  createPopoverLookupGate,
+  rereadForExplanationLanguage,
+} from '@/lib/explanationLanguageReread'
 import { type RecordLookup } from '@/lib/queryCount'
 import { nearestElement, referenceLineHeight } from '@/lib/rangeUtils'
 import { createSpaRebuilder, waitForContentReady } from './spaRebuild'
@@ -683,46 +687,28 @@ const showWordPopover = async (word: string, reference: Range) => {
   }
 
   // ADR-098: after 中 / EN is saved, re-read this word with no count. A late
-  // answer for another word or the previous language is dropped by isCurrent.
-  let shownLanguage: string | undefined
+  // answer for another word or the previous language is dropped by the gate.
+  const lookupGate = createPopoverLookupGate()
+  const initialGate = lookupGate.beginInitial()
   const handleExplanationLanguageChanged = (language: string) => {
-    shownLanguage = language
-    contentScriptStore.set(isTranslatingAtom, true)
-    contentScriptStore.set(errorAtom, null)
-    contentScriptStore.set(lookupNoticeAtom, null)
-    void runDictionaryLookup(
-      word.trim(),
-      { counts: false },
-      {
-        get: (w, refresh) =>
-          sendToBackground({
-            type: 'getOneWord',
-            word: w,
-            ...(refresh ? { refresh } : {}),
-          }),
-        record: wordId => sendToBackground({ type: 'recordWordLookup', wordId }),
-        isActive: isCurrentAccount,
-        isCurrent: () =>
-          currentOverlay === overlay &&
-          isCurrentAccount() &&
-          shownLanguage === language,
-        onDefinition: data => {
-          if (data.ExplanationLanguage && data.ExplanationLanguage !== language)
-            return
-          contentScriptStore.set(currentWordAtom, data)
-          contentScriptStore.set(isTranslatingAtom, false)
-        },
-        onCounted: () => {},
-        onRecordFailure: () => {},
-        onFailure: response => {
-          contentScriptStore.set(
-            errorAtom,
-            response.error || 'Translation service unavailable'
-          )
-          contentScriptStore.set(isTranslatingAtom, false)
-        },
-      }
-    )
+    const switchGate = lookupGate.beginSwitch(language)
+    void rereadForExplanationLanguage(word.trim(), language, {
+      store: contentScriptStore,
+      state: contentScriptStore.get(currentWordAtom) ?? undefined,
+      get: (w, refresh) =>
+        sendToBackground({
+          type: 'getOneWord',
+          word: w,
+          ...(refresh ? { refresh } : {}),
+        }),
+      record: wordId => sendToBackground({ type: 'recordWordLookup', wordId }),
+      isActive: isCurrentAccount,
+      isCurrent: () =>
+        currentOverlay === overlay &&
+        isCurrentAccount() &&
+        switchGate.isCurrent(),
+      onMiss: wordData => handleLookupMiss(wordData, aiDeps),
+    })
   }
 
   root.render(
@@ -794,9 +780,11 @@ const showWordPopover = async (word: string, reference: Range) => {
           record: wordId =>
             sendToBackground({ type: 'recordWordLookup', wordId }),
           isActive: isCurrentAccount,
-          isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
+          isCurrent: () =>
+            currentOverlay === overlay &&
+            isCurrentAccount() &&
+            initialGate.isCurrent(),
           onDefinition: data => {
-            shownLanguage = data.ExplanationLanguage ?? 'zh-Hans'
             contentScriptStore.set(currentWordAtom, data)
             contentScriptStore.set(isTranslatingAtom, false)
             stampLookedUp(document, window.location, config.uiOrigins)
