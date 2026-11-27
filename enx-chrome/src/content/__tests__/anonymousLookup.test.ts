@@ -321,7 +321,10 @@ describe('anonymous mode: signed out in a browser that never signed in', () => {
   })
 
   it('shows not-found with Sign in and no AI lookup', async () => {
-    anonymous = () => ({ status: 200, body: { Word: 'fox', Status: 'not_found' } })
+    anonymous = () => ({
+      status: 200,
+      body: { Word: 'fox', Status: 'not_found' },
+    })
     await startReading()
 
     await clickFox()
@@ -384,6 +387,15 @@ describe('a sign-in sets the flag', () => {
 })
 
 describe('account-owned triggers in anonymous mode', () => {
+  // The reader never signed in, so the prompt says what signing in adds,
+  // not that a session ended.
+  const expectSentencePrompt = () => {
+    expect(inPopover('word-popover-anonymous')?.textContent).toContain(
+      'Sign in to translate sentences and phrases.'
+    )
+    expect(inPopover('word-popover-signed-out')).toBeNull()
+  }
+
   it('shows Sign in for Translate sentence and sends no openSentencePanel', async () => {
     const { send } = await startReading()
     await clickFox()
@@ -394,7 +406,7 @@ describe('account-owned triggers in anonymous mode', () => {
     await settle()
 
     expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
-    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+    expectSentencePrompt()
     expect(await send({ action: 'getPageInfo' })).toMatchObject({
       isEnxEnabled: true,
     })
@@ -406,7 +418,7 @@ describe('account-owned triggers in anonymous mode', () => {
     await clickSelectionButton()
 
     expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
-    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+    expectSentencePrompt()
     expect(await send({ action: 'getPageInfo' })).toMatchObject({
       isEnxEnabled: true,
     })
@@ -419,7 +431,7 @@ describe('account-owned triggers in anonymous mode', () => {
     await clickSelectionButton()
 
     expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
-    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+    expectSentencePrompt()
   })
 
   it('shows Sign in for the hover button, with no panel request', async () => {
@@ -447,7 +459,7 @@ describe('account-owned triggers in anonymous mode', () => {
     await settle()
 
     expect(sent.filter(m => m.type === 'openSentencePanel')).toEqual([])
-    expect(inPopover('word-popover-signed-out')).not.toBeNull()
+    expectSentencePrompt()
   })
 })
 

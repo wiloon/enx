@@ -95,7 +95,11 @@ import {
   mayOpenAccountSidePanel,
   type LearningAccess,
 } from '@/lib/learningAccess'
-import { showAnonymousLookup, type AnonymousLookup } from '@/lib/anonymousLookup'
+import {
+  showAnonymousLookup,
+  showAnonymousSentencePrompt,
+  type AnonymousLookup,
+} from '@/lib/anonymousLookup'
 import {
   isSignedOutFailure,
   isUnverifiedFailure,
@@ -591,7 +595,7 @@ const showWordPopover = async (word: string, reference: Range) => {
     // ADR-095: anonymous mode never opens the Side Panel; Sign in stays in
     // this popover.
     if (!mayOpenAccountSidePanel(runAccess)) {
-      showSignedOut(contentScriptStore)
+      showAnonymousSentencePrompt(contentScriptStore)
       return
     }
     contentScriptStore.set(sentencePanelHintAtom, null)
@@ -1401,8 +1405,7 @@ const showAnonymousSignInOverlay = (reference: Range) => {
   const { overlay, root, mount, cleanup } = createAnchoredOverlay(reference)
   currentRoot = root
   contentScriptStore.set(sentencePanelHintAtom, null)
-  contentScriptStore.set(anonymousNoticeAtom, null)
-  showSignedOut(contentScriptStore)
+  showAnonymousSentencePrompt(contentScriptStore)
 
   root.render(
     <Provider store={contentScriptStore}>
@@ -1843,7 +1846,10 @@ const disableEnx = ({ keepPopover = false } = {}) => {
     'selectionchange',
     handleSelectionChangeForButton
   )
-  document.removeEventListener('selectionchange', hoverSession.onSelectionChange)
+  document.removeEventListener(
+    'selectionchange',
+    hoverSession.onSelectionChange
+  )
   document.removeEventListener('keydown', hoverSession.onKeyDown)
   hideSelectionTranslateButton()
   hoverSession.dispose()

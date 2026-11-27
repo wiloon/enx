@@ -10,6 +10,7 @@ import {
   currentWordAtom,
   errorAtom,
   isTranslatingAtom,
+  signedOutAtom,
 } from '@/store/atoms'
 import type { WordData } from '@/types'
 
@@ -18,6 +19,10 @@ export const ANONYMOUS_DEVICE_ID_HEADER = 'X-Enx-Device-Id'
 
 export const ANONYMOUS_SAVE_PROMPT =
   'Sign in to save this word and see it underlined next time.'
+// Sentence translation, phrase lookup and hover translation need an
+// account. The reader never signed in, so this is not the signed-out notice.
+export const ANONYMOUS_SENTENCE_PROMPT =
+  'Sign in to translate sentences and phrases.'
 export const ANONYMOUS_NOT_FOUND_MESSAGE =
   'No definition found. Sign in to get an AI explanation.'
 const ANONYMOUS_LIMIT_FALLBACK =
@@ -37,7 +42,9 @@ export interface AnonymousLookupDeps {
   deviceId: () => Promise<string>
 }
 
-const readJson = async (response: Response): Promise<Record<string, unknown>> => {
+const readJson = async (
+  response: Response
+): Promise<Record<string, unknown>> => {
   try {
     const body = await response.json()
     return body && typeof body === 'object' ? body : {}
@@ -118,4 +125,12 @@ export const showAnonymousLookup = (
       store.set(currentWordAtom, null)
       store.set(errorAtom, result.error)
   }
+}
+
+// The open popup, in place of its contents, when an account-owned trigger
+// (sentence, phrase, hover) is used in anonymous mode.
+export const showAnonymousSentencePrompt = (store: Store): void => {
+  showSignedOut(store)
+  store.set(signedOutAtom, false)
+  store.set(anonymousNoticeAtom, ANONYMOUS_SENTENCE_PROMPT)
 }
