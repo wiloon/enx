@@ -123,10 +123,23 @@ export type PreferenceKey =
   // ADR-047: written by /welcome, never shown on the settings page.
   | 'onboardingCompleted'
 
-export type PreferencesData = Record<PreferenceKey, PreferenceView>
+// The enum preference (ADR-098 Decision 1). Plain strings: the server may
+// hold a value this build doesn't know.
+export interface ExplanationLanguageView {
+  value: string | null
+  effective: string
+  editable: boolean
+}
+
+export type PreferencesData = Record<PreferenceKey, PreferenceView> & {
+  // Missing from an older server's response.
+  explanationLanguage?: ExplanationLanguageView
+}
 
 // A partial update: null returns the key to its default.
-export type PreferenceChanges = Partial<Record<PreferenceKey, boolean | null>>
+export type PreferenceChanges = Partial<
+  Record<PreferenceKey, boolean | null>
+> & { explanationLanguage?: string | null }
 
 export interface CheckoutSessionData {
   url: string
