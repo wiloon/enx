@@ -1,0 +1,42 @@
+{
+  "SiteHeader": {
+    "mainNav": "Main",
+    "addToChrome": "Add to Chrome"
+  },
+  "SiteNav": {
+    "features": "Features",
+    "howItWorks": "How it works",
+    "pricing": "Pricing",
+    "similarApps": "Similar apps",
+    "help": "Help"
+  },
+  "SiteMobileMenu": {
+    "menu": "Menu",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "HeaderAuthLinks": {
+    "checking": "Checking sign-in status",
+    "signIn": "Sign in",
+    "goToApp": "Go to app"
+  },
+  "UiLanguageSwitch": {
+    "label": "Language",
+    "en": "English",
+    "zh": "简体中文"
+  },
+  "SiteFooter": {
+    "tagline": "AI-assisted English reading in your browser.",
+    "product": "Product",
+    "addToChrome": "Add to Chrome",
+    "pricing": "Pricing",
+    "goToApp": "Go to app",
+    "resources": "Resources",
+    "help": "Help",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "refund": "Refund Policy",
+    "otherLanguageTerms": "中文条款"
+  }
+}

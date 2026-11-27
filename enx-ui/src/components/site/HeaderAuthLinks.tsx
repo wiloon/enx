@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { useAuthContext } from '@/auth/context'
 import { SITE } from '@/lib/site'
 
@@ -21,12 +22,13 @@ export default function HeaderAuthLinks() {
     () => false
   )
   const { isLoaded, isSignedIn } = useAuthContext()
+  const t = useTranslations('HeaderAuthLinks')
 
   if (!mounted || !isLoaded) {
     return (
       <span
         role="status"
-        aria-label="Checking sign-in status"
+        aria-label={t('checking')}
         className="inline-flex h-5 w-14 items-center justify-center"
       >
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70" />
@@ -41,10 +43,10 @@ export default function HeaderAuthLinks() {
     >
       {isSignedIn ? (
         <>
-          Go to app <span aria-hidden="true">→</span>
+          {t('goToApp')} <span aria-hidden="true">→</span>
         </>
       ) : (
-        'Sign in'
+        t('signIn')
       )}
     </Link>
   )

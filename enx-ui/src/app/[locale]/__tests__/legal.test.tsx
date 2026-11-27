@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react'
-import PrivacyPolicyPage from '../privacy/page'
-import TermsPage from '../terms/page'
-import RefundPolicyPage from '../refund/page'
-import PrivacyPolicyZhPage from '../zh/privacy/page'
-import TermsZhPage from '../zh/terms/page'
-import RefundPolicyZhPage from '../zh/refund/page'
+import { screen } from '@testing-library/react'
+import PrivacyPolicyPage from '../privacy/PrivacyEn'
+import TermsPage from '../terms/TermsEn'
+import RefundPolicyPage from '../refund/RefundEn'
+import PrivacyPolicyZhPage from '../privacy/PrivacyZh'
+import TermsZhPage from '../terms/TermsZh'
+import RefundPolicyZhPage from '../refund/RefundZh'
 import SiteFooter from '@/components/site/SiteFooter'
+import { renderWithIntl } from '@/test-utils/intl'
 import { AI_PROVIDER, LEGAL, SUBPROCESSORS } from '@/lib/legal'
 import { SITE } from '@/lib/site'
 
@@ -19,6 +20,14 @@ jest.mock('@/auth/context', () => ({
 jest.mock('@/hooks/useExtensionStatus', () => ({
   useExtensionStatus: () => 'not-installed',
 }))
+
+// The pages carry the site header and footer, which read UI messages. The
+// page bodies are written per language and need none.
+const render = (ui: React.ReactElement) => renderWithIntl(ui)
+
+jest.mock('next/navigation', () =>
+  jest.requireActual('@/test-utils/navigation')
+)
 
 // These pages are representations to users and to two review processes, so
 // the tests are about the claims being present and internally consistent --
@@ -479,7 +488,7 @@ describe('Refund Policy', () => {
 
 describe('site footer', () => {
   it('links all three legal pages, because reviewers go looking for them', () => {
-    render(<SiteFooter />)
+    renderWithIntl(<SiteFooter />)
 
     expect(
       screen.getByRole('link', { name: 'Privacy Policy' })
@@ -490,6 +499,37 @@ describe('site footer', () => {
     expect(screen.getByRole('link', { name: 'Refund Policy' })).toHaveAttribute(
       'href',
       '/refund'
+    )
+    expect(screen.getByRole('link', { name: '中文条款' })).toHaveAttribute(
+      'href',
+      '/zh/terms'
+    )
+  })
+
+  // ADR-096: on a /zh page the footer is Chinese and its legal links stay in
+  // Chinese; pages that are not localised keep their one URL.
+  it('is Chinese on a Chinese page, with the legal links in Chinese', () => {
+    renderWithIntl(<SiteFooter />, 'zh')
+
+    expect(screen.getByRole('link', { name: '隐私政策' })).toHaveAttribute(
+      'href',
+      '/zh/privacy'
+    )
+    expect(screen.getByRole('link', { name: '用户协议' })).toHaveAttribute(
+      'href',
+      '/zh/terms'
+    )
+    expect(screen.getByRole('link', { name: '退款政策' })).toHaveAttribute(
+      'href',
+      '/zh/refund'
+    )
+    expect(screen.getByRole('link', { name: 'English terms' })).toHaveAttribute(
+      'href',
+      '/terms'
+    )
+    expect(screen.getByRole('link', { name: '价格' })).toHaveAttribute(
+      'href',
+      '/pricing'
     )
   })
 })

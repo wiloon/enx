@@ -7,12 +7,10 @@ import { SITE } from '@/lib/site'
 //
 // 退款规则写在收费之前才有约束力 —— 这一页存在的意义就在于规则先于投诉存在。
 // 与 /refund 逐节对应。
-export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
   title: `退款政策 — ${SITE.name}`,
   description: `${SITE.name} 在什么情况下退钱，以及怎么申请。`,
-  alternates: { canonical: '/zh/refund', languages: { en: '/refund' } },
 }
 
 export default function RefundPolicyZhPage() {

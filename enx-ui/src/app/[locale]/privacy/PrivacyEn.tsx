@@ -33,7 +33,6 @@ import { SITE } from '@/lib/site'
 //   - without an account: the IP is not written to our  -> enx-api
 //     database or logs                                     dictionary/anonymous.go
 //     (counted in memory only), ADR-095
-export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
   title: `Privacy Policy — ${SITE.name}`,

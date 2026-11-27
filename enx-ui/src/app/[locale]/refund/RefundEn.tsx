@@ -13,7 +13,6 @@ import { SITE } from '@/lib/site'
 // credits not. The split matters — a subscription is access we can simply
 // stop providing, whereas a consumed credit has already bought an AI call
 // that was paid for at the time.
-export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
   title: `Refund Policy — ${SITE.name}`,

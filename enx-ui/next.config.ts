@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import createNextIntlPlugin from 'next-intl/plugin'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -22,4 +23,7 @@ const nextConfig: NextConfig = {
   // The relay lives in src/proxy.ts and reads API_BASE_URL per request.
 }
 
-export default nextConfig
+// next-intl's request config: which UI language and messages a page gets.
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
+
+export default withNextIntl(nextConfig)

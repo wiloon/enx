@@ -1,8 +1,15 @@
 import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 import { SITE } from '@/lib/site'
+import { hrefInUiLanguage } from '@/lib/uiLanguage'
 import LogoMark from './LogoMark'
 
 export default function SiteFooter() {
+  const t = useTranslations('SiteFooter')
+  const language = useLocale()
+  // Localised pages (the legal set) stay in the page's UI language; the rest
+  // have one URL (ADR-096).
+  const href = (path: string) => hrefInUiLanguage(path, language)
   const year = new Date().getFullYear()
   return (
     <footer className="border-t border-border/60">
@@ -12,13 +19,11 @@ export default function SiteFooter() {
             <LogoMark className="h-5 w-5 shrink-0" />
             {SITE.name}
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            AI-assisted English reading in your browser.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('tagline')}</p>
         </div>
 
         <div>
-          <h3 className="text-sm font-medium">Product</h3>
+          <h3 className="text-sm font-medium">{t('product')}</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
               <a
@@ -27,28 +32,28 @@ export default function SiteFooter() {
                 rel="noreferrer"
                 className="hover:text-foreground"
               >
-                Add to Chrome
+                {t('addToChrome')}
               </a>
             </li>
             <li>
-              <Link href="/pricing" className="hover:text-foreground">
-                Pricing
+              <Link href={href('/pricing')} className="hover:text-foreground">
+                {t('pricing')}
               </Link>
             </li>
             <li>
-              <Link href={SITE.appPath} className="hover:text-foreground">
-                Go to app
+              <Link href={href(SITE.appPath)} className="hover:text-foreground">
+                {t('goToApp')}
               </Link>
             </li>
           </ul>
         </div>
 
         <div>
-          <h3 className="text-sm font-medium">Resources</h3>
+          <h3 className="text-sm font-medium">{t('resources')}</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
-              <Link href="/help" className="hover:text-foreground">
-                Help
+              <Link href={href('/help')} className="hover:text-foreground">
+                {t('help')}
               </Link>
             </li>
             <li>
@@ -67,29 +72,35 @@ export default function SiteFooter() {
         {/* The Chrome Web Store listing and Stripe both link to these, and
             users look for them in exactly this corner. */}
         <div>
-          <h3 className="text-sm font-medium">Legal</h3>
+          <h3 className="text-sm font-medium">{t('legal')}</h3>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
-              <Link href="/privacy" className="hover:text-foreground">
-                Privacy Policy
+              <Link href={href('/privacy')} className="hover:text-foreground">
+                {t('privacy')}
               </Link>
             </li>
             <li>
-              <Link href="/terms" className="hover:text-foreground">
-                Terms of Service
+              <Link href={href('/terms')} className="hover:text-foreground">
+                {t('terms')}
               </Link>
             </li>
             <li>
-              <Link href="/refund" className="hover:text-foreground">
-                Refund Policy
+              <Link href={href('/refund')} className="hover:text-foreground">
+                {t('refund')}
               </Link>
             </li>
             <li>
               {/* One link is enough: each legal page carries its own
                   language switch, so this only has to get the reader to
-                  the set. */}
-              <Link href="/zh/terms" className="hover:text-foreground">
-                中文条款
+                  the set in the other language. */}
+              <Link
+                href={hrefInUiLanguage(
+                  '/terms',
+                  language === 'zh' ? 'en' : 'zh'
+                )}
+                className="hover:text-foreground"
+              >
+                {t('otherLanguageTerms')}
               </Link>
             </li>
           </ul>

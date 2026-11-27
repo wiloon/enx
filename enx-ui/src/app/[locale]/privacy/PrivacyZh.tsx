@@ -5,18 +5,16 @@ import { SITE } from '@/lib/site'
 
 // 隐私政策（中文版）。LAUNCH-CHECKLIST §6.2b。
 //
-// ⚠️ 这是 /privacy 的翻译，两份必须逐节对应 —— app/__tests__/legal.test.tsx
-// 里有一条测试比对两版的小节数量，改了一边没改另一边会红。
+// ⚠️ 这是 /privacy 的翻译，两份必须逐节对应 ——
+// app/[locale]/__tests__/legal.test.tsx 里有一条测试比对两版的小节数量，改了一边没改另一边会红。
 //
 // ⚠️ 中文版声明「以中文版为准」（见 LegalPage 的 translationNote）。运营者常居
 // 中国大陆、管辖写中国法、用户是中文用户，真出争议时法院看的就是用户实际读到
 // 的那一版。所以这里的措辞不是「译得差不多就行」。
-export const dynamic = 'force-static'
 
 export const metadata: Metadata = {
   title: `隐私政策 — ${SITE.name}`,
   description: `${SITE.name} 如何处理你的数据：收集什么、刻意不收集什么、还有谁会拿到。`,
-  alternates: { canonical: '/zh/privacy', languages: { en: '/privacy' } },
 }
 
 export default function PrivacyPolicyZhPage() {
