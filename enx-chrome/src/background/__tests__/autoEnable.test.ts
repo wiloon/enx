@@ -180,7 +180,7 @@ describe('enableOnNewlyGrantedSite', () => {
     overrides: Partial<Parameters<typeof enableOnNewlyGrantedSite>[1]> = {}
   ) {
     return {
-      isSignedIn: jest.fn().mockResolvedValue(true),
+      learningAccess: jest.fn().mockResolvedValue('signed-in'),
       getStatus: jest.fn().mockResolvedValue({ status: 'off' }),
       enable: jest.fn().mockResolvedValue({ success: true }),
       ...overrides,
@@ -215,11 +215,22 @@ describe('enableOnNewlyGrantedSite', () => {
     tabs.query.mockResolvedValue([
       { id: 7, url: 'https://www.infoq.com/articles/foo' },
     ])
-    const d = deps({ isSignedIn: jest.fn().mockResolvedValue(false) })
+    const d = deps({ learningAccess: jest.fn().mockResolvedValue('signed-out') })
 
     await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
 
     expect(d.enable).not.toHaveBeenCalled()
+  })
+
+  it('turns learning mode on in anonymous mode (ADR-095)', async () => {
+    tabs.query.mockResolvedValue([
+      { id: 7, url: 'https://www.infoq.com/articles/foo' },
+    ])
+    const d = deps({ learningAccess: jest.fn().mockResolvedValue('anonymous') })
+
+    await enableOnNewlyGrantedSite({ origins: ['https://www.infoq.com/*'] }, d)
+
+    expect(d.enable).toHaveBeenCalledWith(7)
   })
 
   it('skips active tabs on other sites', async () => {

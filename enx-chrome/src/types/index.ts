@@ -81,6 +81,8 @@ export interface ContentMessage {
     | 'shouldAutoEnable'
     | 'learningModeStatus'
     | 'pinHintDismissed'
+    | 'learningAccess'
+    | 'getAnonymousEntry'
   word?: string
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string

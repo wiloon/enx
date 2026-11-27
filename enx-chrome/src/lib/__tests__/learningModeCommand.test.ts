@@ -17,7 +17,7 @@ const makeDeps = (
     getStatus: jest.fn().mockResolvedValue(status),
     enable: jest.fn().mockResolvedValue({ success: true }),
     disable: jest.fn().mockResolvedValue(undefined),
-    isSignedIn: jest.fn().mockResolvedValue(true),
+    learningAccess: jest.fn().mockResolvedValue('signed-in'),
     showOnBadge: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   }
@@ -79,7 +79,7 @@ describe('runLearningModeCommand', () => {
   it('asks to sign in on the badge instead of enabling when signed out', async () => {
     const deps = makeDeps(
       { status: 'off' },
-      { isSignedIn: jest.fn().mockResolvedValue(false) }
+      { learningAccess: jest.fn().mockResolvedValue('signed-out') }
     )
 
     const result = await runLearningModeCommand(
@@ -96,10 +96,28 @@ describe('runLearningModeCommand', () => {
     })
   })
 
+  // ADR-095 Decision 2: a browser that never signed in reads anonymously.
+  it('turns learning mode on in anonymous mode', async () => {
+    const deps = makeDeps(
+      { status: 'off' },
+      { learningAccess: jest.fn().mockResolvedValue('anonymous') }
+    )
+
+    const result = await runLearningModeCommand(
+      TOGGLE_LEARNING_MODE_COMMAND,
+      TAB_ID,
+      deps
+    )
+
+    expect(result).toBe('enabled')
+    expect(deps.enable).toHaveBeenCalledWith(TAB_ID)
+    expect(deps.showOnBadge).not.toHaveBeenCalled()
+  })
+
   it('still turns learning mode off when signed out', async () => {
     const deps = makeDeps(
       { status: 'ready' },
-      { isSignedIn: jest.fn().mockResolvedValue(false) }
+      { learningAccess: jest.fn().mockResolvedValue('signed-out') }
     )
 
     const result = await runLearningModeCommand(
