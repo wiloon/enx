@@ -6,7 +6,7 @@ package sqlitex
 type UserPreference struct {
 	UserId    string `gorm:"column:user_id;primaryKey"`
 	Key       string `gorm:"column:key;primaryKey"`
-	Value     string `gorm:"column:value;not null"` // JSON-encoded; booleans only today
+	Value     string `gorm:"column:value;not null"` // JSON-encoded: a boolean or an enum's string
 	UpdatedAt int64  `gorm:"column:updated_at;not null"`
 }
 
