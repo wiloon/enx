@@ -70,6 +70,12 @@ _Avoid_: 设备指纹（它是随机数，不从设备特征推导）、匿名�
 
 **Reader document version**: An ordered revision of one Reader document. A later revision supersedes earlier revisions; the version is separate from the document's retention period.
 
+### 释义（跨组件）
+
+**解释语言（explanation language）**：
+用户选定的、用来解释英文的语言：释义、语境释义和整句翻译都用这种语言输出。默认简体中文；选英文时用英文解释英文（英英释义），不出现中文。是每个登录用户一个的服务端偏好，与界面语言（ADR-096）无关。见 adr-098。
+_Avoid_: 词典语言、翻译语言、界面语言（ADR-096 的另一件事）
+
 ### 阅读辅助功能（enx-chrome）
 
 **学习模式（learning mode）**：
