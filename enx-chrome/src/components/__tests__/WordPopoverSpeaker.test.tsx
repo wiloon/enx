@@ -221,11 +221,11 @@ describe('a miss handed to the AI fallback', () => {
     return answer
   }
 
-  it('offers the speaker only once the AI found a definition, and plays its word', async () => {
+  it('keeps the speaker on a miss while AI loads, and plays after AI finds a definition', async () => {
     const answer = startFallback()
 
     expect(screen.getByTestId('word-popover-ai-loading')).toBeInTheDocument()
-    expect(screen.queryByTestId(SPEAKER)).toBeNull()
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
 
     await act(async () => {
       answer.resolve({

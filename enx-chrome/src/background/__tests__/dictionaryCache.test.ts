@@ -83,7 +83,15 @@ it('reads a cache miss with one JSON QUERY and serves the next lookup from the c
   ])
   expect(await send({ type: 'getOneWord', word: 'CAT' })).toEqual({
     success: true,
-    ecp: { ...definition, Origin: undefined },
+    ecp: {
+      Id: 'cat-id',
+      Key: 'cat',
+      English: 'cat',
+      Chinese: '猫',
+      Pronunciation: 'kæt',
+      WordType: 0,
+      ExplanationLanguage: 'zh-Hans',
+    },
   })
   expect(fetch).toHaveBeenCalledTimes(1)
 })
