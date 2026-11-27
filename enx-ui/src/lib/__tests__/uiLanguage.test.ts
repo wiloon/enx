@@ -9,7 +9,7 @@ import {
 } from '../uiLanguage'
 
 describe('isLocalisedPath', () => {
-  it.each(['/privacy', '/terms', '/refund'])(
+  it.each(['/privacy', '/terms', '/refund', '/data-sources'])(
     'treats %s as localised, unprefixed or with /zh or /en',
     (path) => {
       expect(isLocalisedPath(path)).toBe(true)

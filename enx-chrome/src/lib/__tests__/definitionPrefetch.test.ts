@@ -87,6 +87,7 @@ describe('createDefinitionPrefetcher', () => {
   const prefetcher = () =>
     createDefinitionPrefetcher({
       cache: { peek, put },
+      language: () => 'zh-Hans',
       send,
       generation: () => generation,
     })
@@ -134,8 +135,12 @@ describe('createDefinitionPrefetcher', () => {
     })
     await prefetcher().prefetch(['ran', 'cat'])
     expect(put.mock.calls).toEqual([
-      ['cat', expect.objectContaining({ Id: 'cat-id', Key: 'cat' })],
-      ['ran', expect.objectContaining({ Id: 'run-id', English: 'run' })],
+      ['cat', expect.objectContaining({ Id: 'cat-id', Key: 'cat' }), 'zh-Hans'],
+      [
+        'ran',
+        expect.objectContaining({ Id: 'run-id', English: 'run' }),
+        'zh-Hans',
+      ],
     ])
   })
 
@@ -152,6 +157,23 @@ describe('createDefinitionPrefetcher', () => {
     })
     await prefetcher().prefetch(['fox', 'noid', 'robot', 'zorbly', 'cat'])
     expect(put.mock.calls.map(([word]) => word)).toEqual(['fox'])
+  })
+
+  it('notes the response language from each cached entry', async () => {
+    const noteLanguage = jest.fn()
+    send.mockResolvedValueOnce({
+      success: true,
+      data: [found('fox', { ExplanationLanguage: 'en' })],
+    })
+    await createDefinitionPrefetcher({
+      cache: { peek, put },
+      language: () => 'zh-Hans',
+      send,
+      generation: () => generation,
+      noteLanguage,
+    }).prefetch(['fox'])
+    expect(noteLanguage).toHaveBeenCalledWith('en')
+    expect(put.mock.calls[0][2]).toBe('en')
   })
 
   it.each([

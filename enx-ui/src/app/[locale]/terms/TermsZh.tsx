@@ -123,7 +123,14 @@ export default function TermsZhPage() {
         <p>
           释义、译文和解释由词典和 AI 语言模型产生。它们
           <Term>经常有用，也时而出错</Term>。 一段 AI
-          译文可以读起来流畅、笃定，同时仍然曲解了原文。
+          译文可以读起来流畅、笃定，同时仍然曲解了原文。词典来源与许可见
+          <a
+            href="/zh/data-sources"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            数据来源
+          </a>
+          页。
         </p>
         <p>
           {SITE.name} 是一个学习辅助工具。

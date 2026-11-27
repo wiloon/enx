@@ -410,6 +410,14 @@ describe('SiteFooter', () => {
       '/pricing'
     )
   })
+
+  it('links to the data sources page', () => {
+    render(<SiteFooter />)
+    expect(screen.getByRole('link', { name: 'Data sources' })).toHaveAttribute(
+      'href',
+      '/data-sources'
+    )
+  })
 })
 
 describe('SiteHeader', () => {

@@ -17,25 +17,108 @@ const definition: WordData = {
   Known: true,
   AIFallback: { CanUse: true, Auto: true },
 }
+
+const englishDefinition: WordData = {
+  Id: 'run-en',
+  Key: 'run',
+  English: 'run',
+  Pronunciation: '',
+  Chinese: '',
+  WordType: 0,
+  ExplanationLanguage: 'en',
+  Origin: 'wiktionary',
+  Senses: [
+    { pos: 'v', gloss: 'To move fast.', example: 'Run home.' },
+    { pos: 'n', gloss: 'A spell of running.' },
+  ],
+  LemmaNote: 'also past tense of something long enough to grow',
+  PronunciationUS: '/rʌn/',
+  PronunciationUK: '/ɹʌn/',
+}
+
 let factory: IDBFactory
 let now: number
 const cache = () =>
   createDictionaryCache(openDictionaryCache(factory), () => now)
+// Fills one language to the 5000 cap in one transaction. 5000 put() calls count
+// the whole language each time, which outran the test timeout on CI.
+async function fillToCap(
+  prefix: string,
+  entry: WordData,
+  language: 'zh-Hans' | 'en'
+) {
+  const db = await openDictionaryCache(factory)
+  const tx = db.transaction('entries', 'readwrite')
+  const writes = Array.from({ length: 5000 }, (_, i) => {
+    now++
+    const word = `${prefix}-${i}`
+    return tx.store.put({
+      key: `${language}:${word}`,
+      language,
+      word,
+      entry: { ...entry, Id: entry.Id! },
+      cachedAt: now,
+      lastUsedAt: now,
+    })
+  })
+  await Promise.all([...writes, tx.done])
+  db.close()
+}
 beforeEach(() => {
   factory = new IDBFactory()
   now = 1000
 })
 
 it('reuses a clicked inflection across cache instances without persisting user state', async () => {
-  await cache().put(' Ran ', definition)
-  expect(await cache().get('RAN')).toEqual({
+  await cache().put(' Ran ', definition, 'zh-Hans')
+  expect(await cache().get('RAN', 'zh-Hans')).toEqual({
     Id: 'run-id',
     English: 'run',
     Pronunciation: 'rʌn',
     Chinese: '跑',
     WordType: 0,
   })
-  expect(await cache().get('run')).toBeUndefined()
+  expect(await cache().get('run', 'zh-Hans')).toBeUndefined()
+})
+
+it('keeps the same word in both languages side by side', async () => {
+  await cache().put('run', definition, 'zh-Hans')
+  await cache().put('run', englishDefinition, 'en')
+  expect((await cache().get('run', 'zh-Hans'))?.Chinese).toBe('跑')
+  expect((await cache().get('run', 'en'))?.Senses?.[0]?.gloss).toBe(
+    'To move fast.'
+  )
+  expect(await cache().get('run', 'zh-Hans')).toMatchObject({ Chinese: '跑' })
+})
+
+it('caches an English entry that is larger than 1 KB', async () => {
+  const large: WordData = {
+    ...englishDefinition,
+    Senses: Array.from({ length: 10 }, (_, i) => ({
+      pos: 'n',
+      gloss:
+        `Gloss number ${i} with enough text to push past one kilobyte of UTF-8 when stored with the other English fields. `.repeat(
+          2
+        ),
+      example: `Example ${i} also adds a few dozen bytes of overhead.`,
+    })),
+  }
+  const encoded = new TextEncoder().encode(JSON.stringify(large.Senses))
+  expect(encoded.byteLength).toBeGreaterThan(1024)
+  await cache().put('light', large, 'en')
+  expect(await cache().get('light', 'en')).toMatchObject({ Id: 'run-en' })
+})
+
+it('filling one language to the cap evicts nothing of the other', async () => {
+  const store = cache()
+  await store.put('keep-zh', definition, 'zh-Hans')
+  await fillToCap('en', englishDefinition, 'en')
+  now++
+  await store.put('en-new', englishDefinition, 'en')
+  expect(await store.get('keep-zh', 'zh-Hans')).toBeDefined()
+  expect(await store.get('en-0', 'en')).toBeUndefined()
+  expect(await store.get('en-1', 'en')).toBeDefined()
+  expect(await store.get('en-new', 'en')).toBeDefined()
 })
 
 it('shares one entry between a possessive page form and its word', async () => {
@@ -72,19 +155,16 @@ it('peeks at a usable entry without refreshing its last use, and not past expiry
 it.each([
   ['a miss', { Id: undefined }],
   ['an AI definition', { Origin: 'ai' as const }],
-  ['more than 1 KB of UTF-8 dictionary data', { Chinese: '词'.repeat(350) }],
+  ['more than 1 KB of UTF-8 Chinese data', { Chinese: '词'.repeat(350) }],
 ])('does not cache %s', async (_name, fields) => {
   const store = cache()
   await store.put('ran', { ...definition, ...fields })
   expect(await store.get('ran')).toBeUndefined()
 })
 
-it('evicts the least recently used word at 5000 entries, including concurrent writes', async () => {
+it('evicts the least recently used word at 5000 entries per language', async () => {
   const store = cache()
-  for (let i = 0; i < 5000; i++) {
-    now++
-    await store.put(`word-${i}`, definition)
-  }
+  await fillToCap('word', definition, 'zh-Hans')
   now++
   await store.get('word-0')
   now++
@@ -95,23 +175,21 @@ it('evicts the least recently used word at 5000 entries, including concurrent wr
   expect(await store.get('word-0')).toBeDefined()
   expect(await store.get('word-1')).toBeUndefined()
   expect(await store.get('word-2')).toBeUndefined()
+  expect(await store.get('word-3')).toBeDefined()
   expect(await store.get('new-a')).toBeDefined()
   expect(await store.get('new-b')).toBeDefined()
 })
 
 it('overwrites an existing word at capacity without evicting another', async () => {
   const store = cache()
-  for (let i = 0; i < 5000; i++) {
-    now++
-    await store.put(`word-${i}`, definition)
-  }
+  await fillToCap('word', definition, 'zh-Hans')
   await store.put('word-200', { ...definition, Chinese: '更新' })
   expect((await store.get('word-200'))?.Chinese).toBe('更新')
   expect(await store.get('word-0')).toBeDefined()
 })
 
-it('discards entries stored under the old version 1 keys', async () => {
-  const db = await openDictionaryCache(factory, 1)
+it('discards entries stored under the old version 2 keys', async () => {
+  const db = await openDictionaryCache(factory, 2)
   await createDictionaryCache(Promise.resolve(db), () => now).put(
     'ran',
     definition

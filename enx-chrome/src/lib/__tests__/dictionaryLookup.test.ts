@@ -168,6 +168,44 @@ it('returns a word no dictionary knows with its AI offer and records nothing', a
   expect(deps.record).not.toHaveBeenCalled()
 })
 
+it('re-reads when recordWordLookup answers in another language, without a second count', async () => {
+  const deps = setup()
+  const english: WordData = {
+    Id: 'cat-en',
+    Key: 'cat',
+    English: 'cat',
+    Chinese: '',
+    Pronunciation: '',
+    WordType: 0,
+    ExplanationLanguage: 'en',
+    Senses: [{ pos: 'n', gloss: 'A small animal.' }],
+  }
+  deps.get
+    .mockResolvedValueOnce({
+      success: true,
+      ecp: { ...word, ExplanationLanguage: 'zh-Hans' },
+    })
+    .mockResolvedValueOnce({ success: true, ecp: english })
+  deps.record.mockResolvedValue({
+    success: true,
+    queryCount: 5,
+    known: false,
+    explanationLanguage: 'en',
+  })
+
+  const result = await runDictionaryLookup('cat', { counts: true }, deps)
+
+  expect(deps.record).toHaveBeenCalledTimes(1)
+  expect(deps.get).toHaveBeenCalledTimes(2)
+  expect(result).toEqual(
+    expect.objectContaining({
+      ExplanationLanguage: 'en',
+      Senses: [{ pos: 'n', gloss: 'A small animal.' }],
+      LoadCount: 5,
+    })
+  )
+})
+
 it('reports a failed read in place of the definition, with no AI offer to return', async () => {
   const deps = setup()
   deps.get.mockResolvedValue({

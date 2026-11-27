@@ -37,6 +37,12 @@ export interface WordLookupRecord {
   known: boolean
 }
 
+export type Sense = {
+  pos: string
+  gloss: string
+  example?: string
+}
+
 export interface WordData {
   Id: string
   Key: string
@@ -50,6 +56,13 @@ export interface WordData {
   // "miss", "timeout" or "error". Absent from an older API, and other
   // values may arrive from a newer one.
   Source?: string
+  // The language this definition was answered in (ADR-098).
+  ExplanationLanguage?: 'zh-Hans' | 'en'
+  // English-English fields (ADR-098); empty / absent in zh-Hans answers.
+  Senses?: Sense[]
+  LemmaNote?: string
+  PronunciationUS?: string
+  PronunciationUK?: string
 }
 
 // Mirrors GET /api/billing/me (enx-api/billing/handler.go Me). Status is

@@ -5,6 +5,10 @@
 // is silent: a missed prefetch only leaves the click to read the word itself.
 
 import {
+  storageLanguageForResponse,
+  type ExplanationLanguage,
+} from '@/lib/assumedExplanationLanguage'
+import {
   entryToWordData,
   requestDictionaryEntries,
   type EntriesTransport,
@@ -52,16 +56,24 @@ export function createPagePrefetch(
 
 export interface PrefetchCache {
   /** A usable entry, read without counting as a use (no LRU refresh). */
-  peek: (word: string) => Promise<unknown>
-  put: (word: string, data: WordData) => Promise<void>
+  peek: (word: string, language: ExplanationLanguage) => Promise<unknown>
+  put: (
+    word: string,
+    data: WordData,
+    language: ExplanationLanguage
+  ) => Promise<void>
 }
 
 export interface DefinitionPrefetcherDeps<R extends EntriesTransportResult> {
   cache: PrefetchCache
+  /** The explanation language the cache is keyed by right now. */
+  language: () => ExplanationLanguage
   /** Sends one definitions request; it must not retry on its own. */
   send: EntriesTransport<R>
   /** Bumped on sign-out: a batch that sees it change writes nothing. */
   generation: () => number
+  /** An entries answer may move the worker's assumed language. */
+  noteLanguage?: (value: unknown) => void
 }
 
 export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
@@ -69,9 +81,12 @@ export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
 ) {
   const inFlight = new Set<string>()
 
-  const isCached = async (key: string): Promise<boolean> => {
+  const isCached = async (
+    key: string,
+    language: ExplanationLanguage
+  ): Promise<boolean> => {
     try {
-      return (await deps.cache.peek(key)) !== undefined
+      return (await deps.cache.peek(key, language)) !== undefined
     } catch {
       return false
     }
@@ -94,8 +109,13 @@ export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
       const data = entryToWordData(key, item)
       if (!data?.Id || data.Origin === 'ai') continue
       if (generation !== deps.generation()) return
+      const responseLanguage = (
+        item as { ExplanationLanguage?: unknown }
+      ).ExplanationLanguage
+      const language = storageLanguageForResponse(responseLanguage)
+      deps.noteLanguage?.(responseLanguage)
       try {
-        await deps.cache.put(key, data)
+        await deps.cache.put(key, data, language)
       } catch {
         /* Best effort: the click reads it again. */
       }
@@ -105,6 +125,7 @@ export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
   return {
     async prefetch(words: readonly string[]): Promise<void> {
       const generation = deps.generation()
+      const language = deps.language()
       const keys = [...new Set(words.map(word => wordKey(word.trim())))].filter(
         key => key && !inFlight.has(key)
       )
@@ -112,7 +133,7 @@ export function createDefinitionPrefetcher<R extends EntriesTransportResult>(
       try {
         const misses: string[] = []
         for (const key of keys) {
-          if (!(await isCached(key))) misses.push(key)
+          if (!(await isCached(key, language))) misses.push(key)
         }
         for (let i = 0; i < misses.length; i += PREFETCH_BATCH_SIZE) {
           if (generation !== deps.generation()) return

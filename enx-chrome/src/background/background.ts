@@ -7,6 +7,12 @@ import {
 } from '@/lib/dictionaryCache'
 import { createDefinitionPrefetcher } from '@/lib/definitionPrefetch'
 import {
+  asExplanationLanguage,
+  languageFromPreferences,
+  storageLanguageForResponse,
+  type ExplanationLanguage,
+} from '@/lib/assumedExplanationLanguage'
+import {
   createAnonymousDeviceId,
   createEverSignedIn,
   createLearningAccess,
@@ -18,6 +24,10 @@ import {
   definitionFromEntries,
   requestDictionaryEntries,
 } from '@/lib/dictionaryEntries'
+import {
+  PREFERENCES_CACHE_KEY,
+  type PreferencesData,
+} from '@/lib/serverPreferences'
 import { wordKey } from '@/lib/wordHighlight'
 import { isLookupQuotaExceeded, LOOKUP_QUOTA_MESSAGE } from '@/lib/rateLimit'
 import { createAccountSession, type Invalidation } from '@/lib/accountSession'
@@ -160,6 +170,7 @@ export const __resetClerkClientCacheForTests = (): void => {
   everSignedIn = createEverSignedIn(localStore)
   learningAccess = makeLearningAccess()
   anonymousDeviceId = createAnonymousDeviceId(localStore)
+  resetAssumedExplanationLanguage()
 }
 
 // Test-only: a worker restart drops the writer's pending actions.
@@ -1328,6 +1339,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           })
 
         case 'prefetchDefinitions':
+          await ensureAssumedLanguage()
           await definitionPrefetcher.prefetch(
             Array.isArray(request.words) ? request.words : []
           )
@@ -1347,6 +1359,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           resetClerkSession()
           await accountSession.clear('signed-out')
           dictionaryCacheGeneration++
+          resetAssumedExplanationLanguage()
           try {
             await workerDictionaryCache().clear()
           } catch {
@@ -1438,8 +1451,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'defineWordWithAI':
           return await handleDefineWordWithAI(request.word)
 
-        case 'getPreferences':
-          return await makeApiRequest('/api/me/preferences')
+        case 'getPreferences': {
+          const response = await makeApiRequest('/api/me/preferences')
+          if (response.success && response.data) {
+            noteAssumedFromPreferences(response.data as PreferencesData)
+          }
+          return response
+        }
 
         case 'updatePreferences':
           return await handleUpdatePreferences(request.changes)
@@ -1720,16 +1738,68 @@ const handleRecordWordLookup = async (wordId: string) => {
     swlog(`recordWordLookup ${wordId} failed: ${response.error}`, 'warn')
   }
   if (!response.success) return response
+  const explanationLanguage = (
+    response.data as { explanationLanguage?: unknown } | undefined
+  )?.explanationLanguage
+  noteAssumedLanguage(explanationLanguage)
   return {
     success: true,
     queryCount: response.data?.queryCount,
     known: response.data?.known,
+    ...(typeof explanationLanguage === 'string'
+      ? { explanationLanguage }
+      : {}),
   }
 }
 
 let dictionaryCacheInstance:
   ReturnType<typeof createDictionaryCache> | undefined
 let dictionaryCacheGeneration = 0
+// ADR-098 Decision 8: which language cache reads and writes use until a
+// preferences or entries answer says otherwise.
+let assumedExplanationLanguage: ExplanationLanguage = 'zh-Hans'
+let assumedLanguageReady: Promise<void> | undefined
+// Set when preferences or a response authoritatively notes the language, so a
+// slow chrome.storage read started earlier cannot overwrite it with a stale
+// cached copy.
+let assumedLanguageAuthoritative = false
+
+const resetAssumedExplanationLanguage = () => {
+  assumedExplanationLanguage = 'zh-Hans'
+  assumedLanguageReady = undefined
+  assumedLanguageAuthoritative = false
+}
+
+const noteAssumedLanguage = (value: unknown) => {
+  const parsed = asExplanationLanguage(value)
+  if (!parsed) return
+  assumedExplanationLanguage = parsed
+  assumedLanguageAuthoritative = true
+  assumedLanguageReady ??= Promise.resolve()
+}
+
+const noteAssumedFromPreferences = (data: PreferencesData | null) => {
+  assumedExplanationLanguage = languageFromPreferences(
+    data?.explanationLanguage?.effective
+  )
+  assumedLanguageAuthoritative = true
+  assumedLanguageReady ??= Promise.resolve()
+}
+
+const ensureAssumedLanguage = () =>
+  (assumedLanguageReady ??= (async () => {
+    try {
+      const stored = await chrome.storage.local.get(PREFERENCES_CACHE_KEY)
+      if (assumedLanguageAuthoritative) return
+      const cached = stored[PREFERENCES_CACHE_KEY]
+      if (cached && typeof cached === 'object') {
+        noteAssumedFromPreferences(cached as PreferencesData)
+      }
+    } catch {
+      /* Keep the default. */
+    }
+  })())
+
 const workerDictionaryCache = () =>
   (dictionaryCacheInstance ??= createDictionaryCache(
     openDictionaryCache(indexedDB),
@@ -1741,9 +1811,11 @@ const workerDictionaryCache = () =>
 // may repeat a prefetch request; the click reads anything it missed.
 const definitionPrefetcher = createDefinitionPrefetcher({
   cache: {
-    peek: word => workerDictionaryCache().peek(word),
-    put: (word, data) => workerDictionaryCache().put(word, data),
+    peek: (word, language) => workerDictionaryCache().peek(word, language),
+    put: (word, data, language) =>
+      workerDictionaryCache().put(word, data, language),
   },
+  language: () => assumedExplanationLanguage,
   send: (method, path, body) =>
     makeApiRequest(
       path,
@@ -1751,6 +1823,7 @@ const definitionPrefetcher = createDefinitionPrefetcher({
       { retry: false, gatewayRetry: false }
     ),
   generation: () => dictionaryCacheGeneration,
+  noteLanguage: noteAssumedLanguage,
 })
 
 const handleGetOneWord = async (word: string, refresh = false) => {
@@ -1758,16 +1831,23 @@ const handleGetOneWord = async (word: string, refresh = false) => {
     return { success: false, error: 'No word provided' }
   }
 
+  await ensureAssumedLanguage()
+  const language = assumedExplanationLanguage
   const generation = dictionaryCacheGeneration
   try {
     const cache = workerDictionaryCache()
-    if (refresh) await cache.delete(word)
+    if (refresh) await cache.delete(word, language)
     else {
-      const entry = await cache.get(word)
+      const entry = await cache.get(word, language)
       if (entry)
         return {
           success: true,
-          ecp: { ...entry, Key: wordKey(word.trim()) },
+          ecp: {
+            ...entry,
+            Key: wordKey(word.trim()),
+            ExplanationLanguage:
+              entry.ExplanationLanguage ?? language,
+          },
         }
     }
   } catch (error) {
@@ -1787,9 +1867,15 @@ const handleGetOneWord = async (word: string, refresh = false) => {
       swlog(`getOneWord ${word.trim()}: no definition in the answer`, 'warn')
       return { success: false, error: 'Dictionary lookup failed' }
     }
+    const responseLanguage = Array.isArray(response.data)
+      ? (response.data[0] as { ExplanationLanguage?: unknown } | undefined)
+          ?.ExplanationLanguage
+      : undefined
+    noteAssumedLanguage(responseLanguage)
+    const storeAs = storageLanguageForResponse(responseLanguage)
     if (generation === dictionaryCacheGeneration) {
       try {
-        await workerDictionaryCache().put(word, ecp)
+        await workerDictionaryCache().put(word, ecp, storeAs)
       } catch (error) {
         swlog(`Dictionary cache write failed: ${String(error)}`, 'warn')
       }
@@ -1797,9 +1883,9 @@ const handleGetOneWord = async (word: string, refresh = false) => {
     return { success: true, ecp }
   } else {
     console.error('API request failed:', response.error)
-    // Pass through the session flags, status, code (a 429 is the daily
-    // quota or the request rate limit, told apart by code -- ADR-060) and
-    // the upgrade flag
+  // Pass through the session flags, status, code (a 429 is the daily
+  // quota or the request rate limit, told apart by code -- ADR-060) and
+  // the upgrade flag
     return {
       success: false,
       error: response.error || 'Translation service error',
@@ -2251,10 +2337,14 @@ const handleUpdatePreferences = async (changes: unknown) => {
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
     return { success: false, error: 'No preference changes were provided' }
   }
-  return await makeApiRequest('/api/me/preferences', {
+  const response = await makeApiRequest('/api/me/preferences', {
     method: 'PUT',
     body: JSON.stringify(changes),
   })
+  if (response.success && response.data) {
+    noteAssumedFromPreferences(response.data as PreferencesData)
+  }
+  return response
 }
 
 const handleSavePage = async (page?: { url: string; title: string }) => {

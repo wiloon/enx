@@ -135,7 +135,14 @@ export default function TermsPage() {
           Definitions, translations and explanations are produced by
           dictionaries and by AI language models. They are{' '}
           <Term>frequently useful and sometimes wrong</Term>. An AI translation
-          can be fluent and confident and still misrepresent the original.
+          can be fluent and confident and still misrepresent the original. The{' '}
+          <a
+            href="/data-sources"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Data sources
+          </a>{' '}
+          page names the dictionaries and how they are licensed.
         </p>
         <p>
           {SITE.name} is a learning aid. Do not rely on its output for anything

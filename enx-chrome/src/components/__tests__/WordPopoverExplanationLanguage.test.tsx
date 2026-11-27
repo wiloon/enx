@@ -125,7 +125,21 @@ describe('the explanation language switch on the word popover (ADR-098)', () => 
     fetchMock.mockResolvedValue(ok('zh-Hans'))
     const save = pending()
     updateMock.mockReturnValue(save.promise)
-    await open()
+    const onSaved = jest.fn()
+    const store = createStore()
+    await act(async () => {
+      render(
+        <Provider store={store}>
+          <WordPopover
+            word="light"
+            onClose={jest.fn()}
+            onMarkKnown={jest.fn()}
+            onOpenSentencePanel={jest.fn()}
+            onExplanationLanguageChanged={onSaved}
+          />
+        </Provider>
+      )
+    })
 
     fireEvent.click(english())
 
@@ -133,11 +147,13 @@ describe('the explanation language switch on the word popover (ADR-098)', () => 
     expect(selected()).toEqual(['EN'])
     expect(chinese()).toBeDisabled()
     expect(english()).toBeDisabled()
+    expect(onSaved).not.toHaveBeenCalled()
 
     await save.answer(ok('en'))
 
     expect(selected()).toEqual(['EN'])
     expect(english()).toBeEnabled()
+    expect(onSaved).toHaveBeenCalledWith('en')
   })
 
   it('sends nothing when the selected side is clicked', async () => {

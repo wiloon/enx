@@ -111,6 +111,41 @@ describe('definitionFromEntries', () => {
     expect(word).not.toHaveProperty('Id')
   })
 
+  it('passes English-English fields through', () => {
+    expect(
+      definitionFromEntries('left', [
+        {
+          Word: 'left',
+          Status: 'found',
+          Id: 'w-left',
+          English: 'left',
+          Chinese: '',
+          Pronunciation: '',
+          WordType: 0,
+          Origin: 'wiktionary',
+          ExplanationLanguage: 'en',
+          Senses: [{ pos: 'n', gloss: 'The west side.' }],
+          LemmaNote: 'past tense of leave',
+          PronunciationUS: '/lɛft/',
+          PronunciationUK: '/left/',
+        },
+      ])
+    ).toEqual({
+      Id: 'w-left',
+      Key: 'left',
+      English: 'left',
+      Chinese: '',
+      Pronunciation: '',
+      WordType: 0,
+      Origin: 'wiktionary',
+      ExplanationLanguage: 'en',
+      Senses: [{ pos: 'n', gloss: 'The west side.' }],
+      LemmaNote: 'past tense of leave',
+      PronunciationUS: '/lɛft/',
+      PronunciationUK: '/left/',
+    })
+  })
+
   it('turns not_found into an empty definition of the requested word carrying the AI offer', () => {
     expect(
       definitionFromEntries('Zorbly', [

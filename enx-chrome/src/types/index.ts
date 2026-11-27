@@ -4,6 +4,12 @@ import type { ArticleChoiceReport } from '@/lib/articleChoiceShare'
 import type { FeedbackSubmission } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
 
+export type Sense = {
+  pos: string
+  gloss: string
+  example?: string
+}
+
 export interface WordData {
   // The words row id; absent on a miss, and on an AI definition that was not
   // stored. Recording a lookup needs it (ADR-059 Decision 3).
@@ -18,7 +24,15 @@ export interface WordData {
   WordType: number
   // Where the definition first came from; absent on a miss (ADR-045). "ai"
   // marks a definition a model wrote rather than the dictionary.
-  Origin?: 'ecdict' | 'ai'
+  Origin?: 'ecdict' | 'ai' | 'wiktionary'
+  // The language this definition was answered in (ADR-098). Absent from an
+  // older server; the client then treats the answer as zh-Hans.
+  ExplanationLanguage?: 'zh-Hans' | 'en'
+  // English-English fields (ADR-098); empty / absent in zh-Hans answers.
+  Senses?: Sense[]
+  LemmaNote?: string
+  PronunciationUS?: string
+  PronunciationUK?: string
   // Present only on a lookup that found nothing, when the server has the AI
   // word fallback set up: CanUse = this user may use it (offer a button; if
   // not, point at billing), Auto = it should also start by itself.
@@ -160,6 +174,8 @@ export interface BackgroundResponse {
   success: boolean
   queryCount?: number
   known?: boolean
+  // From POST /api/me/word-lookups (ADR-098): updates the assumed language.
+  explanationLanguage?: string
   data?: unknown
   // Set by 'shouldAutoEnable' (adr-039): this page's site is one the user
   // chose "Always enable on this site" for, and they are signed in.

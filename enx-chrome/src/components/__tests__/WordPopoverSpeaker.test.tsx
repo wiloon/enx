@@ -146,10 +146,31 @@ describe('no speaker', () => {
     expect(screen.queryByTestId(SPEAKER)).toBeNull()
   })
 
-  it('for a dictionary miss, even with a phonetic', () => {
-    renderPopover({ current: word({ Pronunciation: 'rɪzlə' }) })
+  it('for a phrase, even with a Chinese definition', () => {
+    renderPopover({
+      current: word({ English: 'look up', Chinese: '查阅' }),
+      raw: 'look up',
+    })
 
     expect(screen.queryByTestId(SPEAKER)).toBeNull()
+  })
+
+  it('shows the speaker on a dictionary miss', () => {
+    renderPopover({ current: word({ Pronunciation: 'rɪzlə' }) })
+
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
+  })
+
+  it('shows the speaker for an English-English definition', () => {
+    renderPopover({
+      current: word({
+        ExplanationLanguage: 'en',
+        Senses: [{ pos: 'n', gloss: 'A charming person.' }],
+        PronunciationUS: '/ˈrɪzlə/',
+      }),
+    })
+
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
   })
 
   it('for a definition whose English word is empty', () => {
@@ -200,11 +221,11 @@ describe('a miss handed to the AI fallback', () => {
     return answer
   }
 
-  it('offers the speaker only once the AI found a definition, and plays its word', async () => {
+  it('keeps the speaker on a miss while AI loads, and plays after AI finds a definition', async () => {
     const answer = startFallback()
 
     expect(screen.getByTestId('word-popover-ai-loading')).toBeInTheDocument()
-    expect(screen.queryByTestId(SPEAKER)).toBeNull()
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
 
     await act(async () => {
       answer.resolve({
@@ -218,16 +239,16 @@ describe('a miss handed to the AI fallback', () => {
     expect(play).toHaveBeenCalledWith('rizzler')
   })
 
-  it('offers no speaker when the AI has no definition', async () => {
+  it('keeps the speaker when the AI has no definition', async () => {
     const answer = startFallback()
 
     await act(async () => answer.resolve({ kind: 'none' }))
 
     expect(screen.getByTestId('word-popover-ai-none')).toBeInTheDocument()
-    expect(screen.queryByTestId(SPEAKER)).toBeNull()
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
   })
 
-  it('offers no speaker when the AI lookup failed', async () => {
+  it('keeps the speaker when the AI lookup failed', async () => {
     const answer = startFallback()
 
     await act(async () =>
@@ -235,6 +256,6 @@ describe('a miss handed to the AI fallback', () => {
     )
 
     expect(screen.getByTestId('word-popover-ai-error')).toBeInTheDocument()
-    expect(screen.queryByTestId(SPEAKER)).toBeNull()
+    expect(screen.getByTestId(SPEAKER)).toBeInTheDocument()
   })
 })
