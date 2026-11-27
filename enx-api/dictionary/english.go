@@ -84,15 +84,20 @@ func (s *Service) englishDefinition(ctx context.Context, key string) (*EnglishDe
 }
 
 // lemmaNote says how a word relates to lemma, from the tags of every forms
-// row naming it; the first matching rule wins.
+// row naming it; the first matching rule wins. Past forms carry person and
+// number too ("past singular third-person"), so the third-person singular and
+// plural rules read only the rows not tagged past.
 func lemmaNote(lemma WiktionaryForm, forms []WiktionaryForm) string {
-	var tags []string
+	var tags, nonPastTags []string
 	pastTense := false
 	for _, f := range forms {
 		if f.LemmaKey != lemma.LemmaKey {
 			continue
 		}
 		tags = append(tags, f.Tags...)
+		if !slices.Contains(f.Tags, "past") {
+			nonPastTags = append(nonPastTags, f.Tags...)
+		}
 		pastTense = pastTense || slices.Contains(f.Tags, "past") && !slices.Contains(f.Tags, "participle")
 	}
 	has := func(wanted ...string) bool {
@@ -106,9 +111,9 @@ func lemmaNote(lemma WiktionaryForm, forms []WiktionaryForm) string {
 		relation = "abbreviation"
 	case has("alt-of", "alternative"):
 		relation = "alternative form"
-	case has("third-person"):
+	case slices.Contains(nonPastTags, "third-person"):
 		relation = "third-person singular"
-	case has("plural"):
+	case slices.Contains(nonPastTags, "plural"):
 		relation = "plural"
 	case pastTense:
 		relation = "past tense"
