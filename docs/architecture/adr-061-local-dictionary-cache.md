@@ -19,6 +19,8 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 缓存条目只存 GET 返回的词典字段：`Id`、`English`、`Pronunciation`、`Chinese`、`WordType`。
 
+> **ADR-098 决策 8 修订（#1234）**：键改为（解释语言，词）；另存 `ExplanationLanguage`，英文条目还存 `Senses`、`LemmaNote`、`PronunciationUS`、`PronunciationUK`。
+
 - **不存** `LoadCount`、`Known`：它们属于用户，会被别的设备、enx-ui、标记认识改掉。命中缓存时由 POST 的返回值提供（Decision 3）。
 - **不存** `AIFallback`：查不到时才有，取决于服务端当时的设置和用户的积分。
 - **查不到的词不缓存**（没有 `Id`）。词库随时可能补上这个词，查不到时还要给出 AI 兜底的入口。
@@ -94,6 +96,8 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 
 **容量：最多 5000 条，单条超过 1 KB 不缓存。**
 
+> **ADR-098 决策 8 修订（#1234）**：5000 条上限、LRU 和 30 天过期按解释语言分别计算。单条上限：中文仍是 1 KB，英文是 16 KB（最多 10 个带例句的义项，通常几 KB）。两种语言都满时约 20 MB，最坏约 85 MB；仍不申请 `unlimitedStorage`。下面的 5 MB 估算只适用于中文条目。
+
 - IndexedDB 不占 `chrome.storage.local` 的 10 MB，用的是浏览器给扩展的存储池，大得多。上限照样设，为的是不占用户太多磁盘：按 5 MB 以内来算，即 `chrome.storage.local` 默认上限的一半。
 - 本地 ECDICT 里常用词（`frq` 前 2 万）的释义加音标平均不到 100 字节，最长不到 400 字节；算上字段名和时间戳，一条大约 300 字节，5000 条约 1.5 MB。单条上限 1 KB，最坏情况也只有 5 MB。
 - 不申请 `unlimitedStorage` 权限：用不到，而且多一项权限会让安装页多一行提示。
@@ -137,3 +141,4 @@ related: adr-018（查词唯一入口 `dictionary.Service.Resolve`）、adr-029�
 ## 修订记录
 
 - 2026-11-10，issue #813：缓存键与页面高亮词的 `wordKey` 对齐，避免预取后点击同一词形仍未命中。
+- 2026-11-27，issue #1234：缓存按解释语言区分（ADR-098 决策 8），上限按语言分别计算，英文单条上限 16 KB。原因：英文条目超过 1 KB，按原上限一条都存不进去。
