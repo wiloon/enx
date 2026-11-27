@@ -10,6 +10,10 @@ import {
   type AutoEnableManifest,
 } from '@/lib/autoEnableSite'
 import {
+  mayTurnOnLearningMode,
+  type LearningAccess,
+} from '@/lib/learningAccess'
+import {
   canEnableOnSignInReturn,
   type LearningModeStatus,
 } from '@/lib/learningModeStatus'
@@ -75,7 +79,7 @@ export async function reconcileAutoEnableScripts(): Promise<void> {
 }
 
 export interface EnableOnGrantDeps {
-  isSignedIn: () => Promise<boolean>
+  learningAccess: () => Promise<LearningAccess>
   getStatus: (tabId: number) => Promise<LearningModeStatus>
   enable: (tabId: number) => Promise<unknown>
 }
@@ -93,9 +97,10 @@ export async function enableOnNewlyGrantedSite(
       pattern => isSitePattern(pattern) && !isRequiredHost(pattern, m)
     )
   )
-  // Signed out, shouldAutoEnable says no too: enabling would only show a
-  // session notice.
-  if (sites.size === 0 || !(await deps.isSignedIn())) return
+  // Signed out (not anonymous, ADR-095), shouldAutoEnable says no too:
+  // enabling would only show a session notice.
+  if (sites.size === 0) return
+  if (!mayTurnOnLearningMode(await deps.learningAccess())) return
 
   const tabs = await chrome.tabs.query({ active: true })
   for (const tab of tabs) {

@@ -198,6 +198,13 @@ function jsonResponse(
   }
 }
 
+// ADR-095: signed out means signed in before; a browser that never signed in
+// reads anonymously instead.
+const signedInBefore = () =>
+  (chrome.storage.local.get as jest.Mock).mockResolvedValue({
+    'enx-ever-signed-in': true,
+  })
+
 beforeEach(() => {
   __resetClerkClientCacheForTests()
   clerkUserId = 'user-a'
@@ -1085,6 +1092,7 @@ describe('background makeApiRequest / Clerk session token', () => {
     // The shared re-sync must not pin "signed out" forever: once it settles,
     // the next call gets its own attempt (e.g. the user signed in meanwhile).
     __resetClerkClientCacheForTests()
+    signedInBefore()
     let signedIn = false
     const laterSession = { getToken: jest.fn(async () => 'later-jwt') }
     // No user id either way, so the sign-in is not an account switch.
@@ -2386,6 +2394,7 @@ describe('background onMessageExternal (ADR-019 web -> extension channel)', () =
   })
 
   it('refuses enx:enable-reader when signed out, without touching the tab', async () => {
+    signedInBefore()
     setClerkSession(null)
     const response = await call({ type: 'enx:enable-reader' })
     expect(response).toEqual({ ok: false, reason: 'signed-out' })
@@ -2672,6 +2681,7 @@ describe('background auto-enable wiring (adr-039)', () => {
   // every page of the site.
   it('answers false when signed out', async () => {
     granted('https://www.infoq.com/*')
+    signedInBefore()
     setClerkSession(null)
     expect(await ask({ origin: 'https://www.infoq.com' })).toEqual({
       success: true,
@@ -2682,6 +2692,7 @@ describe('background auto-enable wiring (adr-039)', () => {
   // adr-046 Decision 7: the page stays untouched, but the badge says why.
   it('marks the tab "!" when signed out on a granted site', async () => {
     granted('https://www.infoq.com/*')
+    signedInBefore()
     setClerkSession(null)
     expect(
       await ask({ origin: 'https://www.infoq.com', frameId: 0, tab: { id: 4 } })

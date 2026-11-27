@@ -23,6 +23,7 @@ import {
   sentencePanelHintAtom,
   sessionUnverifiedAtom,
   signedOutAtom,
+  anonymousNoticeAtom,
 } from '@/store/atoms'
 import SignedOutNotice from '@/components/SignedOutNotice'
 import { SESSION_UNVERIFIED_MESSAGE } from '@/lib/signedOut'
@@ -71,6 +72,7 @@ export default function WordPopover({
   const [lookupNotice] = useAtom(lookupNoticeAtom)
   const [signedOut] = useAtom(signedOutAtom)
   const [sessionUnverified] = useAtom(sessionUnverifiedAtom)
+  const [anonymousNotice] = useAtom(anonymousNoticeAtom)
   const [sentencePanelHint] = useAtom(sentencePanelHintAtom)
   const rootRef = useRef<HTMLDivElement>(null)
   const phonetic = formatPhonetic(currentWord?.Pronunciation)
@@ -240,6 +242,17 @@ export default function WordPopover({
           />
         )}
 
+        {/* ADR-095: a lookup without an account always says what signing
+            in adds -- under the definition, or in place of one. */}
+        {anonymousNotice && !isTranslating && !currentWord && (
+          <SignedOutNotice
+            testId="word-popover-anonymous"
+            message={anonymousNotice}
+            onSignIn={onSignIn}
+            className="p-3 mb-3 text-sm"
+          />
+        )}
+
         {/* Loading state */}
         {isTranslating && (
           <LoadingSkeleton
@@ -283,10 +296,18 @@ export default function WordPopover({
                   </p>
                 )}
               </div>
-            ) : (
+            ) : anonymousNotice ? null : (
               <AiMissPanel onLookup={onAiLookup} />
             )}
             <AiNotice />
+            {anonymousNotice && (
+              <SignedOutNotice
+                testId="word-popover-anonymous"
+                message={anonymousNotice}
+                onSignIn={onSignIn}
+                className="p-2 text-sm"
+              />
+            )}
             {lookupNotice &&
               (lookupNotice.sessionExpired || lookupNotice.sessionUnverified ? (
                 <SignedOutNotice

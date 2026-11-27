@@ -5,6 +5,10 @@
 import type { EnxRunResponse } from '@/lib/enableLearningMode'
 import { failed, type EnableFailureReason } from '@/lib/enableOutcome'
 import {
+  mayTurnOnLearningMode,
+  type LearningAccess,
+} from '@/lib/learningAccess'
+import {
   isLearningModeOn,
   statusForOutcome,
   type LearningModeStatus,
@@ -42,7 +46,7 @@ export async function openShortcutSettings(tabs: {
 
 export interface LearningModeCommandDeps {
   getStatus: (tabId: number) => Promise<LearningModeStatus>
-  isSignedIn: () => Promise<boolean>
+  learningAccess: () => Promise<LearningAccess>
   enable: (tabId: number) => Promise<EnxRunResponse>
   disable: (tabId: number) => Promise<void>
   showOnBadge: (tabId: number, status: LearningModeStatus) => Promise<void>
@@ -72,9 +76,9 @@ export async function runLearningModeCommand(
     return 'disabled'
   }
 
-  // The popup has no enable button signed out; the badge says why, as on a
-  // granted auto-enable site (adr-046 Decision 7).
-  if (!(await deps.isSignedIn())) {
+  // Signed out (not anonymous, ADR-095) the popup has no enable button; the
+  // badge says why, as on a granted auto-enable site (adr-046 Decision 7).
+  if (!mayTurnOnLearningMode(await deps.learningAccess())) {
     await deps.showOnBadge(tabId, { status: 'error', reason: 'signed-out' })
     return 'failed'
   }

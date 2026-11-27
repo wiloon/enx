@@ -40,7 +40,7 @@ import {
   failed,
   failureMessage,
 } from '@/lib/enableOutcome'
-import { createReviewList } from '@/lib/reviewList'
+import { createReviewList, type ReviewListLoad } from '@/lib/reviewList'
 import { createPagePrefetch } from '@/lib/definitionPrefetch'
 import { pageFeedbackContext } from '@/lib/feedback'
 import {
@@ -88,7 +88,10 @@ import {
   sentencePanelHintAtom,
   sessionUnverifiedAtom,
   signedOutAtom,
+  anonymousNoticeAtom,
 } from '@/store/atoms'
+import type { LearningAccess } from '@/lib/learningAccess'
+import { showAnonymousLookup, type AnonymousLookup } from '@/lib/anonymousLookup'
 import {
   isSignedOutFailure,
   isUnverifiedFailure,
@@ -202,6 +205,9 @@ let currentOverlay: HTMLElement | null = null
 let currentRoot: Root | null = null
 // Word states keyed by wordKey: the review list plus every lookup since.
 const wordCache: Record<string, WordData> = {}
+// ADR-095: set by each run from the worker's answer; true only while the
+// browser has never signed in.
+let readingAnonymously = false
 // Bumped whenever learning mode stops, so a processing run still in flight
 // abandons instead of painting.
 let learningModeLifecycle = 0
@@ -684,6 +690,7 @@ const showWordPopover = async (word: string, reference: Range) => {
   contentScriptStore.set(errorNeedsReloadAtom, false)
   contentScriptStore.set(signedOutAtom, false)
   contentScriptStore.set(sessionUnverifiedAtom, null)
+  contentScriptStore.set(anonymousNoticeAtom, null)
   contentScriptStore.set(sentencePanelHintAtom, null)
   resetAiLookup(contentScriptStore)
 
@@ -697,6 +704,21 @@ const showWordPopover = async (word: string, reference: Range) => {
   await fetchTranslation()
 
   async function fetchTranslation() {
+    // ADR-095 Decision 3: one request per click, nothing cached or counted.
+    if (readingAnonymously) {
+      const response = (await sendToBackground({
+        type: 'getAnonymousEntry',
+        word: word.trim(),
+      })) as unknown as AnonymousLookup | undefined
+      if (currentOverlay !== overlay) return
+      showAnonymousLookup(
+        contentScriptStore,
+        response && 'outcome' in response
+          ? response
+          : { outcome: 'failed', error: LOOKUP_FAILED_MESSAGE }
+      )
+      return
+    }
     try {
       const wordData = await runDictionaryLookup(
         word.trim(),
@@ -1102,7 +1124,15 @@ const processArticleContent = async (
     // The user's review list (ADR-069 Decision 1), shared by every run on
     // this page; no page text goes with it. Whether the run succeeds is the
     // request's own result, not whether wordCache happens to hold words.
-    const loaded = await reviewList.load()
+    // ADR-095: a browser that never signed in reads with no review list,
+    // reading position or reading session; clicks look words up anonymously.
+    const access = (await sendToBackground({ type: 'learningAccess' })) as {
+      access?: LearningAccess
+    }
+    readingAnonymously = access?.access === 'anonymous'
+    const loaded: ReviewListLoad = readingAnonymously
+      ? { ok: true }
+      : await reviewList.load()
     // Superseded while the list loaded (a newer tweet switch, learning mode
     // turned off on an SPA, or this orphan standing down): not a failure.
     if (superseded()) return ENABLE_OK
@@ -1147,7 +1177,9 @@ const processArticleContent = async (
       }
     }
     // Every highlighted word on the page, not just the paint window's.
-    if (painting && loaded.ok) pagePrefetch.request(words, wordCache)
+    if (painting && loaded.ok && !readingAnonymously) {
+      pagePrefetch.request(words, wordCache)
+    }
 
     // Delegated click-to-lookup (ADR-011 Decision 2): one listener per
     // article root, replacing the per-word listeners. Bound even with no
@@ -1156,6 +1188,11 @@ const processArticleContent = async (
       setArticleRoots(articleNodes, lookupExclusions)
     } else {
       clearArticleRoots()
+    }
+    if (readingAnonymously) {
+      endReading()
+      console.log('✅ Article processing completed (anonymous)')
+      return ENABLE_OK
     }
     readingPositions.setArticle(articleNodes)
     void readingResume.open(readingPositions.bookKey(), articleNodes, {

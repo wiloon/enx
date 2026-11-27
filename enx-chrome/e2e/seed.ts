@@ -85,6 +85,33 @@ export function seedVocabulary(
 }
 
 /**
+ * Puts every fixture word in `words` only, with no user: what an anonymous
+ * lookup (ADR-095) is served from.
+ */
+export function seedWords(dbPath = process.env.E2E_DB_PATH): void {
+  if (!dbPath)
+    throw new Error('E2E_DB_PATH is not set (see playwright.config.ts)')
+
+  const db = new DatabaseSync(dbPath)
+  try {
+    db.exec('PRAGMA busy_timeout = 10000')
+    const now = Date.now()
+    const upsertWord = db.prepare(
+      `INSERT INTO words (id, english, chinese, pronunciation, created_at, updated_at, load_count)
+       VALUES (?, ?, ?, '', ?, ?, 0)
+       ON CONFLICT(english) DO UPDATE SET chinese = excluded.chinese, deleted_at = NULL`
+    )
+    db.exec('BEGIN IMMEDIATE')
+    for (const word of fixtureWords()) {
+      upsertWord.run(`e2e-word-${word}`, word, seededChinese(word), now, now)
+    }
+    db.exec('COMMIT')
+  } finally {
+    db.close()
+  }
+}
+
+/**
  * Spends a fresh user's whole sign-up trial, leaving them with no AI credit
  * and so not entitled to AI (ADR-048): the state a trial user reaches by
  * using the trial up. `localUserId` is enx-api's user id (validateSession's
