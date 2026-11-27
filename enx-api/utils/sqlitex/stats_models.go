@@ -107,6 +107,22 @@ func (DictionaryQuotaUsage) TableName() string {
 	return "dictionary_quota_usage"
 }
 
+// AnonymousDeviceUsage is one anonymous device's served lookups on one UTC
+// day, the per-device daily limit's counter (ADR-095 Decision 5). The device
+// id is stored only as its SHA-256; no word, URL, page or IP. A row is kept
+// at most 2 days (ADR-095 Decision 8, the privacy-policy promise).
+type AnonymousDeviceUsage struct {
+	// Hex SHA-256 of the anonymous device id.
+	DeviceHash string `gorm:"column:device_hash;primaryKey"`
+	// YYYY-MM-DD.
+	UTCDay string `gorm:"column:utc_day;primaryKey;index:idx_anonymous_device_usage_utc_day"`
+	Used   int64  `gorm:"column:used;not null;default:0"`
+}
+
+func (AnonymousDeviceUsage) TableName() string {
+	return "anonymous_device_usage"
+}
+
 // ActiveUsersDay is one finished UTC day's site-wide active users, rolled up
 // from lookup_events before they expire (ADR-058, ADR-059 Decision 4). Only
 // counts: no user id. History starts the day this table shipped.

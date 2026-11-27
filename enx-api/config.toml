@@ -211,6 +211,20 @@ burst = 60
 # (ADR-076 Decision 5). Must be positive. Override with FEEDBACK_DAILY_LIMIT.
 daily-limit = 50
 
+[anonymous-lookup]
+# Click-to-lookup without an account (ADR-095), POST
+# /api/anonymous/dictionary/entry. enabled = false answers it 403. The daily
+# limits count served lookups per UTC day per device and per IP (IPv6 by /64);
+# both must be positive. client-ip-header names the header carrying the
+# client IP (production: CF-Connecting-IP); empty uses the connection's remote
+# address. Override with ANONYMOUS_LOOKUP_ENABLED,
+# ANONYMOUS_LOOKUP_DEVICE_DAILY_LIMIT, ANONYMOUS_LOOKUP_IP_DAILY_LIMIT and
+# ANONYMOUS_LOOKUP_CLIENT_IP_HEADER.
+enabled = true
+device-daily-limit = 100
+ip-daily-limit = 1000
+client-ip-header = ""
+
 [credits.trial]
 # One-off sign-up trial (ADR-048): every new account gets `amount` credits
 # that expire after `ttl-days`, spent before the paid pools. amount = 0

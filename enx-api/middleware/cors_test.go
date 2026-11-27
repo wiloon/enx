@@ -54,7 +54,7 @@ func TestCORSPreflightContract(t *testing.T) {
 				req := httptest.NewRequest(method, "/resource", nil)
 				req.Header.Set("Origin", origin)
 				req.Header.Set("Access-Control-Request-Method", "QUERY")
-				req.Header.Set("Access-Control-Request-Headers", "Authorization, X-Enx-Tz-Offset")
+				req.Header.Set("Access-Control-Request-Headers", "Authorization, X-Enx-Tz-Offset, X-Enx-Device-Id")
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, req)
 				if method == http.MethodOptions {
@@ -70,7 +70,7 @@ func TestCORSPreflightContract(t *testing.T) {
 						"Access-Control-Allow-Origin":      extension,
 						"Access-Control-Allow-Credentials": "true",
 						"Access-Control-Allow-Methods":     "GET, POST, QUERY, OPTIONS, PUT, DELETE",
-						"Access-Control-Allow-Headers":     "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset",
+						"Access-Control-Allow-Headers":     "Origin, Authorization, X-Session-ID, X-User-ID, Content-Type, Cookie, X-Enx-Tz-Offset, X-Enx-Device-Id",
 						"Access-Control-Expose-Headers":    "Content-Length",
 						"Access-Control-Max-Age":           "43200",
 					}

@@ -244,6 +244,25 @@ func TestObserveRateLimited(t *testing.T) {
 	}
 }
 
+// ADR-095 Decision 8: anonymous lookups allowed, and refused by layer --
+// never by device or IP.
+func TestObserveAnonymousLookups(t *testing.T) {
+	m := New()
+	m.ObserveAnonymousLookupAllowed()
+	m.ObserveAnonymousLookupAllowed()
+	m.ObserveAnonymousLookupRefused("device_daily")
+
+	out := exposition(t, m)
+	for _, want := range []string{
+		`enx_anonymous_lookups_allowed_total 2`,
+		`enx_anonymous_lookups_refused_total{layer="device_daily"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("exposition lacks %q", want)
+		}
+	}
+}
+
 // A statement that fails because SQLite is busy is counted as a read or a
 // write; other errors are not.
 func TestInstrumentDBCountsBusyErrors(t *testing.T) {
