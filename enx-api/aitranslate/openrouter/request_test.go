@@ -3,11 +3,14 @@ package openrouter
 import (
 	"context"
 	"encoding/json"
-	"enx-api/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"enx-api/aitranslate/rephrase"
+	"enx-api/aitranslate/sentence"
+	"enx-api/config"
 )
 
 // sentRequest is the part of the Chat Completions body these tests inspect.
@@ -47,7 +50,7 @@ func TestRequestsUseDeepSeekV41FlashByDefault(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, _, err := o.TranslateSentence(context.Background(), "Hello"); err != nil {
+	if _, _, err := sentence.Call(context.Background(), o.Chat, "Hello"); err != nil {
 		t.Fatalf("TranslateSentence: %v", err)
 	}
 	if (*got)[0].Model != "deepseek/deepseek-v4.1-flash" {
@@ -65,11 +68,11 @@ func TestRequestsTurnReasoningOff(t *testing.T) {
 		call  func(o *OpenRouter) error
 	}{
 		{"translate sentence", translateReply, func(o *OpenRouter) error {
-			_, _, err := o.TranslateSentence(context.Background(), "Hello")
+			_, _, err := sentence.Call(context.Background(), o.Chat, "Hello")
 			return err
 		}},
 		{"rephrase", rephraseReply, func(o *OpenRouter) error {
-			_, err := o.Rephrase(context.Background(), "你好")
+			_, err := rephrase.Call(context.Background(), o.RephraseChat, "你好")
 			return err
 		}},
 	}

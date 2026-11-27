@@ -1,13 +1,14 @@
-// Package sentence holds the contract for the plain "translate one English
-// sentence into Chinese" call: the prompt and temperature every provider's
-// TranslateSentence sends. Like sentenceword and wordcontext it is a leaf
-// package, so the provider packages can import it without a cycle.
+// Package sentence holds the plain "translate one English sentence into
+// Chinese" call: its prompt and temperature, Call, and the Check on the reply.
 package sentence
 
 import (
+	"context"
 	"errors"
 	"strings"
 
+	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/zh"
 )
 
@@ -21,6 +22,12 @@ Rules:
 
 // Temperature: one most-natural rendering, not creative variety.
 const Temperature = 0.3
+
+// Call translates text on any provider. The reply is returned as the model
+// wrote it; the caller runs Check on it.
+func Call(ctx context.Context, chat llm.Chat, text string) (string, aiusage.Usage, error) {
+	return chat(ctx, "translate_sentence", Temperature, SystemPrompt, text)
+}
 
 // ErrEmptyTranslation: the model replied, but with nothing to show.
 var ErrEmptyTranslation = errors.New("empty translation")

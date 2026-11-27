@@ -3,12 +3,15 @@ package kimi
 import (
 	"bytes"
 	"context"
-	"enx-api/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"enx-api/aitranslate/sentence"
+	"enx-api/aitranslate/wordcontext"
+	"enx-api/config"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -31,7 +34,7 @@ func TestTranslateSentenceSuccess(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	chinese, _, err := k.TranslateSentence(context.Background(), "Hello world")
+	chinese, _, err := sentence.Call(context.Background(), k.Chat, "Hello world")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +51,7 @@ func TestTranslateSentenceNon200(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	_, _, err := k.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := sentence.Call(context.Background(), k.Chat, "Hello world")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -65,7 +68,7 @@ func TestTranslateSentenceTimeout(t *testing.T) {
 	k := newTestKimi(srv.URL)
 	k.client.SetTimeout(10 * time.Millisecond)
 
-	_, _, err := k.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := sentence.Call(context.Background(), k.Chat, "Hello world")
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -82,7 +85,7 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	res, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "n. 银行；水岸")
+	res, _, err := wordcontext.Call(context.Background(), k.Chat, "I deposited cash at the bank.", "bank", "n. 银行；水岸")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,8 +110,8 @@ func TestTranslateWordInContextPhrase(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	res, _, err := k.TranslateWordInContext(
-		context.Background(),
+	res, _, err := wordcontext.Call(
+		context.Background(), k.Chat,
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
 		"",
@@ -135,7 +138,7 @@ func TestTranslateWordInContextNon200(t *testing.T) {
 	defer srv.Close()
 
 	k := newTestKimi(srv.URL)
-	_, _, err := k.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "")
+	_, _, err := wordcontext.Call(context.Background(), k.Chat, "I deposited cash at the bank.", "bank", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

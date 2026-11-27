@@ -26,39 +26,13 @@ import (
 // tokenTestPricing: cost = ceil((prompt*1 + completion*3) / 3000), floored at 1.
 var tokenTestPricing = credit.TokenPricing{WeightIn: 1, WeightOut: 3, Divisor: 3000}
 
-type fakeTranslator struct {
-	chinese      string
-	wordResult   wordcontext.Result
-	usage        Usage
-	err          error
-	sentenceIn   string
-	wordIn       string
-	dictionaryIn string
-	callCount    int
-	swwsResult   sentenceword.WordsResult
-	wordsIn      []sentenceword.WordInput
-}
-
-func (f *fakeTranslator) TranslateSentence(ctx context.Context, sentence string) (string, Usage, error) {
-	f.callCount++
-	f.sentenceIn = sentence
-	return f.chinese, f.usage, f.err
-}
-
-func (f *fakeTranslator) TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error) {
-	f.callCount++
-	f.sentenceIn, f.wordIn, f.dictionaryIn = sentence, word, dictionaryChinese
-	return f.wordResult, f.usage, f.err
-}
-
-func (f *fakeTranslator) TranslateSentenceWithWords(ctx context.Context, sentence string, words []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
-	f.callCount++
-	f.sentenceIn, f.wordsIn = sentence, words
-	return f.swwsResult, f.usage, f.err
+// chatProvider is a provider whose every chat is fake.
+func chatProvider(fake *llmtest.Fake) *Provider {
+	return &Provider{Chat: fake.Chat, RephraseChat: fake.Chat, ParseAttempts: 1}
 }
 
 // fakeTokenLedger stands in for the real billing/credit ledger so these
-// tests don't need a database -- mirrors fakeTranslator's role for the AI
+// tests don't need a database -- mirrors llmtest.Fake's role for the AI
 // provider. Same shape as rephrase_handler_test.go's fakeRephraseLedger
 // (settleCall is defined there, same package).
 type fakeTokenLedger struct {
@@ -109,9 +83,9 @@ func doPostWordInContext(t *testing.T, h *Handler, body string) *httptest.Respon
 // --- TranslateSentence -------------------------------------------------------
 
 func TestHandlerSuccess(t *testing.T) {
-	tr := &fakeTranslator{chinese: "你好世界", usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: "你好世界", Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	if w.Code != http.StatusOK {
@@ -134,9 +108,9 @@ func TestHandlerSuccess(t *testing.T) {
 
 func TestHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
 	logs := observeLogs(t)
-	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
+	tr := &llmtest.Fake{Err: errors.New("unusable reply"), Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "unusable reply")
@@ -159,9 +133,9 @@ func TestHandlerEmptyTranslationIsAFailedCall(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := observeLogs(t)
-			tr := &fakeTranslator{chinese: tc.chinese, usage: tc.usage}
+			tr := &llmtest.Fake{Reply: tc.chinese, Usage: tc.usage}
 			ledger := &fakeTokenLedger{balance: 100}
-			w := doPost(t, NewHandler(tr, ledger, tokenTestPricing), `{"sentence":"Hello world"}`)
+			w := doPost(t, NewHandler(chatProvider(tr), ledger, tokenTestPricing), `{"sentence":"Hello world"}`)
 
 			tc.assert(t, w, ledger.settleCalls, logs, "translate_sentence", sentence.ErrEmptyTranslation.Error())
 
@@ -185,7 +159,7 @@ func TestHandlerTranslatorErrorWithOneSidedUsageIsBilled(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			ledger := &fakeTokenLedger{balance: 100}
-			h := NewHandler(&fakeTranslator{err: errors.New("boom"), usage: usage}, ledger, tokenTestPricing)
+			h := NewHandler(chatProvider(&llmtest.Fake{Err: errors.New("boom"), Usage: usage}), ledger, tokenTestPricing)
 			doPost(t, h, `{"sentence":"Hello world"}`)
 
 			if len(ledger.settleCalls) != 1 {
@@ -198,7 +172,7 @@ func TestHandlerTranslatorErrorWithOneSidedUsageIsBilled(t *testing.T) {
 func TestHandlerTranslatorErrorWithoutUsageIsNotBilled(t *testing.T) {
 	logs := observeLogs(t)
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(&fakeTranslator{err: errors.New("upstream timeout")}, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Err: errors.New("upstream timeout")}), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "upstream timeout")
@@ -206,9 +180,9 @@ func TestHandlerTranslatorErrorWithoutUsageIsNotBilled(t *testing.T) {
 
 func TestHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
 	logs := observeLogs(t)
-	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
+	tr := &llmtest.Fake{Err: errors.New("unusable reply"), Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100, settleErr: errors.New("db write failed")}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	assertUnsettledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "unusable reply")
@@ -219,7 +193,7 @@ func TestHandlerFailedSettleOnBilledFailureLogsUnsettled(t *testing.T) {
 func TestHandlerCancelledRequestWithoutUsageIsNotAnOpsAlert(t *testing.T) {
 	logs := observeLogs(t)
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(&fakeTranslator{err: context.Canceled}, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Err: context.Canceled}), ledger, tokenTestPricing)
 	w := doPostWithContext(t, cancelledContext(), "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
 
 	assertCancelledUnbilled(t, w, ledger.settleCalls, logs, "translate_sentence")
@@ -230,7 +204,7 @@ func TestHandlerTimedOutRequestWithoutUsageStillAlerts(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
 	defer cancel()
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(&fakeTranslator{err: context.DeadlineExceeded}, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Err: context.DeadlineExceeded}), ledger, tokenTestPricing)
 	w := doPostWithContext(t, ctx, "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
 
 	assertUnbilledFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "context deadline exceeded")
@@ -239,7 +213,7 @@ func TestHandlerTimedOutRequestWithoutUsageStillAlerts(t *testing.T) {
 func TestHandlerCancelledRequestWithUsageIsStillBilled(t *testing.T) {
 	logs := observeLogs(t)
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(&fakeTranslator{err: context.Canceled, usage: usageCosting2}, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Err: context.Canceled, Usage: usageCosting2}), ledger, tokenTestPricing)
 	w := doPostWithContext(t, cancelledContext(), "/api/translate/sentence", h.TranslateSentence, `{"sentence":"Hello world"}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence", "context canceled")
@@ -249,15 +223,15 @@ func TestHandlerCancelledRequestWithUsageIsStillBilled(t *testing.T) {
 }
 
 func TestHandlerInsufficientBalanceReturns402(t *testing.T) {
-	tr := &fakeTranslator{chinese: "unused", usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: "unused", Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 0}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	if w.Code != http.StatusPaymentRequired {
 		t.Fatalf("status: got %d want 402, body=%s", w.Code, w.Body.String())
 	}
-	if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
+	if len(tr.Calls) != 0 || len(ledger.settleCalls) != 0 {
 		t.Fatal("a broke user must not reach the provider or be billed")
 	}
 }
@@ -276,23 +250,23 @@ func TestHandlerNotConfigured(t *testing.T) {
 }
 
 func TestHandlerUnpricedConfig(t *testing.T) {
-	tr := &fakeTranslator{chinese: "unused", usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: "unused", Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, credit.TokenPricing{WeightIn: 0, WeightOut: 0, Divisor: 0})
+	h := NewHandler(chatProvider(tr), ledger, credit.TokenPricing{WeightIn: 0, WeightOut: 0, Divisor: 0})
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d want 502, body=%s", w.Code, w.Body.String())
 	}
-	if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
+	if len(tr.Calls) != 0 || len(ledger.settleCalls) != 0 {
 		t.Fatal("an unpriced feature must not call the provider or bill")
 	}
 }
 
 func TestHandlerSettleErrorStillReturnsResult(t *testing.T) {
-	tr := &fakeTranslator{chinese: "你好世界", usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: "你好世界", Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100, settleErr: errors.New("db write failed")}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	if w.Code != http.StatusOK {
@@ -304,7 +278,7 @@ func TestHandlerSettleErrorStillReturnsResult(t *testing.T) {
 }
 
 func TestHandlerMissingSentence(t *testing.T) {
-	h := NewHandler(&fakeTranslator{chinese: "unused"}, &fakeTokenLedger{balance: 100}, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Reply: "unused"}), &fakeTokenLedger{balance: 100}, tokenTestPricing)
 	w := doPost(t, h, `{}`)
 
 	if w.Code != http.StatusBadRequest {
@@ -315,9 +289,9 @@ func TestHandlerMissingSentence(t *testing.T) {
 // --- TranslateWordInContext ------------------------------------------------
 
 func TestWordInContextHandlerSuccess(t *testing.T) {
-	tr := &fakeTranslator{wordResult: wordcontext.Result{WordChinese: "银行"}, usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: `{"word":"银行"}`, Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank","dictionaryChinese":"n. 银行；水岸"}`)
 
 	if w.Code != http.StatusOK {
@@ -334,8 +308,8 @@ func TestWordInContextHandlerSuccess(t *testing.T) {
 	if !resp.Success || resp.Chinese != "银行" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
-	if tr.wordIn != "bank" || tr.dictionaryIn != "n. 银行；水岸" {
-		t.Fatalf("provider got word %q dictionary %q", tr.wordIn, tr.dictionaryIn)
+	if want := wordcontext.BuildUserContent("I deposited cash at the bank.", "bank", "n. 银行；水岸"); tr.Calls[0].User != want {
+		t.Fatalf("provider got %q, want %q", tr.Calls[0].User, want)
 	}
 	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].feature != "translate_word_in_context" || ledger.settleCalls[0].cost != 2 {
 		t.Fatalf("unexpected settle calls: %+v", ledger.settleCalls)
@@ -347,46 +321,34 @@ func TestWordInContextHandlerSuccess(t *testing.T) {
 // request, and "why" naturally comes back empty (nothing to compare
 // against).
 func TestWordInContextHandlerNoDictionaryDefinition(t *testing.T) {
-	tr := &fakeTranslator{wordResult: wordcontext.Result{WordChinese: "找到并联系"}, usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: `{"word":"找到并联系"}`, Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"Hunt down emails and reach out.","word":"hunt down emails"}`)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d want 200, body=%s", w.Code, w.Body.String())
 	}
-	if tr.dictionaryIn != "" {
-		t.Fatalf("expected empty dictionaryIn, got %q", tr.dictionaryIn)
+	if want := wordcontext.BuildUserContent("Hunt down emails and reach out.", "hunt down emails", ""); tr.Calls[0].User != want {
+		t.Fatalf("provider got %q, want %q", tr.Calls[0].User, want)
 	}
 }
 
 func TestWordInContextHandlerTranslatorErrorWithUsageIsBilled(t *testing.T) {
 	logs := observeLogs(t)
-	tr := &fakeTranslator{err: errors.New("unusable reply"), usage: usageCosting2}
+	tr := &llmtest.Fake{Err: errors.New("unusable reply"), Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_word_in_context", "unusable reply")
 }
 
-// parsingWordTranslator runs TranslateWordInContext through the real
-// wordcontext.Call and ParseResult on a fake chat, so the handler sees what
-// production's parser makes of the model's reply.
-type parsingWordTranslator struct {
-	fakeTranslator
-	chat *llmtest.Fake
-}
-
-func (p *parsingWordTranslator) TranslateWordInContext(ctx context.Context, sentence, word, dictionaryChinese string) (wordcontext.Result, Usage, error) {
-	return wordcontext.Call(ctx, p.chat.Chat, sentence, word, dictionaryChinese)
-}
-
 // #1136: a reply whose only "word" sits in a nested object is not the
 // model's gloss for this word, so it is a 502, not a 200 with that gloss.
 func TestWordInContextHandlerNestedWordReplyIsBadGateway(t *testing.T) {
-	tr := &parsingWordTranslator{chat: &llmtest.Fake{Reply: `{"metadata":{"word":"银行"}}`, Usage: usageCosting2}}
-	h := NewHandler(tr, &fakeTokenLedger{balance: 100}, tokenTestPricing)
+	tr := &llmtest.Fake{Reply: `{"metadata":{"word":"银行"}}`, Usage: usageCosting2}
+	h := NewHandler(chatProvider(tr), &fakeTokenLedger{balance: 100}, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank.","word":"bank"}`)
 
 	if w.Code != http.StatusBadGateway {
@@ -407,7 +369,7 @@ func TestWordInContextHandlerNotConfigured(t *testing.T) {
 }
 
 func TestWordInContextHandlerMissingFields(t *testing.T) {
-	h := NewHandler(&fakeTranslator{chinese: "unused"}, &fakeTokenLedger{balance: 100}, tokenTestPricing)
+	h := NewHandler(chatProvider(&llmtest.Fake{Reply: "unused"}), &fakeTokenLedger{balance: 100}, tokenTestPricing)
 	w := doPostWordInContext(t, h, `{"sentence":"I deposited cash at the bank."}`)
 
 	if w.Code != http.StatusBadRequest {
@@ -422,15 +384,15 @@ func doPostSentenceWithWords(t *testing.T, h *Handler, body string) *httptest.Re
 }
 
 func TestSentenceWithWordsHandlerInsufficientBalance(t *testing.T) {
-	tr := &fakeTranslator{swwsResult: sentenceword.WordsResult{SentenceChinese: "x"}, usage: usageCosting2}
+	tr := &llmtest.Fake{Reply: `{"sentence":"x","words":[]}`, Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 0}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[{"word":"bank"}]}`)
 
 	if w.Code != http.StatusPaymentRequired {
 		t.Fatalf("status: got %d want 402, body=%s", w.Code, w.Body.String())
 	}
-	if tr.callCount != 0 {
+	if len(tr.Calls) != 0 {
 		t.Fatal("a broke user must not reach the provider")
 	}
 }
@@ -445,18 +407,12 @@ func TestSentenceWithWordsHandlerNotConfigured(t *testing.T) {
 }
 
 func TestSentenceWithWordsHandlerSuccess(t *testing.T) {
-	tr := &fakeTranslator{
-		swwsResult: sentenceword.WordsResult{
-			SentenceChinese: "我在银行存了现金。",
-			Words: []sentenceword.WordGloss{
-				{Word: "bank", Chinese: "银行", Why: ""},
-				{Word: "cash", Chinese: "", Why: ""},
-			},
-		},
-		usage: usageCosting2,
+	tr := &llmtest.Fake{
+		Reply: `{"sentence":"我在银行存了现金。","words":[{"word":"bank","chinese":"银行","why":""},{"word":"cash","chinese":"","why":""}]}`,
+		Usage: usageCosting2,
 	}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostSentenceWithWords(t, h, `{"sentence":"I deposited cash at the bank.","words":[`+
 		`{"word":"bank","dictionaryChinese":"银行"},{"word":" Bank ","dictionaryChinese":"x"},`+
 		`{"word":"","dictionaryChinese":"y"},{"word":"cash"}]}`+" \n\t")
@@ -481,11 +437,13 @@ func TestSentenceWithWordsHandlerSuccess(t *testing.T) {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 	// The provider sees the deduplicated words, first occurrence kept.
-	if len(tr.wordsIn) != 2 || tr.wordsIn[0].DictionaryChinese != "银行" || tr.wordsIn[1].Word != "cash" {
-		t.Fatalf("provider input: %+v", tr.wordsIn)
+	if len(tr.Calls) != 1 {
+		t.Fatalf("expected one provider call, got %d", len(tr.Calls))
 	}
-	if tr.callCount != 1 {
-		t.Fatalf("expected one provider call, got %d", tr.callCount)
+	want := sentenceword.BuildWordsUserContent("I deposited cash at the bank.",
+		[]sentenceword.WordInput{{Word: "bank", DictionaryChinese: "银行"}, {Word: "cash"}})
+	if tr.Calls[0].User != want {
+		t.Fatalf("provider input: %q, want %q", tr.Calls[0].User, want)
 	}
 	if len(ledger.settleCalls) != 1 || ledger.settleCalls[0].feature != "translate_sentence_with_word" || ledger.settleCalls[0].cost != 2 {
 		t.Fatalf("unexpected settle calls: %+v", ledger.settleCalls)
@@ -503,25 +461,25 @@ func TestSentenceWithWordsHandlerInvalidInputIs400BeforeProvider(t *testing.T) {
 		`{"sentence":"I bank.","words":[{"word":"bank"}]} {}`,
 		`{"sentence":"I bank.","words":[{"word":"bank"}]} trailing`,
 	} {
-		tr := &fakeTranslator{}
+		tr := &llmtest.Fake{}
 		ledger := &fakeTokenLedger{balance: 100}
-		h := NewHandler(tr, ledger, tokenTestPricing)
+		h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 		w := doPostSentenceWithWords(t, h, body)
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("%s: status got %d want 400", body, w.Code)
 		}
-		if tr.callCount != 0 || ledger.balanceCalls != 0 || len(ledger.settleCalls) != 0 {
+		if len(tr.Calls) != 0 || ledger.balanceCalls != 0 || len(ledger.settleCalls) != 0 {
 			t.Errorf("%s: provider calls=%d, balance calls=%d, settlements=%d",
-				body, tr.callCount, ledger.balanceCalls, len(ledger.settleCalls))
+				body, len(tr.Calls), ledger.balanceCalls, len(ledger.settleCalls))
 		}
 	}
 }
 
 func TestSentenceWithWordsHandlerMissingSentenceIs502Billed(t *testing.T) {
 	logs := observeLogs(t)
-	tr := &fakeTranslator{err: errors.New("sentenceword: reply has no sentence translation"), usage: usageCosting2}
+	tr := &llmtest.Fake{Err: errors.New("sentenceword: reply has no sentence translation"), Usage: usageCosting2}
 	ledger := &fakeTokenLedger{balance: 100}
-	h := NewHandler(tr, ledger, tokenTestPricing)
+	h := NewHandler(chatProvider(tr), ledger, tokenTestPricing)
 	w := doPostSentenceWithWords(t, h, `{"sentence":"I bank.","words":[{"word":"bank"}]}`)
 
 	assertBilledOnFailure(t, w, ledger.settleCalls, logs, "translate_sentence_with_word", "sentenceword: reply has no sentence translation")
@@ -550,9 +508,9 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 		{ailimit.LimitedPerMinute, "trial_limit_minute", "Too many requests. Please wait a minute and try again."},
 	} {
 		t.Run(tc.verdict.String(), func(t *testing.T) {
-			tr := &fakeTranslator{chinese: "unused", usage: usageCosting2}
+			tr := &llmtest.Fake{Reply: "unused", Usage: usageCosting2}
 			ledger := &fakeTokenLedger{balance: 100}
-			h := NewHandler(tr, ledger, tokenTestPricing).WithTrialGate(&fakeGate{verdict: tc.verdict})
+			h := NewHandler(chatProvider(tr), ledger, tokenTestPricing).WithTrialGate(&fakeGate{verdict: tc.verdict})
 			w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 			if w.Code != http.StatusTooManyRequests {
@@ -566,7 +524,7 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 			if body["code"] != tc.code {
 				t.Fatalf("code = %v, want %q", body["code"], tc.code)
 			}
-			if tr.callCount != 0 || len(ledger.settleCalls) != 0 {
+			if len(tr.Calls) != 0 || len(ledger.settleCalls) != 0 {
 				t.Fatal("a limited call must not reach the provider or be billed")
 			}
 		})
@@ -577,7 +535,7 @@ func TestHandlerTrialLimitReturns429(t *testing.T) {
 // the refused call doesn't use up a trial slot.
 func TestHandlerBrokeUserGets402WithoutUsingTrialSlot(t *testing.T) {
 	gate := &fakeGate{verdict: ailimit.Allowed}
-	h := NewHandler(&fakeTranslator{chinese: "unused"}, &fakeTokenLedger{balance: 0}, tokenTestPricing).WithTrialGate(gate)
+	h := NewHandler(chatProvider(&llmtest.Fake{Reply: "unused"}), &fakeTokenLedger{balance: 0}, tokenTestPricing).WithTrialGate(gate)
 	w := doPost(t, h, `{"sentence":"Hello world"}`)
 
 	if w.Code != http.StatusPaymentRequired || gate.checks != 0 {

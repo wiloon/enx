@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"enx-api/aitranslate/sentence"
 )
 
 func TestTranslateSentenceAsksForSimplifiedChinese(t *testing.T) {
@@ -25,7 +27,7 @@ func TestTranslateSentenceAsksForSimplifiedChinese(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, _, err := newTestKimi(srv.URL).TranslateSentence(context.Background(), "Hello world"); err != nil {
+	if _, _, err := sentence.Call(context.Background(), newTestKimi(srv.URL).Chat, "Hello world"); err != nil {
 		t.Fatalf("TranslateSentence: %v", err)
 	}
 	if len(body.Messages) == 0 || body.Messages[0].Role != "system" {

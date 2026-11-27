@@ -2,49 +2,9 @@ package aitranslate
 
 import (
 	"context"
+	"net/http"
 	"testing"
-
-	"enx-api/aitranslate/rephrase"
-	"enx-api/aitranslate/sentenceword"
-	"enx-api/aitranslate/wordcontext"
 )
-
-// translatorOnly implements Translator but NOT rephrase.Rephraser -- stands
-// in for a provider (minimax, bedrock) that hasn't added rephrase support.
-type translatorOnly struct{}
-
-func (translatorOnly) TranslateSentence(ctx context.Context, s string) (string, Usage, error) {
-	return "", Usage{}, nil
-}
-func (translatorOnly) TranslateWordInContext(ctx context.Context, s, w, dictionaryChinese string) (wordcontext.Result, Usage, error) {
-	return wordcontext.Result{}, Usage{}, nil
-}
-func (translatorOnly) TranslateSentenceWithWords(ctx context.Context, s string, w []sentenceword.WordInput) (sentenceword.WordsResult, Usage, error) {
-	return sentenceword.WordsResult{}, Usage{}, nil
-}
-
-// translatorAndRephraser is a provider that supports both.
-type translatorAndRephraser struct{ translatorOnly }
-
-func (translatorAndRephraser) Rephrase(ctx context.Context, input string) (rephrase.Result, error) {
-	return rephrase.Result{}, nil
-}
-
-func TestAsRephraserRejectsProviderWithoutSupport(t *testing.T) {
-	if _, err := asRephraser(translatorOnly{}, "minimax"); err == nil {
-		t.Fatal("expected an error when the provider does not implement Rephraser")
-	}
-}
-
-func TestAsRephraserAcceptsProviderWithSupport(t *testing.T) {
-	got, err := asRephraser(translatorAndRephraser{}, "kimi")
-	if err != nil {
-		t.Fatalf("asRephraser: %v", err)
-	}
-	if got == nil {
-		t.Fatal("got nil Rephraser")
-	}
-}
 
 func TestNewRephraserUnconfiguredProvider(t *testing.T) {
 	if _, err := NewRephraser(context.Background(), provider("")); err == nil {
@@ -55,5 +15,15 @@ func TestNewRephraserUnconfiguredProvider(t *testing.T) {
 func TestNewRephraserKimiMissingAPIKey(t *testing.T) {
 	if _, err := NewRephraser(context.Background(), provider("kimi")); err == nil {
 		t.Fatal("expected an error when KIMI_API_KEY is not set")
+	}
+}
+
+func TestRephraseHandlerWithoutARephraseChatIsNotConfigured(t *testing.T) {
+	h := NewRephraseHandler(&Provider{}, &fakeRephraseLedger{balance: 100}, testPricing)
+
+	w := doRephrase(t, h, `{"input":"hi"}`)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502: %s", w.Code, w.Body)
 	}
 }

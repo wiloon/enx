@@ -1,4 +1,4 @@
-// Package bedrock implements aitranslate.Translator against AWS Bedrock
+// Package bedrock offers the AI provider's chat on AWS Bedrock
 // Runtime's Converse API (default: an Anthropic Claude model).
 //
 // Credentials come from the AWS SDK's default credential chain, which on an
@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -36,13 +35,13 @@ type Bedrock struct {
 	timeout time.Duration
 }
 
-// New builds a Bedrock translator from config.toml (sentence-translate.bedrock.*)
+// New builds a Bedrock client from config.toml (sentence-translate.bedrock.*)
 // and the AWS SDK's default credential chain. It returns an error immediately
 // if model-id or a usable AWS region can't be resolved, so a
 // "provider = bedrock" misconfiguration is caught at startup rather than on
 // the first request. It cannot verify the credentials actually have
 // bedrock:InvokeModel permission or that model access has been granted for
-// model-id — those surface as an error from the first TranslateSentence call.
+// model-id — those surface as an error from the first Chat call.
 func New(ctx context.Context, c config.Bedrock, timeout time.Duration) (*Bedrock, error) {
 	modelID := c.ModelID
 	if modelID == "" {
@@ -69,14 +68,10 @@ func New(ctx context.Context, c config.Bedrock, timeout time.Duration) (*Bedrock
 	}, nil
 }
 
-func (b *Bedrock) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return b.converse(ctx, "translate_sentence", sentence.SystemPrompt, text)
-}
-
-// chat is converse as the llm.Chat the feature packages call. Converse
+// Chat is converse as the llm.Chat the feature packages call. Converse
 // requests here set no temperature, so the feature's temperature is
-// dropped, as it was before the feature packages took over the call.
-func (b *Bedrock) chat(ctx context.Context, feature string, _ float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+// dropped.
+func (b *Bedrock) Chat(ctx context.Context, feature string, _ float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	return b.converse(ctx, feature, systemPrompt, userContent)
 }
 

@@ -1,4 +1,4 @@
-// Package minimax implements aitranslate.Translator against MiniMax's
+// Package minimax offers the AI provider's chats on MiniMax's
 // OpenAI-compatible Chat Completions API (https://api.minimax.io/v1/chat/completions).
 // MiniMax's older ChatCompletion Pro API required a group_id query parameter;
 // the current OpenAI-compatible endpoint does not, so GroupID below is kept
@@ -19,7 +19,6 @@ import (
 
 	"enx-api/aitranslate/aiusage"
 	"enx-api/aitranslate/openaicompat"
-	"enx-api/aitranslate/sentence"
 	"enx-api/utils/logger"
 
 	"github.com/go-resty/resty/v2"
@@ -44,7 +43,7 @@ type MiniMax struct {
 	client  *resty.Client
 }
 
-// New builds a MiniMax translator from config.toml (sentence-translate.minimax.*)
+// New builds a MiniMax client from config.toml (sentence-translate.minimax.*)
 // and the MINIMAX_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = minimax"
 // misconfiguration is caught at startup rather than on the first request.
@@ -77,11 +76,9 @@ func New(c config.MiniMax, timeout time.Duration) (*MiniMax, error) {
 	}, nil
 }
 
-func (m *MiniMax) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return m.chat(ctx, "translate_sentence", sentence.Temperature, sentence.SystemPrompt, text)
-}
-
-func (m *MiniMax) chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+// Chat is the llm.Chat for every feature, rephrase included: MiniMax has no
+// rephrase model of its own.
+func (m *MiniMax) Chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	e := openaicompat.Endpoint{Provider: "minimax", BaseURL: m.baseURL, APIKey: m.apiKey}
 	if m.groupID != "" {
 		e.Query = map[string]string{"GroupId": m.groupID}

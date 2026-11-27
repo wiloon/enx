@@ -24,7 +24,7 @@ func TestTranslateSentenceWithWordsOneRequestCarriesEveryDictionaryMeaning(t *te
 	defer srv.Close()
 
 	d := newTestDeepSeek(srv.URL)
-	res, u, err := d.TranslateSentenceWithWords(context.Background(), "I deposited cash at the bank.", []sentenceword.WordInput{
+	res, u, err := sentenceword.CallWords(context.Background(), d.Chat, "I deposited cash at the bank.", []sentenceword.WordInput{
 		{Word: "bank", DictionaryChinese: "银行DICT"},
 		{Word: "cash", DictionaryChinese: "现金DICT"},
 	})

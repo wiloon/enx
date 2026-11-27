@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"enx-api/aitranslate/sentence"
+
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
@@ -27,7 +29,7 @@ func (r *recordingConverseClient) Converse(ctx context.Context, params *bedrockr
 
 func TestTranslateSentenceAsksForSimplifiedChinese(t *testing.T) {
 	rec := &recordingConverseClient{}
-	if _, _, err := newTestBedrock(rec).TranslateSentence(context.Background(), "Hello world"); err != nil {
+	if _, _, err := sentence.Call(context.Background(), newTestBedrock(rec).Chat, "Hello world"); err != nil {
 		t.Fatalf("TranslateSentence: %v", err)
 	}
 	if len(rec.input.System) == 0 {

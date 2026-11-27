@@ -2,10 +2,13 @@ package bedrock
 
 import (
 	"context"
-	"enx-api/config"
 	"errors"
 	"testing"
 	"time"
+
+	"enx-api/aitranslate/sentence"
+	"enx-api/aitranslate/wordcontext"
+	"enx-api/config"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -48,7 +51,7 @@ func TestTranslateSentenceSuccess(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	chinese, _, err := b.TranslateSentence(context.Background(), "Hello world")
+	chinese, _, err := sentence.Call(context.Background(), b.Chat, "Hello world")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +64,7 @@ func TestTranslateSentenceConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)
 
-	_, _, err := b.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := sentence.Call(context.Background(), b.Chat, "Hello world")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -71,7 +74,7 @@ func TestTranslateWordInContextSuccess(t *testing.T) {
 	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"银行","why":""}`)}
 	b := newTestBedrock(fake)
 
-	res, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "n. 银行；水岸")
+	res, _, err := wordcontext.Call(context.Background(), b.Chat, "I deposited cash at the bank.", "bank", "n. 银行；水岸")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +87,7 @@ func TestTranslateWordInContextWhy(t *testing.T) {
 	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"倾向于","why":"此处是动词 tip 的引申用法，词典只收录了名词义"}`)}
 	b := newTestBedrock(fake)
 
-	res, _, err := b.TranslateWordInContext(context.Background(), "The market tips toward recovery.", "tips", "n. 秘诀, 技巧；小贴士, 小窍门")
+	res, _, err := wordcontext.Call(context.Background(), b.Chat, "The market tips toward recovery.", "tips", "n. 秘诀, 技巧；小贴士, 小窍门")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,8 +102,8 @@ func TestTranslateWordInContextPhrase(t *testing.T) {
 	fake := &fakeConverseClient{output: bedrockTextOutput(`{"word":"找到邮箱地址并联系","why":""}`)}
 	b := newTestBedrock(fake)
 
-	res, _, err := b.TranslateWordInContext(
-		context.Background(),
+	res, _, err := wordcontext.Call(
+		context.Background(), b.Chat,
 		"I'd have to find the right contacts, hunt down emails, and draft outreach.",
 		"hunt down emails",
 		"",
@@ -117,7 +120,7 @@ func TestTranslateWordInContextConverseError(t *testing.T) {
 	fake := &fakeConverseClient{err: errors.New("throttled")}
 	b := newTestBedrock(fake)
 
-	_, _, err := b.TranslateWordInContext(context.Background(), "I deposited cash at the bank.", "bank", "")
+	_, _, err := wordcontext.Call(context.Background(), b.Chat, "I deposited cash at the bank.", "bank", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -133,7 +136,7 @@ func TestTranslateSentenceNoTextContent(t *testing.T) {
 	}
 	b := newTestBedrock(fake)
 
-	_, _, err := b.TranslateSentence(context.Background(), "Hello world")
+	_, _, err := sentence.Call(context.Background(), b.Chat, "Hello world")
 	if err == nil {
 		t.Fatal("expected error for empty content, got nil")
 	}

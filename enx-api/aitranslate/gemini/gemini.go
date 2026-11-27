@@ -1,4 +1,4 @@
-// Package gemini implements aitranslate.Translator against Gemini's
+// Package gemini offers the AI provider's chats on Gemini's
 // OpenAI-compatible Chat Completions API
 // (https://generativelanguage.googleapis.com/v1beta/openai/). Auth is a
 // Gemini API key from Google AI Studio (https://aistudio.google.com/apikey),
@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/openaicompat"
-	"enx-api/aitranslate/sentence"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -45,7 +43,7 @@ func (g *Gemini) modelForRephrase() string {
 	return g.model
 }
 
-// New builds a Gemini translator from config.toml (sentence-translate.gemini.*)
+// New builds a Gemini client from config.toml (sentence-translate.gemini.*)
 // and the GEMINI_API_KEY environment variable. It returns an error
 // immediately if the API key is missing, so a "provider = gemini"
 // misconfiguration is caught at startup rather than on the first request.
@@ -74,10 +72,6 @@ func New(c config.OpenAICompatible, timeout time.Duration) (*Gemini, error) {
 	}, nil
 }
 
-func (g *Gemini) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return g.chat(ctx, "translate_sentence", g.model, sentence.Temperature, sentence.SystemPrompt, text)
-}
-
 func (g *Gemini) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	return openaicompat.Chat(ctx, g.client, openaicompat.Endpoint{
 		Provider: "gemini",
@@ -86,10 +80,12 @@ func (g *Gemini) chat(ctx context.Context, feature, model string, temperature fl
 	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }
 
-// chatWith binds chat to one model, giving the feature packages the
-// llm.Chat they call.
-func (g *Gemini) chatWith(model string) llm.Chat {
-	return func(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-		return g.chat(ctx, feature, model, temperature, systemPrompt, userContent)
-	}
+// Chat is the llm.Chat for every feature except rephrase.
+func (g *Gemini) Chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return g.chat(ctx, feature, g.model, temperature, systemPrompt, userContent)
+}
+
+// RephraseChat is the llm.Chat for rephrase, on the rephrase model (ADR-012).
+func (g *Gemini) RephraseChat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return g.chat(ctx, feature, g.modelForRephrase(), temperature, systemPrompt, userContent)
 }

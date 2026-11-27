@@ -1,4 +1,4 @@
-// Package kimi implements aitranslate.Translator against Moonshot AI's
+// Package kimi offers the AI provider's chats on Moonshot AI's
 // Kimi Chat Completions API (OpenAI-compatible request/response format).
 package kimi
 
@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"enx-api/aitranslate/aiusage"
-	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/openaicompat"
-	"enx-api/aitranslate/sentence"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -40,7 +38,7 @@ func (k *Kimi) modelForRephrase() string {
 	return k.model
 }
 
-// New builds a Kimi translator from config.toml (sentence-translate.kimi.*)
+// New builds a Kimi client from config.toml (sentence-translate.kimi.*)
 // and the KIMI_API_KEY environment variable. It returns an error immediately
 // if the API key is missing, so a "provider = kimi" misconfiguration is
 // caught at startup rather than on the first request.
@@ -68,10 +66,6 @@ func New(c config.OpenAICompatible, timeout time.Duration) (*Kimi, error) {
 	}, nil
 }
 
-func (k *Kimi) TranslateSentence(ctx context.Context, text string) (string, aiusage.Usage, error) {
-	return k.chat(ctx, "translate_sentence", k.model, sentence.Temperature, sentence.SystemPrompt, text)
-}
-
 func (k *Kimi) chat(ctx context.Context, feature, model string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
 	return openaicompat.Chat(ctx, k.client, openaicompat.Endpoint{
 		Provider: "kimi",
@@ -80,10 +74,12 @@ func (k *Kimi) chat(ctx context.Context, feature, model string, temperature floa
 	}, openaicompat.Prompt{Feature: feature, Model: model, Temperature: temperature, System: systemPrompt, User: userContent})
 }
 
-// chatWith binds chat to one model, giving the feature packages the
-// llm.Chat they call.
-func (k *Kimi) chatWith(model string) llm.Chat {
-	return func(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
-		return k.chat(ctx, feature, model, temperature, systemPrompt, userContent)
-	}
+// Chat is the llm.Chat for every feature except rephrase.
+func (k *Kimi) Chat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return k.chat(ctx, feature, k.model, temperature, systemPrompt, userContent)
+}
+
+// RephraseChat is the llm.Chat for rephrase, on the rephrase model (ADR-012).
+func (k *Kimi) RephraseChat(ctx context.Context, feature string, temperature float64, systemPrompt, userContent string) (string, aiusage.Usage, error) {
+	return k.chat(ctx, feature, k.modelForRephrase(), temperature, systemPrompt, userContent)
 }

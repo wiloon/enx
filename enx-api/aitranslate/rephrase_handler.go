@@ -24,7 +24,7 @@ const maxRephraseInputRunes = 200
 // Settle that may drive the balance negative -- the same TokenLedger the
 // sentence translation handler uses (ADR-014).
 type RephraseHandler struct {
-	rephraser rephrase.Rephraser
+	provider  *Provider
 	ledger    TokenLedger
 	pricing   credit.TokenPricing
 	trialGate CallGate
@@ -36,8 +36,8 @@ func (h *RephraseHandler) WithTrialGate(gate CallGate) *RephraseHandler {
 	return h
 }
 
-func NewRephraseHandler(rephraser rephrase.Rephraser, ledger TokenLedger, pricing credit.TokenPricing) *RephraseHandler {
-	return &RephraseHandler{rephraser: rephraser, ledger: ledger, pricing: pricing}
+func NewRephraseHandler(provider *Provider, ledger TokenLedger, pricing credit.TokenPricing) *RephraseHandler {
+	return &RephraseHandler{provider: provider, ledger: ledger, pricing: pricing}
 }
 
 type rephraseRequest struct {
@@ -60,7 +60,7 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 		return
 	}
 
-	if h.rephraser == nil {
+	if h.provider == nil || h.provider.RephraseChat == nil {
 		aifailure.Internal(c)
 		return
 	}
@@ -90,7 +90,10 @@ func (h *RephraseHandler) Rephrase(c *gin.Context) {
 		return
 	}
 
-	result, err := h.rephraser.Rephrase(c.Request.Context(), req.Input)
+	result, _, err := observe(h.provider, "rephrase", func() (rephrase.Result, Usage, error) {
+		res, err := rephrase.Call(c.Request.Context(), h.provider.RephraseChat, req.Input)
+		return res, Usage{PromptTokens: res.Usage.PromptTokens, CompletionTokens: res.Usage.CompletionTokens, TotalTokens: res.Usage.TotalTokens}, err
+	})
 	if err != nil {
 		settleFailedCall(c.Request.Context(), h.ledger, h.pricing, feature, userID, result.Usage.PromptTokens, result.Usage.CompletionTokens, err)
 		aifailure.Upstream(c)
