@@ -407,7 +407,7 @@ describe('the session-loss flag through every message handler', () => {
       {
         type: 'translateSentenceWithWords',
         sentence: 'A fox.',
-        sentenceWords: [{ word: 'fox', dictionaryChinese: '' }],
+        sentenceWords: [{ word: 'fox', dictionaryDefinition: '' }],
       },
     ],
     [

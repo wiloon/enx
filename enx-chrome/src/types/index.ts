@@ -126,10 +126,10 @@ export interface ContentMessage {
   // looked up by the caller BEFORE sending this message (dictionary-first),
   // so the model can explain a divergence instead of guessing blind. Empty
   // when the word has no dictionary entry or the lookup failed.
-  dictionaryChinese?: string
+  dictionaryDefinition?: string
   // Set on 'translateSentenceWithWords' (ADR-023 Decision 9): the word cards a
   // sentence absorbed, each with its dictionary meaning ('' when none).
-  sentenceWords?: { word: string; dictionaryChinese: string }[]
+  sentenceWords?: { word: string; dictionaryDefinition: string }[]
   // Set on 'reportReadingProgress' (ADR-028): one reading session's increment
   // to today's counters. Always a delta, never an absolute -- the content
   // script owns the watermark and reports only what it has not reported yet.

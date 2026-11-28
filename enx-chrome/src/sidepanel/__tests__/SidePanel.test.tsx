@@ -258,6 +258,15 @@ describe('SidePanel', () => {
     ).toBeInTheDocument()
   })
 
+  it('says in the empty state what will appear, in either explanation language (ADR-098)', async () => {
+    render(<SidePanel />)
+    expect(
+      await screen.findByTestId('sidepanel-empty-state')
+    ).toHaveTextContent(
+      'The full English sentence and an explanation of it will appear here.'
+    )
+  })
+
   it('loads and displays the sentence + translation once a pending context is stored', async () => {
     seedSession({
       [PENDING_SENTENCE_STORAGE_KEY]: {
@@ -1220,7 +1229,7 @@ describe('SidePanel', () => {
       async (message: {
         type: string
         word?: string
-        dictionaryChinese?: string
+        dictionaryDefinition?: string
       }) => {
         if (message.type === 'translateSentence') {
           return { success: true, chinese: '猫是很棒的宠物。' }
@@ -1283,7 +1292,7 @@ describe('SidePanel', () => {
       expect.objectContaining({
         type: 'translateWordInContext',
         word: 'great',
-        dictionaryChinese: 'great的词典释义',
+        dictionaryDefinition: 'great的词典释义',
       })
     )
   })
@@ -2098,7 +2107,7 @@ describe('SidePanel', () => {
         async (message: {
           type: string
           word?: string
-          dictionaryChinese?: string
+          dictionaryDefinition?: string
         }) => {
           if (message.type === 'translateSentence') {
             return { success: true, chinese: '猫是很棒的宠物。' }
@@ -2140,7 +2149,7 @@ describe('SidePanel', () => {
         expect.objectContaining({
           type: 'translateWordInContext',
           word: 'great',
-          dictionaryChinese: 'great的词典释义',
+          dictionaryDefinition: 'great的词典释义',
         })
       )
     })
@@ -2177,7 +2186,7 @@ describe('SidePanel', () => {
         async (message: {
           type: string
           word?: string
-          dictionaryChinese?: string
+          dictionaryDefinition?: string
         }) => {
           if (message.type === 'translateSentence') {
             return { success: true, chinese: '猫是很棒的宠物。' }
@@ -2203,7 +2212,7 @@ describe('SidePanel', () => {
         expect.objectContaining({
           type: 'translateWordInContext',
           word: 'great',
-          dictionaryChinese: undefined,
+          dictionaryDefinition: undefined,
         })
       )
     })
@@ -3082,7 +3091,7 @@ describe('SidePanel', () => {
         expect.objectContaining({
           type: 'translateWordInContext',
           word: 'great',
-          dictionaryChinese: 'great页面释义',
+          dictionaryDefinition: 'great页面释义',
         })
       )
     })
@@ -3171,7 +3180,7 @@ describe('SidePanel', () => {
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'translateWordInContext',
-          dictionaryChinese: '词典释义',
+          dictionaryDefinition: '词典释义',
         })
       )
       await settle(take('translateWordInContext'), {
@@ -3187,7 +3196,7 @@ describe('SidePanel', () => {
     // lookup card above the first sentence card; one combined AI call returns
     // the translation and each absorbed word's in-context meaning.
     describe('a sentence absorbs the page lookups before it (Decision 9)', () => {
-      type Words = { word: string; dictionaryChinese: string }[]
+      type Words = { word: string; dictionaryDefinition: string }[]
       const combinedReply = (omit: string[] = []) =>
         mockSendMessage.mockImplementation(
           async (message: Message & { sentenceWords?: Words }) => {
@@ -3233,9 +3242,9 @@ describe('SidePanel', () => {
         )
         expect(combinedCalls()).toHaveLength(1)
         expect(combinedCalls()[0].sentenceWords).toEqual([
-          { word: 'great', dictionaryChinese: 'great页面' },
-          { word: 'cats', dictionaryChinese: 'cats页面' },
-          { word: 'pets', dictionaryChinese: 'pets页面' },
+          { word: 'great', dictionaryDefinition: 'great页面' },
+          { word: 'cats', dictionaryDefinition: 'cats页面' },
+          { word: 'pets', dictionaryDefinition: 'pets页面' },
         ])
         expect(callsOf('translateSentence')).toBe(0)
         expect(callsOf('getOneWord')).toBe(0)
@@ -3289,8 +3298,8 @@ describe('SidePanel', () => {
         expect(
           (pending[0].message as { sentenceWords?: Words }).sentenceWords
         ).toEqual([
-          { word: 'great', dictionaryChinese: 'great页面' },
-          { word: 'cats', dictionaryChinese: 'cats页面' },
+          { word: 'great', dictionaryDefinition: 'great页面' },
+          { word: 'cats', dictionaryDefinition: 'cats页面' },
         ])
       })
 

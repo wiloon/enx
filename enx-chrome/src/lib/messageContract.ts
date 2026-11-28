@@ -136,7 +136,7 @@ export interface BackgroundExchanges {
   translateWordInContext: Exchange<
     ByType<
       'translateWordInContext',
-      { sentence: string; word: string; dictionaryChinese: string }
+      { sentence: string; word: string; dictionaryDefinition: string }
     >,
     BackgroundResponse
   >
@@ -145,7 +145,7 @@ export interface BackgroundExchanges {
       'translateSentenceWithWords',
       {
         sentence: string
-        sentenceWords: { word: string; dictionaryChinese: string }[]
+        sentenceWords: { word: string; dictionaryDefinition: string }[]
       }
     >,
     BackgroundResponse
