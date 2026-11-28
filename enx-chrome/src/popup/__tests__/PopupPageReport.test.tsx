@@ -54,10 +54,11 @@ jest.mock('@/lib/enableLearningMode', () => ({
   getLearningModeStatusOnTab: jest.fn(async () => ({ status: 'off' })),
 }))
 jest.mock('@/lib/auth/selectPopupAuth', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
-  const mod =
+  /* eslint-disable @typescript-eslint/no-require-imports -- jest.mock factory */
+  const { FakeAuthProvider } =
     require('@/test/fakePopupAuthHarness') as typeof import('@/test/fakePopupAuthHarness')
-  return { selectPopupAuth: () => ({ Provider: mod.FakeAuthProvider }) }
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  return { selectPopupAuth: () => ({ Provider: FakeAuthProvider }) }
 })
 
 import Popup from '../Popup'

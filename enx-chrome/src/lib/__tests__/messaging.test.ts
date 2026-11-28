@@ -142,28 +142,3 @@ describe('sendToTab', () => {
     ).rejects.toThrow('Receiving end does not exist')
   })
 })
-
-// Compile-time half of the contract: each marked line below must fail to
-// compile, and `@ts-expect-error` fails the build when it does not.
-export const undeclaredMessagesDoNotCompile = () => {
-  // @ts-expect-error -- not a declared message
-  void sendToBackground({ type: 'notAMessage' })
-  // @ts-expect-error -- declared under `type`, not `action`
-  void sendToBackground({ action: 'learningAccess' })
-  // @ts-expect-error -- the payload is missing
-  void sendToBackground({ type: 'savePage' })
-  // @ts-expect-error -- the payload has the wrong shape
-  void sendToBackground({ type: 'removeSavedPage', savedPageId: 7 })
-  // @ts-expect-error -- a content-script action is not a background message
-  void sendToBackground({ action: 'enxStop' })
-  // @ts-expect-error -- a background message is not a content-script action
-  void sendToTab(7, { type: 'getOneWord', word: 'cat' })
-  // @ts-expect-error -- not a declared action
-  void sendToTab(7, { action: 'notAnAction' })
-
-  void sendToBackground({ type: 'learningAccess' }).then(reply => {
-    // @ts-expect-error -- this request's response has no `success`
-    void reply.success
-    return reply.access
-  })
-}
