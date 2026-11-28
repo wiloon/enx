@@ -228,13 +228,15 @@ export interface ContentExchanges {
 export type ContentMessageName = keyof ContentExchanges
 export type ContentRequest = ContentExchanges[ContentMessageName]['request']
 
-// --- To the extension's own pages ------------------------------------------
+// --- What the side panel hears ----------------------------------------------
 //
-// Broadcast by the background with chrome.runtime.sendMessage; the side panel
-// only listens and never answers (lib/panelAccountFence.ts). The side panel
-// also overhears the page's `markKnown` request above (ADR-053).
+// The side panel's two onMessage listeners only listen and never answer: the
+// background is the one replier. They hear the background's account broadcast
+// (lib/panelAccountFence.ts) and overhear the page's `markKnown` request to the
+// background, which reaches every extension page (ADR-053).
 
-export type ExtensionPageNotice = AccountInvalidatedMessage
+export type SidePanelNotice =
+  AccountInvalidatedMessage | BackgroundExchanges['markKnown']['request']
 
 // --- A request's name and its response -------------------------------------
 

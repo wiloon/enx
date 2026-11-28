@@ -101,6 +101,28 @@ describe('sendToBackgroundFromPage', () => {
       sendToBackgroundFromPage({ type: 'getReviewWords' }, runtime as never)
     ).resolves.toEqual({ success: false, error: 'No response' })
   })
+
+  it('never rejects: lastError from a cut-off channel says the extension was updated', async () => {
+    const runtime: {
+      id: string
+      lastError?: { message: string }
+      sendMessage: jest.Mock
+    } = { id: 'extension-id', sendMessage: jest.fn() }
+    runtime.sendMessage.mockImplementation(
+      (_message: unknown, reply: Reply) => {
+        runtime.lastError = { message: 'Extension context invalidated.' }
+        reply()
+      }
+    )
+
+    await expect(
+      sendToBackgroundFromPage({ type: 'getReviewWords' }, runtime as never)
+    ).resolves.toEqual({
+      success: false,
+      error: EXTENSION_UPDATED_MESSAGE,
+      extensionUpdated: true,
+    })
+  })
 })
 
 describe('sendToTab', () => {
