@@ -47,7 +47,11 @@ func (s *Service) findEnglishAI(ctx context.Context, english, key, userID string
 	if !canUse {
 		return Result{}, false, nil
 	}
-	wordID := s.existingWordID(ctx, english, key)
+	wordID, err := s.existingWordID(ctx, english, key)
+	if err != nil {
+		logger.Warnf("dictionary: English AI read of %s failed: %v", english, err)
+		return Result{English: english, Source: SourceError}, true, nil
+	}
 	if wordID == "" {
 		return Result{}, false, nil
 	}
@@ -70,36 +74,22 @@ func (s *Service) findEnglishAI(ctx context.Context, english, key, userID string
 
 // existingWordID is the words row the English AI write would choose, without
 // creating one: the clicked word's live row, else the row spelled as ECDICT's
-// answer, else the key.
-func (s *Service) existingWordID(ctx context.Context, english, key string) string {
+// answer, else the key. "" means no such row; a failed words read is an error,
+// so a stored definition is never taken for a miss.
+func (s *Service) existingWordID(ctx context.Context, english, key string) (string, error) {
 	id, ok, err := s.words.ID(ctx, english)
-	if err != nil {
-		logger.Warnf("dictionary: could not read the row of %s: %v", english, err)
-		return ""
-	}
-	if ok {
-		return id
+	if err != nil || ok {
+		return id, err
 	}
 	if s.external.Available() {
 		found, err := s.external.Lookup(ctx, english)
 		if err == nil {
 			id, ok, err = s.words.ID(ctx, found.English)
-			if err != nil {
-				logger.Warnf("dictionary: could not read the row of %s: %v", found.English, err)
-				return ""
-			}
-			if ok {
-				return id
+			if err != nil || ok {
+				return id, err
 			}
 		}
 	}
-	id, ok, err = s.words.ID(ctx, key)
-	if err != nil {
-		logger.Warnf("dictionary: could not read the row of %s: %v", key, err)
-		return ""
-	}
-	if ok {
-		return id
-	}
-	return ""
+	id, _, err = s.words.ID(ctx, key)
+	return id, err
 }

@@ -196,6 +196,40 @@ func TestDefineWithAIInEnglishMakesNoCallOnAWiktionaryReadFailure(t *testing.T) 
 	}
 }
 
+func TestDefineWithAIInEnglishMakesNoCallOnAWordsReadFailure(t *testing.T) {
+	env := newEnglishAIEnv()
+	env.words.seed("w1", Entry{English: "rizzler", Origin: OriginECDICT})
+	env.words.idErr = errors.New("db down")
+
+	_, err := env.defineEnglish("rizzler")
+	if !errors.Is(err, ErrDictionaryFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(env.englishDefiner().calls) != 0 || len(env.billing.settled) != 0 {
+		t.Fatalf("model/billing ran: calls=%v settled=%v", env.englishDefiner().calls, env.billing.settled)
+	}
+}
+
+func TestDefineWithAIInEnglishAnswersWithIDWhenOnlyTheTableInsertFails(t *testing.T) {
+	env := newEnglishAIEnv()
+	env.englishAI().insertErr = errors.New("write failed")
+
+	res, err := env.defineEnglish("rizzler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Result{
+		ID: "id-rizzler", English: "rizzler", Source: SourceAI, Origin: OriginAI,
+		Definition: &EnglishDefinition{Senses: []Sense{
+			{POS: "noun", Gloss: "A stylish person.", Example: "He is a rizzler."},
+		}},
+	}
+	if !reflect.DeepEqual(res, want) {
+		t.Fatalf("got %+v, want %+v", res, want)
+	}
+	assertAIWordOutcome(t, env.recorder, outcomeUnstored)
+}
+
 // conflictEnglishAI misses on the re-check Find, then on Insert reports a
 // conflict and surfaces the winner's row (concurrent misses of one word).
 type conflictEnglishAI struct {

@@ -174,7 +174,16 @@ it('shows an AI badge and at most four senses for an English AI result', () => {
   )
 
   expect(screen.getByTestId('word-popover-ai-badge')).toBeInTheDocument()
-  expect(screen.getAllByTestId('word-popover-sense')).toHaveLength(4)
+  // Two per part of speech: "Sense three." is the third noun, so the second
+  // verb takes its place among the four.
+  expect(
+    screen.getAllByTestId('word-popover-sense').map(s => s.textContent)
+  ).toEqual([
+    'noun Sense one.Ex one.',
+    'noun Sense two.',
+    'verb Sense four.',
+    'verb Sense five.',
+  ])
 })
 
 it('shows the AI notice in English mode', () => {

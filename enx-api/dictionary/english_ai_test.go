@@ -8,9 +8,10 @@ import (
 )
 
 type fakeEnglishAI struct {
-	rows    map[string]EnglishAIRow
-	findErr error
-	inserts []EnglishAIRow
+	rows      map[string]EnglishAIRow
+	findErr   error
+	insertErr error
+	inserts   []EnglishAIRow
 }
 
 func (f *fakeEnglishAI) Find(_ context.Context, wordID string) (EnglishAIRow, bool, error) {
@@ -22,6 +23,9 @@ func (f *fakeEnglishAI) Find(_ context.Context, wordID string) (EnglishAIRow, bo
 }
 
 func (f *fakeEnglishAI) Insert(_ context.Context, row EnglishAIRow) (bool, error) {
+	if f.insertErr != nil {
+		return false, f.insertErr
+	}
 	f.inserts = append(f.inserts, row)
 	if f.rows == nil {
 		f.rows = map[string]EnglishAIRow{}
@@ -102,6 +106,21 @@ func TestResolveInEnglishReportsAnAITableReadFailureAsSourceError(t *testing.T) 
 	svc, words, _, _ := newEnglishService(nil)
 	words.seed("w1", Entry{English: "rizzler", Origin: OriginECDICT})
 	svc.UseEnglishAI(&fakeEnglishAI{findErr: errors.New("db down")})
+	svc.ent = &fakeEntitlements{can: true}
+
+	res := resolveEnglish(t, svc, "rizzler")
+	if res.Source != SourceError {
+		t.Fatalf("got %+v, want SourceError", res)
+	}
+}
+
+func TestResolveInEnglishReportsAWordsReadFailureAsSourceError(t *testing.T) {
+	svc, words, _, _ := newEnglishService(nil)
+	words.seed("w1", Entry{English: "rizzler", Origin: OriginECDICT})
+	words.idErr = errors.New("db down")
+	svc.UseEnglishAI(&fakeEnglishAI{rows: map[string]EnglishAIRow{
+		"w1": {WordID: "w1", Senses: []Sense{{POS: "noun", Gloss: "Stored.", Example: "Stored."}}},
+	}})
 	svc.ent = &fakeEntitlements{can: true}
 
 	res := resolveEnglish(t, svc, "rizzler")
