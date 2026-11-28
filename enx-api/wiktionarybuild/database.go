@@ -13,9 +13,11 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 )
 
-// The Wiktionary file's format. Bump schema_version (build.go) when the tables
-// or their meaning change. The temp tables hold the rows that are only written
-// once every entry is known.
+// The Wiktionary file's format. Bump schema_version (build.go) when a table
+// readers rely on changes or disappears, or its meaning changes. An added
+// table that readers may lack (lemma_preferred) does not bump it: an older
+// enx-api ignores it, so a rollback still opens the new file. The temp tables
+// hold the rows that are only written once every entry is known.
 const tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE entries (
@@ -52,6 +54,7 @@ CREATE TABLE form_ipa (
   ipa_us TEXT,
   ipa_uk TEXT
 );
+CREATE TABLE lemma_preferred (key TEXT PRIMARY KEY);
 CREATE TEMP TABLE forms_load (key TEXT, lemma TEXT, lemma_key TEXT, tags TEXT);
 CREATE TEMP TABLE form_ipa_load (key TEXT, pos TEXT, ipa_us TEXT, ipa_uk TEXT);
 CREATE TEMP TABLE pos_share (key TEXT, pos TEXT, share REAL, PRIMARY KEY (key, pos));
@@ -86,7 +89,8 @@ func openECDICT(ctx context.Context, path string) (*sql.DB, error) {
 	}
 	// Fail now, not after the load, on a file that is not ECDICT.
 	var pos sql.NullString
-	err = db.QueryRowContext(ctx, `SELECT pos FROM stardict LIMIT 1`).Scan(&pos)
+	var translation sql.NullString
+	err = db.QueryRowContext(ctx, `SELECT pos, translation FROM stardict LIMIT 1`).Scan(&pos, &translation)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		_ = db.Close()
 		return nil, fmt.Errorf("read ECDICT %s: %w", path, err)
@@ -220,6 +224,9 @@ func (d *database) finish(ctx context.Context, ecdict *sql.DB, facts []metaRow) 
 	if err := d.rank(ctx, ecdict); err != nil {
 		return nil, fmt.Errorf("rank entries: %w", err)
 	}
+	if err := d.markLemmaPreferred(ctx, ecdict); err != nil {
+		return nil, fmt.Errorf("mark lemma-preferred keys: %w", err)
+	}
 
 	meta := facts
 	for _, count := range []struct{ key, query string }{
@@ -228,6 +235,7 @@ func (d *database) finish(ctx context.Context, ecdict *sql.DB, facts []metaRow) 
 		{"examples_rows", `SELECT COUNT(*) FROM examples`},
 		{"forms_rows", `SELECT COUNT(*) FROM forms`},
 		{"form_ipa_rows", `SELECT COUNT(*) FROM form_ipa`},
+		{"lemma_preferred_rows", `SELECT COUNT(*) FROM lemma_preferred`},
 		{"forms_dropped_missing_lemma", `SELECT COUNT(*) FROM (
 			SELECT 1 FROM forms_load l
 			WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.key = l.lemma_key)
@@ -262,6 +270,47 @@ func (d *database) exec(ctx context.Context, statements ...string) error {
 		}
 	}
 	return nil
+}
+
+// markLemmaPreferred lists the forms that have entries of their own but are
+// explained by their lemma all the same (explainsLemma). It reads forms, so it
+// runs after that table is written.
+func (d *database) markLemmaPreferred(ctx context.Context, ecdict *sql.DB) error {
+	lookup, err := ecdict.PrepareContext(ctx, `SELECT COALESCE(translation, '') FROM stardict WHERE word = ?`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lookup.Close() }()
+	insert, err := d.tx.PrepareContext(ctx, `INSERT INTO lemma_preferred VALUES (?)`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = insert.Close() }()
+
+	keys, err := d.tx.QueryContext(ctx, `SELECT e.key, SUM(e.pos <> 'name') = 0 FROM entries e
+		WHERE EXISTS (SELECT 1 FROM forms f WHERE f.key = e.key AND f.lemma_key <> f.key)
+		GROUP BY e.key`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = keys.Close() }()
+	for keys.Next() {
+		var key, translation string
+		var onlyNames bool
+		if err := keys.Scan(&key, &onlyNames); err != nil {
+			return err
+		}
+		if err := lookup.QueryRowContext(ctx, key).Scan(&translation); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if !explainsLemma(translation, onlyNames) {
+			continue
+		}
+		if _, err := insert.ExecContext(ctx, key); err != nil {
+			return err
+		}
+	}
+	return errors.Join(keys.Err(), keys.Close())
 }
 
 // rank sets each entry's display order among the entries of its key: ECDICT's

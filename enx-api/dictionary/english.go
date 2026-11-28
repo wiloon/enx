@@ -42,8 +42,9 @@ func (s *Service) resolveEnglish(ctx context.Context, english, userID string) (R
 }
 
 // englishDefinition is nil when Wiktionary does not know key. The senses are
-// the key's own, or its lemma's when it is only a form of one; the
-// pronunciation is always the key's own.
+// the key's own, or its lemma's, with a note, when it is only a form of one:
+// it has no entries, or is marked LemmaPreferred. The pronunciation is always
+// the key's own.
 func (s *Service) englishDefinition(ctx context.Context, key string) (*EnglishDefinition, error) {
 	records, err := s.wiktionary.Read(ctx, key)
 	if err != nil {
@@ -51,18 +52,15 @@ func (s *Service) englishDefinition(ctx context.Context, key string) (*EnglishDe
 	}
 	entries, note := records.Entries, ""
 	// Of several lemmas ("axes"), the first one named is the one explained.
-	if i := slices.IndexFunc(records.Forms, func(f WiktionaryForm) bool { return f.LemmaKey != key }); i >= 0 {
+	i := slices.IndexFunc(records.Forms, func(f WiktionaryForm) bool { return f.LemmaKey != key })
+	if i >= 0 && (len(entries) == 0 || records.LemmaPreferred) {
 		lemma := records.Forms[i]
 		note = lemmaNote(lemma, records.Forms)
-		if len(entries) > 0 {
-			note = "also " + note
-		} else {
-			lemmaRecords, err := s.wiktionary.Read(ctx, lemma.LemmaKey)
-			if err != nil {
-				return nil, err
-			}
-			entries = lemmaRecords.Entries
+		lemmaRecords, err := s.wiktionary.Read(ctx, lemma.LemmaKey)
+		if err != nil {
+			return nil, err
 		}
+		entries = lemmaRecords.Entries
 	}
 	if len(entries) == 0 {
 		return nil, nil

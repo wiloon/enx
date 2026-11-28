@@ -252,6 +252,7 @@ func TestMetaHoldsBuildFactsAndCounts(t *testing.T) {
 		"examples_rows":               "0",
 		"forms_rows":                  "3",
 		"form_ipa_rows":               "1",
+		"lemma_preferred_rows":        "0",
 		"forms_dropped_missing_lemma": "2",
 	} {
 		if meta[key] != want {
@@ -333,7 +334,8 @@ func TestOutputOpensReadOnlyFromReadOnlyLocation(t *testing.T) {
 	assertRows(t, db, `SELECT word FROM entries WHERE key = 'dog'`, "dog")
 	assertRows(t, db, `PRAGMA journal_mode`, "delete")
 	assertRows(t, db, `SELECT name FROM sqlite_schema WHERE type = 'index' ORDER BY name`,
-		"entries_key", "examples_sense", "form_ipa_key", "forms_key", "senses_entry", "sqlite_autoindex_meta_1")
+		"entries_key", "examples_sense", "form_ipa_key", "forms_key", "senses_entry",
+		"sqlite_autoindex_lemma_preferred_1", "sqlite_autoindex_meta_1")
 	assertRows(t, db, `SELECT DISTINCT tbl FROM sqlite_stat1 WHERE tbl = 'entries'`, "entries")
 }
 

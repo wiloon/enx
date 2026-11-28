@@ -20,6 +20,9 @@ type WiktionaryRecords struct {
 	Forms []WiktionaryForm
 	// FormIPA is the key's own pronunciation where it has no entry.
 	FormIPA []IPA
+	// LemmaPreferred says the key has entries but is known only as a form, so
+	// its lemma's senses are shown instead.
+	LemmaPreferred bool
 }
 
 // IPA is a pronunciation, American and British; either may be empty.

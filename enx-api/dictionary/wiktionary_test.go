@@ -198,23 +198,45 @@ func TestResolveInEnglishExplainsAFormByItsLemma(t *testing.T) {
 	}
 }
 
-func TestResolveInEnglishNotesALemmaBesideTheWordsOwnEntries(t *testing.T) {
-	svc, _, _, wiktionary := newEnglishService(map[string]WiktionaryRecords{
-		"left": {
-			Entries: []WiktionaryEntry{entry("adj", "Opposite of right.")},
-			Forms:   []WiktionaryForm{form("left", "alternative"), form("leave", "past")},
+func TestResolveInEnglishShowsAWordsOwnEntriesWithoutALemmaNote(t *testing.T) {
+	for word, forms := range map[string][]WiktionaryForm{
+		"left": {form("left", "alternative"), form("leave", "past")},
+		"run":  {form("rin", "participle past")},
+		"get":  {form("git", "alternative")},
+	} {
+		t.Run(word, func(t *testing.T) {
+			svc, _, _, wiktionary := newEnglishService(map[string]WiktionaryRecords{
+				word: {Entries: []WiktionaryEntry{entry("verb", "Own.")}, Forms: forms},
+			})
+
+			res := resolveEnglish(t, svc, word)
+
+			want := []Sense{{POS: "verb", Gloss: "Own."}}
+			if res.Definition.LemmaNote != "" || !reflect.DeepEqual(res.Definition.Senses, want) {
+				t.Fatalf("definition %+v", res.Definition)
+			}
+			if !reflect.DeepEqual(wiktionary.read, []string{word}) {
+				t.Fatalf("read %v, want the lemma not read", wiktionary.read)
+			}
+		})
+	}
+}
+
+func TestResolveInEnglishExplainsALemmaPreferredKeyByItsLemma(t *testing.T) {
+	svc, _, _, _ := newEnglishService(map[string]WiktionaryRecords{
+		"ran": {
+			LemmaPreferred: true,
+			Entries:        []WiktionaryEntry{{POS: "noun", IPA: IPA{US: "/ræn/"}, Senses: []WiktionarySense{{Gloss: "Yarns."}}}},
+			Forms:          []WiktionaryForm{form("run", "past")},
 		},
-		"leave": {Entries: []WiktionaryEntry{entry("verb", "To go away.")}},
+		"run": {Entries: []WiktionaryEntry{{POS: "verb", IPA: IPA{US: "/rʌn/", UK: "/ɹʌn/"}, Senses: []WiktionarySense{{Gloss: "To move fast."}}}}},
 	})
 
-	res := resolveEnglish(t, svc, "left")
+	res := resolveEnglish(t, svc, "ran")
 
-	want := []Sense{{POS: "adj", Gloss: "Opposite of right."}}
-	if res.Definition.LemmaNote != "also past tense of leave" || !reflect.DeepEqual(res.Definition.Senses, want) {
+	want := &EnglishDefinition{Senses: []Sense{{POS: "verb", Gloss: "To move fast."}}, LemmaNote: "past tense of run", PronunciationUS: "/ræn/"}
+	if !reflect.DeepEqual(res.Definition, want) {
 		t.Fatalf("definition %+v", res.Definition)
-	}
-	if !reflect.DeepEqual(wiktionary.read, []string{"left"}) {
-		t.Fatalf("read %v, want the lemma not read", wiktionary.read)
 	}
 }
 
