@@ -19,10 +19,12 @@ type fakeAI struct {
 	res   dictionary.Result
 	err   error
 	words []string
+	langs []dictionary.Language
 }
 
-func (f *fakeAI) DefineWithAI(_ context.Context, english, _ string) (dictionary.Result, error) {
+func (f *fakeAI) DefineWithAI(_ context.Context, english, _ string, lang dictionary.Language) (dictionary.Result, error) {
 	f.words = append(f.words, english)
+	f.langs = append(f.langs, lang)
 	return f.res, f.err
 }
 
@@ -66,7 +68,7 @@ func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 func TestAIWordReturnsTheDefinitionAndTheCurrentReviewState(t *testing.T) {
 	ai := &fakeAI{res: dictionary.Result{ID: "w1", English: "rizzler", Chinese: "n. 很有魅力的人", Source: dictionary.SourceAI, Origin: dictionary.OriginAI}}
 	reviews := &fakeReviews{}
-	h := NewHandler(nil, nil, reviews).WithAI(ai, fakePolicy{})
+	h := newHandler(nil, nil, reviews).WithAI(ai, fakePolicy{})
 
 	w := post(t, h.AIWord, "u1", `{"word":"Rizzler"}`)
 
@@ -95,7 +97,7 @@ func TestAIWordReturnsTheDefinitionAndTheCurrentReviewState(t *testing.T) {
 func TestAIWordWithoutARowHasNoReviewState(t *testing.T) {
 	ai := &fakeAI{res: dictionary.Result{English: "rizzler", Chinese: "n. 很有魅力的人", Source: dictionary.SourceAI, Origin: dictionary.OriginAI}}
 	reviews := &fakeReviews{}
-	h := NewHandler(nil, nil, reviews).WithAI(ai, fakePolicy{})
+	h := newHandler(nil, nil, reviews).WithAI(ai, fakePolicy{})
 
 	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
 
@@ -114,7 +116,7 @@ func TestAIWordWithoutARowHasNoReviewState(t *testing.T) {
 func TestAIWordWhenThereIsNoDefinition(t *testing.T) {
 	for _, source := range []dictionary.Source{dictionary.SourceAIMiss, dictionary.SourceMiss} {
 		ai := &fakeAI{res: dictionary.Result{English: "asdfgh", Source: source}}
-		h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
+		h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
 
 		w := post(t, h.AIWord, "u1", `{"word":"asdfgh"}`)
 
@@ -141,7 +143,7 @@ func TestAIWordErrorMapping(t *testing.T) {
 		{"not available", dictionary.ErrAIUnavailable, http.StatusServiceUnavailable, "ai_unavailable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
+			h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
 
 			w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
 
@@ -171,7 +173,7 @@ func TestAIWordFailureSaysWhichSideFailed(t *testing.T) {
 		{"anything else", errors.New("secret database detail"), internal},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
+			h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: tc.err}, fakePolicy{})
 
 			w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
 
@@ -188,7 +190,7 @@ func TestAIWordFailureSaysWhichSideFailed(t *testing.T) {
 // The daily trial limit says how long until it resets, not "tomorrow"
 // (ADR-048 Decision 7).
 func TestAIWordTrialDailyLimitSaysHoursUntilReset(t *testing.T) {
-	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrTrialLimitedPerDay}, fakePolicy{})
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrTrialLimitedPerDay}, fakePolicy{})
 
 	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
 	want := "You've reached today's trial limit. Try again in "
@@ -198,7 +200,7 @@ func TestAIWordTrialDailyLimitSaysHoursUntilReset(t *testing.T) {
 }
 
 func TestAIWordECDICTUnavailableUsesTheDictionaryNotice(t *testing.T) {
-	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrEcdictUnavailable}, fakePolicy{})
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrEcdictUnavailable}, fakePolicy{})
 
 	if w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`); w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503", w.Code)
@@ -207,7 +209,7 @@ func TestAIWordECDICTUnavailableUsesTheDictionaryNotice(t *testing.T) {
 
 func TestAIWordRejectsBadRequests(t *testing.T) {
 	ai := &fakeAI{}
-	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
 
 	if w := post(t, h.AIWord, "", `{"word":"rizzler"}`); w.Code != http.StatusUnauthorized {
 		t.Errorf("no user: status %d, want 401", w.Code)
@@ -227,7 +229,7 @@ func TestAIWordRejectsBadRequests(t *testing.T) {
 // is normalised the same way.
 func TestAIWordNormalisesTheWordLikeALookup(t *testing.T) {
 	ai := &fakeAI{res: dictionary.Result{English: "riler", Source: dictionary.SourceAIMiss}}
-	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{})
 
 	post(t, h.AIWord, "u1", `{"word":"ri22ler"}`)
 
@@ -237,7 +239,7 @@ func TestAIWordNormalisesTheWordLikeALookup(t *testing.T) {
 }
 
 func TestAIWordIsUnavailableUntilWiredUp(t *testing.T) {
-	h := NewHandler(nil, nil, &fakeReviews{})
+	h := newHandler(nil, nil, &fakeReviews{})
 
 	if w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`); w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503 when the AI fallback is not wired", w.Code)
@@ -259,7 +261,7 @@ func TestLookupMissOffersTheAIFallback(t *testing.T) {
 		{"fallback not wired", nil, false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewHandler(fakeResolver{res: dictionary.Result{English: "rizzler", Source: dictionary.SourceMiss}}, &fakeMeter{}, &fakeReviews{})
+			h := newHandler(fakeResolver{res: dictionary.Result{English: "rizzler", Source: dictionary.SourceMiss}}, &fakeMeter{}, &fakeReviews{})
 			if tc.policy != nil {
 				h.WithAI(&fakeAI{}, tc.policy)
 			}
@@ -285,7 +287,7 @@ func TestLookupMissOffersTheAIFallback(t *testing.T) {
 }
 
 func TestLookupHitDoesNotMentionTheAIFallback(t *testing.T) {
-	h := NewHandler(fakeResolver{res: dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal, Origin: dictionary.OriginECDICT}}, &fakeMeter{}, &fakeReviews{}).
+	h := newHandler(fakeResolver{res: dictionary.Result{ID: "w1", English: "run", Chinese: "v. 跑", Source: dictionary.SourceLocal, Origin: dictionary.OriginECDICT}}, &fakeMeter{}, &fakeReviews{}).
 		WithAI(&fakeAI{}, fakePolicy{canUse: true, auto: true})
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -301,15 +303,81 @@ func TestLookupHitDoesNotMentionTheAIFallback(t *testing.T) {
 	}
 }
 
-// ADR-098: the model writes Chinese, so it is not called for a user who may
-// want English.
+// ADR-098: a failed language read is 503, never a Chinese answer by default.
 func TestAIWordRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
 	ai := &fakeAI{}
-	h := NewHandler(nil, nil, &fakeReviews{}).WithAI(ai, nil).WithExplanationLanguages(failingLanguages{})
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, nil).WithExplanationLanguages(failingLanguages{})
 
 	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
 
 	if w.Code != http.StatusServiceUnavailable || decode(t, w)["code"] != "ai_unavailable" || len(ai.words) != 0 {
 		t.Fatalf("status %d body %s, asked %v; want ai_unavailable and no AI call", w.Code, w.Body, ai.words)
+	}
+}
+
+type fixedLanguages struct{ lang dictionary.Language }
+
+func (f fixedLanguages) ExplanationLanguage(context.Context, string) (dictionary.Language, error) {
+	return f.lang, nil
+}
+
+func TestAIWordInEnglishReturnsSensesAndExplanationLanguage(t *testing.T) {
+	ai := &fakeAI{res: dictionary.Result{
+		ID: "w1", English: "rizzler", Source: dictionary.SourceAI, Origin: dictionary.OriginAI,
+		Definition: &dictionary.EnglishDefinition{Senses: []dictionary.Sense{
+			{POS: "noun", Gloss: "A stylish person.", Example: "He is a rizzler."},
+		}},
+	}}
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+
+	body := decode(t, w)
+	word, _ := body["word"].(map[string]any)
+	if w.Code != http.StatusOK || body["found"] != true {
+		t.Fatalf("status %d body %s", w.Code, w.Body)
+	}
+	if word["ExplanationLanguage"] != "en" || word["Origin"] != "ai" || word["Source"] != "ai" {
+		t.Fatalf("word = %+v", word)
+	}
+	if word["Chinese"] != "" || word["Pronunciation"] != "" {
+		t.Fatalf("want empty Chinese/Pronunciation, got %+v", word)
+	}
+	senses, _ := word["Senses"].([]any)
+	if len(senses) != 1 {
+		t.Fatalf("Senses = %+v", word["Senses"])
+	}
+	if len(ai.langs) != 1 || ai.langs[0] != dictionary.LanguageEnglish {
+		t.Fatalf("langs = %v", ai.langs)
+	}
+}
+
+func TestAIWordInEnglishReturnsAWiktionaryReCheckHit(t *testing.T) {
+	ai := &fakeAI{res: dictionary.Result{
+		ID: "w1", English: "run", Source: dictionary.SourceWiktionary, Origin: dictionary.OriginWiktionary,
+		Definition: &dictionary.EnglishDefinition{
+			LemmaNote: "past tense of go", PronunciationUS: "/rʌn/",
+			Senses: []dictionary.Sense{{POS: "verb", Gloss: "To move.", Example: "I run."}},
+		},
+	}}
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"run"}`)
+
+	word := decode(t, w)["word"].(map[string]any)
+	if word["Origin"] != "wiktionary" || word["LemmaNote"] != "past tense of go" || word["PronunciationUS"] != "/rʌn/" {
+		t.Fatalf("word = %+v", word)
+	}
+}
+
+func TestAIWordWiktionaryUnavailableIsAiUnavailable(t *testing.T) {
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrWiktionaryUnavailable}, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+	if w.Code != http.StatusServiceUnavailable || decode(t, w)["code"] != "ai_unavailable" {
+		t.Fatalf("status %d body %s", w.Code, w.Body)
 	}
 }

@@ -119,6 +119,7 @@ import {
   runAiLookup,
   type AiLookupDeps,
 } from '@/lib/aiLookupFlow'
+import { bindPopoverAiLookupGate } from '@/lib/popoverAiLookupGate'
 import PinHint from '@/components/PinHint'
 import tailwindCss from '@/index.css?inline'
 import { config } from '@/config/env'
@@ -648,11 +649,19 @@ const showWordPopover = async (word: string, reference: Range) => {
     }
   }
 
+  // ADR-098: after 中 / EN is saved, re-read this word with no count. A late
+  // answer for another word or the previous language is dropped by the gate.
+  // AI requests capture the same gate so a late answer from before a switch
+  // cannot write the popover or wordCache (#1236).
+  const lookupGate = createPopoverLookupGate()
+  let activeGate = lookupGate.beginInitial()
+  const initialGate = activeGate
+
   // The AI word fallback (ADR-045): what a lookup that found nothing offers,
   // and what to do with an AI-made definition. Its answer can arrive seconds
   // later, after the user has clicked another word, so every step checks that
   // this popup is still the current one -- and the account it was asked for.
-  const aiDeps: AiLookupDeps = {
+  const baseAiDeps: AiLookupDeps = {
     store: contentScriptStore,
     isCurrent: () => currentOverlay === overlay && isCurrentAccount(),
     onDefined: defined => {
@@ -668,9 +677,15 @@ const showWordPopover = async (word: string, reference: Range) => {
     },
     recordLookup,
   }
+  const aiDepsFor = (gate: { isCurrent: () => boolean }) =>
+    bindPopoverAiLookupGate(baseAiDeps, gate)
   const handleAiLookup = () => {
     const current = contentScriptStore.get(currentWordAtom)
-    void runAiLookup(current?.English || word, { auto: false }, aiDeps)
+    void runAiLookup(
+      current?.English || word,
+      { auto: false },
+      aiDepsFor(activeGate)
+    )
   }
   // Retry on the unverified notice (#686): the request that came back
   // unverified is sent again as a fresh attempt with its own outcome.
@@ -686,12 +701,9 @@ const showWordPopover = async (word: string, reference: Range) => {
     void fetchTranslation()
   }
 
-  // ADR-098: after 中 / EN is saved, re-read this word with no count. A late
-  // answer for another word or the previous language is dropped by the gate.
-  const lookupGate = createPopoverLookupGate()
-  const initialGate = lookupGate.beginInitial()
   const handleExplanationLanguageChanged = (language: string) => {
-    const switchGate = lookupGate.beginSwitch(language)
+    activeGate = lookupGate.beginSwitch(language)
+    const switchGate = activeGate
     void rereadForExplanationLanguage(word.trim(), language, {
       store: contentScriptStore,
       state: contentScriptStore.get(currentWordAtom) ?? undefined,
@@ -707,7 +719,7 @@ const showWordPopover = async (word: string, reference: Range) => {
         currentOverlay === overlay &&
         isCurrentAccount() &&
         switchGate.isCurrent(),
-      onMiss: wordData => handleLookupMiss(wordData, aiDeps),
+      onMiss: wordData => handleLookupMiss(wordData, aiDepsFor(switchGate)),
     })
   }
 
@@ -819,7 +831,10 @@ const showWordPopover = async (word: string, reference: Range) => {
           },
         }
       )
-      if (wordData && aiDeps.isCurrent()) handleLookupMiss(wordData, aiDeps)
+      {
+        const aiDeps = aiDepsFor(initialGate)
+        if (wordData && aiDeps.isCurrent()) handleLookupMiss(wordData, aiDeps)
+      }
     } catch (error) {
       console.error('Error fetching word translation:', error)
       // sendToBackground never rejects, so this is a bug in handling the

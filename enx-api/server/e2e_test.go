@@ -5,24 +5,24 @@ import (
 	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/platform/clerktest"
-	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 // e2eServer creates a real httptest.Server backed by the full application router.
 // The returned cleanup function must be called when the test is done.
-func e2eServer(t *testing.T, cfg *config.Config) (*httptest.Server, func()) {
+func e2eServer(t *testing.T, db *gorm.DB, cfg *config.Config) (*httptest.Server, func()) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	router := setupRouter(cfg, metrics.New())
+	router := setupRouter(db, cfg, metrics.New())
 	ts := httptest.NewServer(router)
 	return ts, func() { ts.Close() }
 }
@@ -41,18 +41,17 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
 
-	dbPath := filepath.Join(t.TempDir(), "enx-e2e.db")
-	sqlitex.Init(dbPath)
-	if sqlitex.DB == nil {
-		t.Fatal("sqlitex.DB is nil after Init")
+	db := sqlitextest.Open(t)
+	if db == nil {
+		t.Fatal("db is nil after Open")
 	}
 
 	sub := "user_e2egetme001"
 	email := "e2e-clerk@example.com"
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
+		db.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 	})
-	sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
+	db.Exec("DELETE FROM users WHERE auth_subject = ?", sub)
 
 	token := env.SignSessionToken(t, jwt.MapClaims{
 		"sub":   sub,
@@ -60,7 +59,7 @@ func TestE2E_ClerkGetMe(t *testing.T) {
 		"name":  "e2e-clerk-user",
 	})
 
-	ts, done := e2eServer(t, cfg)
+	ts, done := e2eServer(t, db, cfg)
 	defer done()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -102,13 +101,12 @@ func TestE2E_ClerkGetMe_IsAdminReflectsAllowlist(t *testing.T) {
 	sub := "user_e2egetme_admin"
 	cfg.Admin.AuthSubjects = []string{sub}
 
-	dbPath := filepath.Join(t.TempDir(), "enx-e2e-admin.db")
-	sqlitex.Init(dbPath)
-	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
+	db := sqlitextest.Open(t)
+	t.Cleanup(func() { db.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
 
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "admin-me@example.com", "name": "admin-me"})
 
-	ts, done := e2eServer(t, cfg)
+	ts, done := e2eServer(t, db, cfg)
 	defer done()
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
@@ -155,11 +153,11 @@ func TestE2E_FeedbackRoutes(t *testing.T) {
 	cfg.Feedback.DailyLimit = 1
 	adminSub := "user_e2efeedback_admin"
 	cfg.Admin.AuthSubjects = []string{adminSub}
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-feedback.db"))
+	db := sqlitextest.Open(t)
 
 	user := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2efeedback", "email": "user@example.com", "name": "user"})
 	admin := env.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com", "name": "admin"})
-	ts, done := e2eServer(t, cfg)
+	ts, done := e2eServer(t, db, cfg)
 	defer done()
 
 	report := func(url string) string {
@@ -208,10 +206,10 @@ func TestE2E_ParagraphInitIsGone(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-paragraph-init.db"))
+	db := sqlitextest.Open(t)
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2eparagraph1", "email": "e2e-paragraph@example.com", "name": "e2e-paragraph"})
 
-	ts, done := e2eServer(t, cfg)
+	ts, done := e2eServer(t, db, cfg)
 	defer done()
 
 	for _, method := range []string{"QUERY", http.MethodPost, http.MethodGet} {
@@ -228,13 +226,13 @@ func TestE2E_LookupMetrics(t *testing.T) {
 	env := clerktest.NewEnv(t)
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-metrics.db"))
+	db := sqlitextest.Open(t)
 	seedEcdict(t)
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2emetrics001", "email": "e2e-metrics@example.com", "name": "e2e-metrics"})
 
 	gin.SetMode(gin.TestMode)
 	m := metrics.New()
-	ts := httptest.NewServer(setupRouter(cfg, m))
+	ts := httptest.NewServer(setupRouter(db, cfg, m))
 	defer ts.Close()
 
 	for i := 0; i < 2; i++ {
@@ -274,12 +272,12 @@ func TestE2E_ReviewWordsRoute(t *testing.T) {
 	cfg := config.Default()
 	cfg.Clerk = env.Config()
 	cfg.RateLimit = config.RateLimit{RequestsPerSecond: 0.01, Burst: 1}
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-review-words.db"))
+	db := sqlitextest.Open(t)
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": "user_e2ereviewwords", "email": "review@example.com", "name": "review"})
 
 	gin.SetMode(gin.TestMode)
 	m := metrics.New()
-	ts := httptest.NewServer(setupRouter(cfg, m))
+	ts := httptest.NewServer(setupRouter(db, cfg, m))
 	defer ts.Close()
 
 	get := func() (int, string) {
@@ -319,12 +317,12 @@ func TestE2E_SignedInRequestsAreRateLimitedPerUser(t *testing.T) {
 	cfg.Clerk = env.Config()
 	cfg.RateLimit = config.RateLimit{RequestsPerSecond: 0.01, Burst: 2}
 
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-e2e-ratelimit.db"))
+	db := sqlitextest.Open(t)
 	sub := "user_e2eratelimit"
-	t.Cleanup(func() { sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
+	t.Cleanup(func() { db.Exec("DELETE FROM users WHERE auth_subject = ?", sub) })
 	token := env.SignSessionToken(t, jwt.MapClaims{"sub": sub, "email": "rate@example.com", "name": "rate"})
 
-	ts, done := e2eServer(t, cfg)
+	ts, done := e2eServer(t, db, cfg)
 	defer done()
 
 	do := func(path, bearer string) *http.Response {

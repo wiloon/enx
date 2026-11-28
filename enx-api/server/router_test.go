@@ -19,7 +19,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
-	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
+	for _, r := range setupRouter(nil, config.Default(), metrics.New()).Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
 
@@ -57,7 +57,7 @@ func TestLookupRoutesAreRegisteredOnlyUnderAPI(t *testing.T) {
 func TestRemovedRoutesAreNotRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
+	for _, r := range setupRouter(nil, config.Default(), metrics.New()).Routes() {
 		switch r.Method + " " + r.Path {
 		case "DELETE /api/word/:word", "GET /api/wrap", "POST /api/mark",
 			"POST /api/translate/sentence-with-word":
@@ -75,7 +75,7 @@ func TestSentenceWithWordReturns404(t *testing.T) {
 	body := strings.NewReader(`{"sentence":"A fox.","word":"fox"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/translate/sentence-with-word", body)
 	req.Header.Set("Content-Type", "application/json")
-	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, req)
+	setupRouter(nil, config.Default(), metrics.New()).ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("POST /api/translate/sentence-with-word = %d %s, want 404", w.Code, w.Body.String())
 	}
@@ -87,7 +87,7 @@ func TestParagraphInitIsNotRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
-	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
+	for _, r := range setupRouter(nil, config.Default(), metrics.New()).Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
 	for _, route := range []string{"QUERY /api/paragraph-init", "POST /api/paragraph-init", "GET /api/paragraph-init"} {
@@ -103,7 +103,7 @@ func TestReferralRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registered := map[string]bool{}
-	for _, r := range setupRouter(config.Default(), metrics.New()).Routes() {
+	for _, r := range setupRouter(nil, config.Default(), metrics.New()).Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
 	for _, route := range []string{"GET /api/referral/me", "POST /api/referral/claim", "GET /api/referral/offer"} {
@@ -113,7 +113,7 @@ func TestReferralRoutes(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/referral/offer", nil))
+	setupRouter(nil, config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/referral/offer", nil))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"credits":200`) || !strings.Contains(w.Body.String(), `"days":30`) {
 		t.Fatalf("signed-out GET /api/referral/offer = %d %s, want 200 with the default 200 credits / 30 days", w.Code, w.Body.String())
 	}
@@ -125,7 +125,7 @@ func TestTrialTermsRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	w := httptest.NewRecorder()
-	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+	setupRouter(nil, config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
 	if w.Code != http.StatusOK || w.Body.String() != `{"amount":100,"ttl_days":30}` {
 		t.Fatalf("signed-out GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":100,\"ttl_days\":30}", w.Code, w.Body.String())
 	}
@@ -139,7 +139,7 @@ func TestTrialTermsRoute(t *testing.T) {
 			t.Fatalf("config.Load: %v", err)
 		}
 		w := httptest.NewRecorder()
-		setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+		setupRouter(nil, cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
 		if w.Code != http.StatusOK || w.Body.String() != `{"amount":0,"ttl_days":0}` {
 			t.Fatalf("amount=0 GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":0,\"ttl_days\":0}", w.Code, w.Body.String())
 		}
@@ -154,7 +154,7 @@ func TestTrialTermsRoute(t *testing.T) {
 			t.Fatalf("config.Load: %v", err)
 		}
 		w := httptest.NewRecorder()
-		setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+		setupRouter(nil, cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
 		if w.Code != http.StatusOK || w.Body.String() != `{"amount":0,"ttl_days":0}` {
 			t.Fatalf("ttl-days=0 GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":0,\"ttl_days\":0}", w.Code, w.Body.String())
 		}
@@ -167,7 +167,7 @@ func TestFreeDailyLookupLimitRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	w := httptest.NewRecorder()
-	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
+	setupRouter(nil, config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
 	if w.Code != http.StatusOK || w.Body.String() != `{"free_daily_lookup_limit":2000}` {
 		t.Fatalf("signed-out GET /api/dictionary/free-daily-lookup-limit = %d %s, want 200 with {\"free_daily_lookup_limit\":2000}", w.Code, w.Body.String())
 	}
@@ -180,7 +180,7 @@ func TestFreeDailyLookupLimitRoute(t *testing.T) {
 		t.Fatalf("config.Load: %v", err)
 	}
 	w = httptest.NewRecorder()
-	setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
+	setupRouter(nil, cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dictionary/free-daily-lookup-limit", nil))
 	if w.Code != http.StatusOK || w.Body.String() != `{"free_daily_lookup_limit":3456}` {
 		t.Fatalf("env-overridden GET /api/dictionary/free-daily-lookup-limit = %d %s, want 200 with {\"free_daily_lookup_limit\":3456}", w.Code, w.Body.String())
 	}
@@ -196,7 +196,7 @@ func TestCORSPreflightAllowsQuery(t *testing.T) {
 	req.Header.Set("Access-Control-Request-Method", "QUERY")
 	cfg := config.Default()
 	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://combdcldlodkikjfhjbdbogjlfmnbjkf"}
-	setupRouter(cfg, metrics.New()).ServeHTTP(w, req)
+	setupRouter(nil, cfg, metrics.New()).ServeHTTP(w, req)
 
 	if !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "QUERY") {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want QUERY listed", w.Header().Get("Access-Control-Allow-Methods"))
@@ -225,7 +225,7 @@ func TestGinModeFollowsLogLevel(t *testing.T) {
 // a 401 also shows the route is registered (an unknown route answers 404).
 func TestSignedInRoutesRequireASession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := setupRouter(clerkConfig(t), metrics.New())
+	router := setupRouter(nil, clerkConfig(t), metrics.New())
 
 	for _, route := range []struct{ method, path string }{
 		{http.MethodGet, "/api/me"},
@@ -262,7 +262,7 @@ func TestOpsUserStatsRouteUsesTheOpsTokenNotClerk(t *testing.T) {
 			req.Header.Set("Authorization", auth)
 		}
 		w := httptest.NewRecorder()
-		setupRouter(cfg, metrics.New()).ServeHTTP(w, req)
+		setupRouter(nil, cfg, metrics.New()).ServeHTTP(w, req)
 		return w.Code
 	}
 
@@ -287,7 +287,7 @@ func TestCORSIgnoresTheOIDCPartyOverride(t *testing.T) {
 	cfg := config.Default()
 	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://clerk-origin"}
 	cfg.OIDC.AuthorizedParties = []string{"logto-app", "chrome-extension://oidc-only"}
-	router := setupRouter(cfg, metrics.New())
+	router := setupRouter(nil, cfg, metrics.New())
 	for origin, want := range map[string]string{
 		"chrome-extension://clerk-origin": "chrome-extension://clerk-origin",
 		"chrome-extension://oidc-only":    "",
@@ -308,7 +308,7 @@ func TestCORSUsesTheConfiguredAuthorizedParties(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := config.Default()
 	cfg.Clerk.AuthorizedParties = []string{"chrome-extension://configured-id"}
-	router := setupRouter(cfg, metrics.New())
+	router := setupRouter(nil, cfg, metrics.New())
 	for _, origin := range []string{"chrome-extension://configured-id", "chrome-extension://other"} {
 		t.Run(origin, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/ping", nil)

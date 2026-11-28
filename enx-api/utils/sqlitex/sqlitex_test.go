@@ -54,6 +54,7 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 		"users", "words", "user_dicts", "sessions", "sync_state",
 		"subscriptions", "credit_accounts", "credit_transactions", "lookup_events",
 		"active_users_daily", "referral_codes", "referrals",
+		"ai_english_definitions",
 	} {
 		if !DB.Migrator().HasTable(table) {
 			t.Errorf("expected AutoMigrate to create table %q", table)
@@ -232,7 +233,7 @@ func TestSQLLogLevel(t *testing.T) {
 
 func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "billing.db")
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := MigrateWebhookReceipts(DB); err != nil {
@@ -252,7 +253,7 @@ func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	var count int64

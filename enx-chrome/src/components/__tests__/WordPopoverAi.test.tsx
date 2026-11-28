@@ -230,13 +230,10 @@ describe('a definition', () => {
       ai: { status: 'idle' },
     })
 
-    expect(
-      screen.getByText(
-        (_, el) =>
-          el?.tagName === 'P' && el.textContent === 'n. 很有魅力的人 AI'
-      )
-    ).toBeInTheDocument()
     expect(screen.getByTestId('word-popover-ai-badge')).toHaveTextContent('AI')
+    expect(screen.getByTestId('word-popover-ai-badge').parentElement).toHaveTextContent(
+      'n. 很有魅力的人'
+    )
   })
 })
 
@@ -389,7 +386,7 @@ it('keeps the badge inline and opens its menu below the definition with an optio
   fetchPrefs.mockResolvedValue(prefsResult(false))
   renderPopover({ current: word({ Chinese: 'n. 很有魅力的人', Origin: 'ai' }) })
   const badge = screen.getByTestId('word-popover-ai-badge')
-  const definition = badge.closest('p')
+  const definition = badge.parentElement
   expect(definition).not.toBeNull()
   fireEvent.click(badge)
   const menu = await screen.findByTestId('word-popover-ai-menu')

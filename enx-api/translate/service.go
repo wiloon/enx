@@ -8,7 +8,6 @@ import (
 
 	"enx-api/dictionary"
 	dictionaryhttp "enx-api/dictionary/httpapi"
-	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/metrics"
 	"enx-api/middleware"
@@ -26,9 +25,9 @@ type WordCounts interface {
 }
 
 // AIDefiner defines a word the dictionaries lack: dictionary.Service in
-// production (ADR-045).
+// production (ADR-045 / ADR-098).
 type AIDefiner interface {
-	DefineWithAI(ctx context.Context, english, userID string) (dictionary.Result, error)
+	DefineWithAI(ctx context.Context, english, userID string, lang dictionary.Language) (dictionary.Result, error)
 }
 
 // AIPolicy says what the AI fallback offers a user: adapters.AIPolicy in
@@ -47,10 +46,6 @@ type Handler struct {
 	policy  AIPolicy
 
 	languages dictionary.ExplanationLanguages // nil: everyone is zh-Hans
-}
-
-func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews WordCounts) *Handler {
-	return NewHandlerWithQuotaTiers(dict, meter, reviews, entadapters.Billing{})
 }
 
 func (h *Handler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *Handler {

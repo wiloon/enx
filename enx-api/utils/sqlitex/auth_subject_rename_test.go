@@ -72,7 +72,7 @@ func TestInitWithLogLevel_RenamesClerkUserIDToAuthSubject(t *testing.T) {
 
 	previous := DB
 	t.Cleanup(func() { DB = previous })
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatalf("InitWithLogLevel: %v", err)
 	}
 	t.Cleanup(func() {
@@ -138,7 +138,7 @@ func TestInitWithLogLevel_RenamesClerkUserIDToAuthSubject(t *testing.T) {
 	if raw, err := DB.DB(); err == nil {
 		_ = raw.Close()
 	}
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	after, err := dumpUsersSubjects(t, DB)
@@ -161,7 +161,7 @@ func TestInitWithLogLevel_FreshDatabaseCreatesAuthSubject(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fresh.db")
 	previous := DB
 	t.Cleanup(func() { DB = previous })
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -201,7 +201,7 @@ func TestInitWithLogLevel_AmbiguousSubjectColumnsRefuseStartup(t *testing.T) {
 
 	previous := DB
 	t.Cleanup(func() { DB = previous })
-	err = InitWithLogLevel(path, "error")
+	_, err = InitWithLogLevel(path, "error")
 	if err == nil || !strings.Contains(err.Error(), "both clerk_user_id and auth_subject") {
 		t.Fatalf("InitWithLogLevel = %v, want ambiguous-column refusal", err)
 	}
@@ -230,7 +230,7 @@ func TestInitWithLogLevel_FailedRenameRefusesStartupAndKeepsOldColumn(t *testing
 			previous := DB
 			t.Cleanup(func() { DB = previous })
 
-			err := InitWithLogLevel(path, "error")
+			_, err := InitWithLogLevel(path, "error")
 			if err == nil || !strings.Contains(err.Error(), "disk full") {
 				t.Fatalf("InitWithLogLevel = %v, want disk full", err)
 			}

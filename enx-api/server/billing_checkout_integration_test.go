@@ -20,6 +20,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"gorm.io/gorm"
 )
 
 type checkoutFixture struct {
@@ -36,8 +37,10 @@ func checkoutRoute(t *testing.T) *checkoutFixture {
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
 
-	if err := openBillingDatabase(t, func() error {
-		return initializeBillingDatabase(filepath.Join(t.TempDir(), "checkout.db"), "error")
+	var db *gorm.DB
+	if err := openBillingDatabase(t, func() (err error) {
+		db, err = initializeBillingDatabase(filepath.Join(t.TempDir(), "checkout.db"), "error")
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +76,7 @@ func checkoutRoute(t *testing.T) *checkoutFixture {
 	t.Cleanup(backendServer.Close)
 	backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{URL: stripeSDK.String(backendServer.URL), HTTPClient: backendServer.Client(), MaxNetworkRetries: stripeSDK.Int64(0)})
 	sc := stripeSDK.NewClient("sk_test_fake", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
-	f.server = httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), sc, nil))
+	f.server = httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), sc, nil))
 	t.Cleanup(f.server.Close)
 	f.token = jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_buyer", "email": "buyer@example.com"})
 	return f

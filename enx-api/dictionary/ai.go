@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"enx-api/ailimit"
+	"enx-api/dictionary/wordform"
 	"enx-api/utils/logger"
 )
 
@@ -83,12 +84,26 @@ type Definition struct {
 	Chinese string
 }
 
+// EnglishModelDefinition is a model's checked English-English answer for one
+// word (ADR-098 Decision 5).
+type EnglishModelDefinition struct {
+	IsWord  bool
+	Quality int
+	Senses  []Sense
+}
+
 // WordDefiner asks a model to define one word with no sentence. It returns an
 // error wrapping ErrInvalidAIReply when the model answered unusably, and any
 // other error when the call itself failed. Either way it reports the usage the
 // provider did.
 type WordDefiner interface {
 	DefineWord(ctx context.Context, word string) (Definition, AIUsage, error)
+}
+
+// EnglishWordDefiner asks a model for an English-English definition with no
+// sentence (ADR-098 Decision 5).
+type EnglishWordDefiner interface {
+	DefineEnglishWord(ctx context.Context, word string) (EnglishModelDefinition, AIUsage, error)
 }
 
 // AIBilling charges a user for AI lookups by the tokens they used.
@@ -130,12 +145,14 @@ type TrialGate interface {
 }
 
 type aiFallback struct {
-	definer    WordDefiner
-	billing    AIBilling
-	limiter    AILimiter
-	trialGate  TrialGate
-	cfg        AIConfig
-	candidates CandidateStore
+	definer              WordDefiner
+	englishDefiner       EnglishWordDefiner
+	englishPromptVersion string
+	billing              AIBilling
+	limiter              AILimiter
+	trialGate            TrialGate
+	cfg                  AIConfig
+	candidates           CandidateStore
 }
 
 // CandidateStatus is where an AI candidate definition stands (ADR-091).
@@ -225,6 +242,15 @@ func (s *Service) EnableAI(definer WordDefiner, billing AIBilling, limiter AILim
 	s.ai = &aiFallback{definer: definer, billing: billing, limiter: limiter, cfg: cfg}
 }
 
+// EnableEnglishAI wires the English-English model call. Call it after
+// EnableAI; without it an en DefineWithAI returns ErrAIUnavailable.
+func (s *Service) EnableEnglishAI(definer EnglishWordDefiner, promptVersion string) {
+	if s.ai != nil {
+		s.ai.englishDefiner = definer
+		s.ai.englishPromptVersion = promptVersion
+	}
+}
+
 // LimitTrial turns on the trial call-rate limit for the AI fallback. Call it
 // after EnableAI; without it no trial limit applies.
 func (s *Service) LimitTrial(gate TrialGate) {
@@ -253,15 +279,15 @@ func (s *Service) AIConfigured() bool {
 // Charging (ADR-094): a model call is billed by the tokens it used, whether it
 // answered, said "not a word", gave an unusable reply or failed. A failure
 // that reports no tokens is not billed.
-func (s *Service) DefineWithAI(ctx context.Context, english, userID string) (Result, error) {
-	res, outcome, err := s.defineWithAI(ctx, english, userID)
+func (s *Service) DefineWithAI(ctx context.Context, english, userID string, lang Language) (Result, error) {
+	res, outcome, err := s.defineWithAI(ctx, english, userID, lang)
 	if s.aiRecorder != nil {
 		s.aiRecorder.RecordAIWordOutcome(outcome)
 	}
 	return res, err
 }
 
-func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Result, string, error) {
+func (s *Service) defineWithAI(ctx context.Context, english, userID string, lang Language) (Result, string, error) {
 	if !s.AIConfigured() {
 		return Result{}, outcomeFailed, ErrAIUnavailable
 	}
@@ -274,6 +300,10 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 	}
 	if !canUse {
 		return Result{}, outcomeRefused, ErrNotEntitled
+	}
+
+	if lang == LanguageEnglish {
+		return s.defineWithAIEnglish(ctx, english, userID)
 	}
 
 	res, err := s.lookupDictionaries(ctx, english)
@@ -293,23 +323,8 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 		return res, outcome, err
 	}
 
-	if !s.ai.limiter.AllowCall(userID) {
-		return Result{}, outcomeRefused, ErrRateLimited
-	}
-	balance, err := s.ai.billing.Balance(ctx, userID)
-	if err != nil {
-		return Result{}, outcomeFailed, err
-	}
-	if balance < 1 {
-		return Result{}, outcomeRefused, ErrInsufficientCredit
-	}
-	if s.ai.trialGate != nil {
-		switch s.ai.trialGate.Check(ctx, userID) {
-		case ailimit.LimitedPerDay:
-			return Result{}, outcomeRefused, ErrTrialLimitedPerDay
-		case ailimit.LimitedPerMinute:
-			return Result{}, outcomeRefused, ErrTrialLimitedPerMinute
-		}
+	if outcome, err := s.gateAICall(ctx, userID); err != nil {
+		return Result{}, outcome, err
 	}
 
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.ai.cfg.CallTimeout)
@@ -332,6 +347,122 @@ func (s *Service) defineWithAI(ctx context.Context, english, userID string) (Res
 	}
 	res, outcome := s.keepAIDefinition(callCtx, english, userID, def)
 	return res, outcome, nil
+}
+
+// defineWithAIEnglish is the en path (ADR-098 Decision 5): re-check Wiktionary
+// then the AI English table; only a clean miss calls the English model. words
+// and ECDICT play no part in the definition. Neither MinQuality nor the daily
+// cache-write limit applies.
+func (s *Service) defineWithAIEnglish(ctx context.Context, english, userID string) (Result, string, error) {
+	if s.ai.englishDefiner == nil {
+		return Result{}, outcomeFailed, ErrAIUnavailable
+	}
+	res, err := s.resolveEnglish(ctx, english, userID)
+	if errors.Is(err, ErrWiktionaryUnavailable) {
+		return Result{}, outcomeFailed, ErrWiktionaryUnavailable
+	}
+	if err != nil {
+		return Result{}, outcomeFailed, err
+	}
+	switch res.Source {
+	case SourceWiktionary, SourceLocal:
+		return res, outcomeKnown, nil
+	case SourceMiss:
+		// Only a clean miss falls through to the model.
+	default:
+		// SourceError (Wiktionary or AI table read failure) and anything else.
+		return Result{}, outcomeFailed, ErrDictionaryFailed
+	}
+
+	if outcome, err := s.gateAICall(ctx, userID); err != nil {
+		return Result{}, outcome, err
+	}
+
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.ai.cfg.CallTimeout)
+	defer cancel()
+
+	def, usage, err := s.ai.englishDefiner.DefineEnglishWord(callCtx, english)
+	if err != nil {
+		s.settleFailedAICall(callCtx, userID, usage, err)
+		if errors.Is(err, ErrInvalidAIReply) {
+			return Result{}, outcomeInvalidReply, ErrInvalidAIReply
+		}
+		return Result{}, outcomeFailed, ErrAIFailed
+	}
+	_, _ = s.settleAIUsage(callCtx, userID, usage)
+
+	if !def.IsWord {
+		return Result{English: english, Source: SourceAIMiss}, outcomeNotAWord, nil
+	}
+	res, outcome := s.keepEnglishAIDefinition(callCtx, english, def)
+	return res, outcome, nil
+}
+
+// gateAICall applies the rate limit, balance and trial checks shared by the
+// Chinese and English model paths. On refusal it returns the outcome and error.
+func (s *Service) gateAICall(ctx context.Context, userID string) (string, error) {
+	if !s.ai.limiter.AllowCall(userID) {
+		return outcomeRefused, ErrRateLimited
+	}
+	balance, err := s.ai.billing.Balance(ctx, userID)
+	if err != nil {
+		return outcomeFailed, err
+	}
+	if balance < 1 {
+		return outcomeRefused, ErrInsufficientCredit
+	}
+	if s.ai.trialGate != nil {
+		switch s.ai.trialGate.Check(ctx, userID) {
+		case ailimit.LimitedPerDay:
+			return outcomeRefused, ErrTrialLimitedPerDay
+		case ailimit.LimitedPerMinute:
+			return outcomeRefused, ErrTrialLimitedPerMinute
+		}
+	}
+	return "", nil
+}
+
+// keepEnglishAIDefinition stores every is_word answer in the AI English table
+// (no MinQuality, no daily write limit) and returns it. Without a words row
+// the answer has no Id and no table row.
+func (s *Service) keepEnglishAIDefinition(ctx context.Context, english string, def EnglishModelDefinition) (Result, string) {
+	res := Result{
+		English:    english,
+		Source:     SourceAI,
+		Origin:     OriginAI,
+		Definition: &EnglishDefinition{Senses: def.Senses},
+	}
+	key := wordform.Key(english)
+	id := s.wordID(ctx, english, key)
+	if id == "" {
+		return res, outcomeUnstored
+	}
+	res.ID = id
+	if s.englishAI == nil {
+		return res, outcomeUnstored
+	}
+	row := EnglishAIRow{
+		WordID:        id,
+		Senses:        def.Senses,
+		Quality:       def.Quality,
+		PromptVersion: s.ai.englishPromptVersion,
+	}
+	inserted, err := s.englishAI.Insert(ctx, row)
+	if err != nil {
+		logger.Errorf("dictionary: could not cache the English AI definition of %s: %v", english, err)
+		return res, outcomeUnstored
+	}
+	if !inserted {
+		stored, ok, findErr := s.englishAI.Find(ctx, id)
+		if findErr != nil {
+			logger.Errorf("dictionary: could not re-read the English AI definition of %s: %v", english, findErr)
+			return res, outcomeStored
+		}
+		if ok {
+			res.Definition = &EnglishDefinition{Senses: stored.Senses}
+		}
+	}
+	return res, outcomeStored
 }
 
 // settleAIUsage charges userID for usage, logging a charge that could not be
