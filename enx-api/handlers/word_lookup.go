@@ -36,11 +36,6 @@ type WordLookupHandler struct {
 	languages dictionary.ExplanationLanguages // nil: the response names none
 }
 
-func (h *WordLookupHandler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *WordLookupHandler {
-	h.tiers = tiers
-	return h
-}
-
 func NewWordLookupHandlerWithQuotaTiers(lookups WordLookupRecorder, tiers dictionary.QuotaTierSource) *WordLookupHandler {
 	return &WordLookupHandler{lookups: lookups, tiers: tiers}
 }
