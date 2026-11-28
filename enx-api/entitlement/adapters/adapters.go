@@ -17,8 +17,19 @@ type SubscriptionReader interface {
 	IsActiveSubscriber(context.Context, string) (bool, error)
 }
 
-// Billing reads subscriptions and credit_accounts.
-type Billing struct{ Subscriptions SubscriptionReader }
+// Billing reads subscriptions and credit_accounts. Only TopupBalance uses the
+// handle given to NewBilling: TrialBalance and IsActiveSubscriber still reach
+// the global database through billing/credit and repo.
+type Billing struct {
+	db            *gorm.DB
+	Subscriptions SubscriptionReader
+}
+
+// NewBilling returns a Billing that reads credit_accounts from db. With nil
+// subscriptions, IsActiveSubscriber reads the accepted subscription itself.
+func NewBilling(db *gorm.DB, subscriptions SubscriptionReader) Billing {
+	return Billing{db: db, Subscriptions: subscriptions}
+}
 
 // IsActiveSubscriber reports whether userID has a subscription whose status
 // is "active". Billing is also dictionary's quota tier source (ADR-093).
@@ -31,9 +42,9 @@ func (b Billing) IsActiveSubscriber(ctx context.Context, userID string) (bool, e
 
 // TopupBalance returns userID's top-up credit balance; a user with no credit
 // account has none.
-func (Billing) TopupBalance(ctx context.Context, userID string) (int64, error) {
+func (b Billing) TopupBalance(ctx context.Context, userID string) (int64, error) {
 	var account sqlitex.CreditAccount
-	err := sqlitex.DB.WithContext(ctx).Where("user_id = ?", userID).First(&account).Error
+	err := b.db.WithContext(ctx).Where("user_id = ?", userID).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, nil
 	}

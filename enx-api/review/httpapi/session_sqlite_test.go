@@ -36,7 +36,7 @@ func fixedClock(at time.Time) func() time.Time { return func() time.Time { retur
 
 func productionSessionHandler(t *testing.T, at time.Time, languages stubLanguages, tiers dictionary.QuotaTierSource, resolve Resolver) *Handler {
 	t.Helper()
-	svc := review.NewService(reviewadapters.Store{}, fixedClock(at))
+	svc := review.NewService(reviewadapters.NewStore(sqlitex.DB), fixedClock(at))
 	return NewHandler(svc, resolve, languages, tiers)
 }
 

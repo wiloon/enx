@@ -12,15 +12,18 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// Store is review.Store over sqlitex.DB. It owns the review tables and, in
-// user_dicts, the query count and known flag.
-type Store struct{}
+// Store is review.Store over the application database. It owns the review
+// tables and, in user_dicts, the query count and known flag.
+type Store struct{ db *gorm.DB }
+
+// NewStore returns a Store that reads and writes db.
+func NewStore(db *gorm.DB) Store { return Store{db: db} }
 
 // Transact runs fn in one transaction. The DSN begins every transaction
 // immediate, so concurrent writers run one after the other. A client that
 // goes away does not cancel it: a lookup already charged is still recorded.
-func (Store) Transact(ctx context.Context, fn func(review.Tx) error) error {
-	return sqlitex.DB.WithContext(context.WithoutCancel(ctx)).Transaction(func(db *gorm.DB) error {
+func (s Store) Transact(ctx context.Context, fn func(review.Tx) error) error {
+	return s.db.WithContext(context.WithoutCancel(ctx)).Transaction(func(db *gorm.DB) error {
 		return fn(tx{db})
 	})
 }
@@ -128,7 +131,7 @@ func (t tx) LiveWord(wordID string) (bool, error) {
 
 // Schedules lists every live word the user has a user_dicts row for, with its
 // review state when present. Candidates filters and orders them.
-func (Store) Schedules(ctx context.Context, userID string) ([]review.ScheduleRow, error) {
+func (s Store) Schedules(ctx context.Context, userID string) ([]review.ScheduleRow, error) {
 	type row struct {
 		WordID              string
 		English             string
@@ -147,7 +150,7 @@ func (Store) Schedules(ctx context.Context, userID string) ([]review.ScheduleRow
 		LookupRescheduledAt *int64
 	}
 	var rows []row
-	err := sqlitex.DB.WithContext(ctx).Raw(`
+	err := s.db.WithContext(ctx).Raw(`
 		SELECT ud.word_id AS word_id, w.english AS english,
 			COALESCE(ud.known, 0) AS known, COALESCE(ud.query_count, 0) AS query_count,
 			ud.updated_at AS updated_at,

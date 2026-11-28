@@ -43,10 +43,16 @@ func newTestHandler() *Handler {
 	})
 }
 
+// newHandler is a Handler whose quota tiers come from the billing tables of
+// whatever sqlitex.DB the test has set up.
+func newHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews WordCounts) *Handler {
+	return NewHandlerWithQuotaTiers(dict, meter, reviews, entadapters.NewBilling(sqlitex.DB, nil))
+}
+
 func newTestHandlerWithQuota(limits config.StripeQuota) *Handler {
-	return NewHandler(
+	return newHandler(
 		dictionary.NewService(adapters.WordsTable{}, adapters.Ecdict{}, noAI{}, nil),
-		dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now),
+		dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.NewBilling(sqlitex.DB, nil), limits, time.Now),
 		repo.WordCounts{},
 	)
 }

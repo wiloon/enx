@@ -6,30 +6,14 @@ import (
 
 	"enx-api/preferences"
 	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
-func setupDB(t *testing.T) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&sqlitex.UserPreference{}); err != nil {
-		t.Fatal(err)
-	}
-	sqlitex.DB = db
-}
-
 func TestTableSaveLoadClear(t *testing.T) {
-	setupDB(t)
 	ctx := context.Background()
-	tbl := Table{}
+	tbl := NewTable(sqlitextest.Open(t))
 
 	if got, err := tbl.Load(ctx, "u1"); err != nil || len(got) != 0 {
 		t.Fatalf("empty Load = %v, %v", got, err)
@@ -68,9 +52,8 @@ func TestTableSaveLoadClear(t *testing.T) {
 }
 
 func TestTableSavesAStringValue(t *testing.T) {
-	setupDB(t)
 	ctx := context.Background()
-	tbl := Table{}
+	tbl := NewTable(sqlitextest.Open(t))
 
 	if err := tbl.Save(ctx, "u1", preferences.ExplanationLanguage, "en"); err != nil {
 		t.Fatal(err)
@@ -91,19 +74,54 @@ func TestTableSavesAStringValue(t *testing.T) {
 }
 
 func TestTableLoadSkipsRowsThatAreNotJSON(t *testing.T) {
-	setupDB(t)
+	db := sqlitextest.Open(t)
 	for key, value := range map[string]string{"aiWordFallback": `yes`, "explanationLanguage": `"en"`} {
-		if err := sqlitex.DB.Create(&sqlitex.UserPreference{
+		if err := db.Create(&sqlitex.UserPreference{
 			UserId: "u1", Key: key, Value: value, UpdatedAt: 1,
 		}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-	got, err := Table{}.Load(context.Background(), "u1")
+	got, err := NewTable(db).Load(context.Background(), "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[preferences.ExplanationLanguage] != "en" {
 		t.Fatalf("Load = %v, want only the JSON row", got)
+	}
+}
+
+func TestTableUsesTheHandleItWasBuiltOn(t *testing.T) {
+	first := sqlitextest.Open(t)
+	// Open points the global at the handle it opened last.
+	second := sqlitextest.Open(t)
+	ctx := context.Background()
+	tbl := NewTable(first)
+	count := func(db *gorm.DB) (rows int64) {
+		t.Helper()
+		if err := db.Model(&sqlitex.UserPreference{}).Count(&rows).Error; err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+
+	if err := tbl.Save(ctx, "u1", preferences.AIWordFallback, true); err != nil {
+		t.Fatal(err)
+	}
+	if a, b := count(first), count(second); a != 1 || b != 0 {
+		t.Errorf("after Save: %d rows in the first database and %d in the second, want 1 and 0", a, b)
+	}
+	got, err := tbl.Load(ctx, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[preferences.AIWordFallback] != true {
+		t.Errorf("Load = %v, want the first database's value", got)
+	}
+	if err := tbl.Clear(ctx, "u1", preferences.AIWordFallback); err != nil {
+		t.Fatal(err)
+	}
+	if rows := count(first); rows != 0 {
+		t.Errorf("after Clear: %d rows in the first database, want 0", rows)
 	}
 }

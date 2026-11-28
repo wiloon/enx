@@ -7,7 +7,6 @@ import (
 
 	"enx-api/dictionary"
 	dictionaryhttp "enx-api/dictionary/httpapi"
-	entadapters "enx-api/entitlement/adapters"
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
 	"enx-api/utils/logger"
@@ -35,10 +34,6 @@ type WordLookupHandler struct {
 	tiers   dictionary.QuotaTierSource
 
 	languages dictionary.ExplanationLanguages // nil: the response names none
-}
-
-func NewWordLookupHandler(lookups WordLookupRecorder) *WordLookupHandler {
-	return NewWordLookupHandlerWithQuotaTiers(lookups, entadapters.Billing{})
 }
 
 func (h *WordLookupHandler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *WordLookupHandler {

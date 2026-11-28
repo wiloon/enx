@@ -34,9 +34,9 @@ var defaultLookupQuota = config.StripeQuota{DictionaryLookupDailyFree: 200, Dict
 // production wiring, metered with limits, and returns the recorder.
 func sendWordLookup(t *testing.T, limits config.StripeQuota, userID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	meter := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.Billing{}, limits, time.Now)
-	reviews := review.NewService(reviewadapters.Store{}, time.Now)
-	h := NewWordLookupHandler(dictionary.NewWordLookups(adapters.WordLookupRecords{}, reviews, meter, adapters.LookupEvents{}, time.Now))
+	meter := dictionary.NewQuotaMeter(adapters.QuotaUsage{}, entadapters.NewBilling(sqlitex.DB, nil), limits, time.Now)
+	reviews := review.NewService(reviewadapters.NewStore(sqlitex.DB), time.Now)
+	h := NewWordLookupHandlerWithQuotaTiers(dictionary.NewWordLookups(adapters.WordLookupRecords{}, reviews, meter, adapters.LookupEvents{}, time.Now), entadapters.NewBilling(sqlitex.DB, nil))
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
 	router.POST("/api/me/word-lookups", h.Record)
@@ -140,7 +140,7 @@ func (okRecorder) Record(context.Context, string, string, string) (int, bool, er
 // ADR-098: the lookup is recorded even when the explanation language cannot be
 // read; the response then names none.
 func TestWordLookupOmitsAnUnreadableExplanationLanguage(t *testing.T) {
-	h := NewWordLookupHandler(okRecorder{}).WithExplanationLanguages(failingLanguages{})
+	h := NewWordLookupHandlerWithQuotaTiers(okRecorder{}, entadapters.NewBilling(sqlitex.DB, nil)).WithExplanationLanguages(failingLanguages{})
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 	router.POST("/api/me/word-lookups", h.Record)
@@ -308,7 +308,7 @@ func TestWordLookupOverQuotaAnswersTheLookupGETs429Body(t *testing.T) {
 
 	want := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(want)
-	dictionaryhttp.RespondQuotaExceeded(c, "u1", entadapters.Billing{})
+	dictionaryhttp.RespondQuotaExceeded(c, "u1", entadapters.NewBilling(sqlitex.DB, nil))
 	if w.Code != want.Code || w.Body.String() != want.Body.String() {
 		t.Fatalf("got %d %s, want %d %s", w.Code, w.Body.String(), want.Code, want.Body.String())
 	}
@@ -358,7 +358,7 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 		{"top-up only", quotaSubscriber{topup: 1}, supportMessage, false},
 		{"balance read error", quotaSubscriber{topupErr: errors.New("db down")}, neutralMessage, false},
 	} {
-		h := NewWordLookupHandler(errRecorder{dictionary.ErrQuotaExceeded}).WithQuotaTiers(tc.sub)
+		h := NewWordLookupHandlerWithQuotaTiers(errRecorder{dictionary.ErrQuotaExceeded}, tc.sub)
 		r := gin.New()
 		r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 		r.POST("/", h.Record)
@@ -387,7 +387,7 @@ func TestWordLookupQuotaResponseUsesInjectedSubscription(t *testing.T) {
 }
 
 func TestWordLookupRecorderFailureReturns500WithoutLeakingTheError(t *testing.T) {
-	h := NewWordLookupHandler(errRecorder{errors.New("disk I/O error")})
+	h := NewWordLookupHandlerWithQuotaTiers(errRecorder{errors.New("disk I/O error")}, entadapters.NewBilling(sqlitex.DB, nil))
 	r := gin.New()
 	r.Use(func(c *gin.Context) { c.Set("user_id", "u1") })
 	r.POST("/", h.Record)

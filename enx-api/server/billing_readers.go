@@ -8,6 +8,8 @@ import (
 	"enx-api/entitlement"
 	entadapters "enx-api/entitlement/adapters"
 	"enx-api/repo"
+
+	"gorm.io/gorm"
 )
 
 type billingReaders struct {
@@ -16,10 +18,10 @@ type billingReaders struct {
 	admin        adminuser.Store
 }
 
-func newBillingReaders() billingReaders {
+func newBillingReaders(db *gorm.DB) billingReaders {
 	// One source for the quota tier and the entitlement, so both keep the
 	// accepted-subscription rule (ADR-067).
-	billing := entadapters.Billing{Subscriptions: repo.AcceptedSubscriptions{}}
+	billing := entadapters.NewBilling(db, repo.AcceptedSubscriptions{})
 	admin := repo.AcceptedAdminUsers{AdminUsers: repo.AdminUsers{Now: time.Now}}
 	return billingReaders{quotaTiers: billing, entitlements: entitlement.NewService(billing), admin: admin}
 }
