@@ -16,6 +16,7 @@ import (
 	"enx-api/aitranslate/sentenceword"
 	"enx-api/aitranslate/wordcontext"
 	"enx-api/billing/credit"
+	"enx-api/dictionary"
 	"enx-api/dictsample"
 	"enx-api/middleware"
 	"enx-api/platform/httpjson"
@@ -31,10 +32,12 @@ type sentenceRequest struct {
 type wordInContextRequest struct {
 	Sentence string `json:"sentence" binding:"required"`
 	Word     string `json:"word" binding:"required"`
-	// DictionaryChinese is the word's dictionary definition, looked up by
+	// DictionaryDefinition is the word's dictionary definition, looked up by
 	// the client BEFORE this call. Empty is valid -- no dictionary entry,
 	// or the lookup failed -- in which case the response's "why" is always
 	// empty too (nothing to compare the contextual meaning against).
+	DictionaryDefinition string `json:"dictionaryDefinition"`
+	// DictionaryChinese is what older extensions send in its place.
 	DictionaryChinese string `json:"dictionaryChinese"`
 }
 
@@ -42,8 +45,10 @@ type sentenceWithWordsRequest struct {
 	Sentence string `json:"sentence"`
 	Words    []struct {
 		Word string `json:"word"`
-		// DictionaryChinese may be empty (no entry, or the lookup failed).
-		DictionaryChinese string `json:"dictionaryChinese"`
+		// Both may be empty (no entry, or the lookup failed); see
+		// wordInContextRequest.
+		DictionaryDefinition string `json:"dictionaryDefinition"`
+		DictionaryChinese    string `json:"dictionaryChinese"`
 	} `json:"words"`
 }
 
@@ -70,6 +75,7 @@ type Handler struct {
 	ledger    TokenLedger
 	pricing   credit.TokenPricing
 	trialGate CallGate
+	languages dictionary.ExplanationLanguages // nil: everyone is zh-Hans
 }
 
 // CallGate holds trial-only users to the trial's call rate (ADR-048
@@ -83,6 +89,38 @@ type CallGate interface {
 func (h *Handler) WithTrialGate(gate CallGate) *Handler {
 	h.trialGate = gate
 	return h
+}
+
+// WithExplanationLanguages makes the endpoints answer in each user's
+// explanation language (ADR-098). Without it they answer in zh-Hans.
+func (h *Handler) WithExplanationLanguages(languages dictionary.ExplanationLanguages) *Handler {
+	h.languages = languages
+	return h
+}
+
+// english reports whether the caller wants plain-English explanations. A
+// failed read is not taken as zh-Hans (ADR-098 Decision 5): it answers the
+// internal error and returns ok false, before anything is billed or counted.
+func (h *Handler) english(c *gin.Context) (english, ok bool) {
+	if h.languages == nil {
+		return false, true
+	}
+	userID := middleware.GetUserIDFromContext(c)
+	lang, err := h.languages.ExplanationLanguage(c.Request.Context(), userID)
+	if err != nil {
+		logger.Errorf("aitranslate: explanation language read failed (user=%s): %v", userID, err)
+		aifailure.Internal(c)
+		return false, false
+	}
+	return lang == dictionary.LanguageEnglish, true
+}
+
+// effectiveDefinition is the definition a request carries for one word.
+func effectiveDefinition(definition, chinese string) string {
+	if definition != "" {
+		return definition
+	}
+	return chinese
 }
 
 // refuseOverTrialLimit writes a 429 and returns true when gate refuses
@@ -196,17 +234,29 @@ func (h *Handler) TranslateSentence(c *gin.Context) {
 		return
 	}
 
+	english, ok := h.english(c)
+	if !ok {
+		return
+	}
+	call := sentence.Call
+	if english {
+		call = sentence.CallEnglish
+	}
+
 	var chinese string
-	ok := h.billedCall(c, "translate_sentence", func(ctx context.Context) (Usage, error) {
+	ok = h.billedCall(c, "translate_sentence", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
 		chinese, u, err = observe(h.provider, "translate_sentence", func() (string, Usage, error) {
-			return sentence.Call(ctx, h.provider.Chat, req.Sentence)
+			return call(ctx, h.provider.Chat, req.Sentence)
 		})
-		// After the observed call: a reply that fails the check is still
+		// After the observed call: a reply that fails a check is still
 		// billed (ADR-094) and its metric outcome stays ok.
 		if err == nil {
 			err = sentence.Check(chinese)
+		}
+		if err == nil && english {
+			err = sentence.CheckEnglish(chinese, req.Sentence)
 		}
 		return u, err
 	})
@@ -234,15 +284,29 @@ func (h *Handler) TranslateWordInContext(c *gin.Context) {
 	// they already went through the dictionary path.
 	dictsample.Phrase(req.Word)
 
+	english, ok := h.english(c)
+	if !ok {
+		return
+	}
+	call := wordcontext.Call
+	if english {
+		call = wordcontext.CallEnglish
+	}
+	definition := effectiveDefinition(req.DictionaryDefinition, req.DictionaryChinese)
+
 	var res wordcontext.Result
-	ok := h.billedCall(c, "translate_word_in_context", func(ctx context.Context) (Usage, error) {
+	ok = h.billedCall(c, "translate_word_in_context", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
 		res, u, err = observe(h.provider, "word_in_context", func() (wordcontext.Result, Usage, error) {
 			return retryParse(ctx, h.provider.ParseAttempts, h.provider.Chat, func(ctx context.Context, chat llm.Chat) (wordcontext.Result, Usage, error) {
-				return wordcontext.Call(ctx, chat, req.Sentence, req.Word, req.DictionaryChinese)
+				return call(ctx, chat, req.Sentence, req.Word, definition)
 			})
 		})
+		// After the retries: a Chinese reply is not asked for again.
+		if err == nil && english {
+			err = wordcontext.CheckEnglish(res, req.Sentence, req.Word)
+		}
 		return u, err
 	})
 	if !ok {
@@ -273,7 +337,10 @@ func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
 	}
 	inputs := make([]sentenceword.WordInput, 0, len(req.Words))
 	for _, w := range req.Words {
-		inputs = append(inputs, sentenceword.WordInput{Word: w.Word, DictionaryChinese: w.DictionaryChinese})
+		inputs = append(inputs, sentenceword.WordInput{
+			Word:                 w.Word,
+			DictionaryDefinition: effectiveDefinition(w.DictionaryDefinition, w.DictionaryChinese),
+		})
 	}
 	words := sentenceword.DedupeWords(inputs)
 	if len(words) == 0 {
@@ -281,13 +348,25 @@ func (h *Handler) TranslateSentenceWithWords(c *gin.Context) {
 		return
 	}
 
+	english, ok := h.english(c)
+	if !ok {
+		return
+	}
+	call := sentenceword.CallWords
+	if english {
+		call = sentenceword.CallEnglishWords
+	}
+
 	var res sentenceword.WordsResult
-	ok := h.billedCall(c, "translate_sentence_with_word", func(ctx context.Context) (Usage, error) {
+	ok = h.billedCall(c, "translate_sentence_with_word", func(ctx context.Context) (Usage, error) {
 		var u Usage
 		var err error
 		res, u, err = observe(h.provider, "sentence_with_words", func() (sentenceword.WordsResult, Usage, error) {
-			return sentenceword.CallWords(ctx, h.provider.Chat, req.Sentence, words)
+			return call(ctx, h.provider.Chat, req.Sentence, words)
 		})
+		if err == nil && english {
+			res, err = sentenceword.CheckEnglish(res, req.Sentence)
+		}
 		return u, err
 	})
 	if !ok {

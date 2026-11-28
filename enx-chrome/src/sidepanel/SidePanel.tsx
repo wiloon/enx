@@ -1088,7 +1088,7 @@ function SidePanelContent() {
   // Shared by every card-mutating callback below: fetches the word's meaning
   // in the given sentence and merges it into the matching card at `sentenceId`
   // (undefined = top-level), without touching the dictionary half.
-  // dictionaryChinese, when given, is that word's dictionary definition --
+  // dictionaryDefinition, when given, is that word's dictionary definition --
   // looked up by the caller BEFORE this call (dictionary-first) -- embedded
   // in the AI prompt so the response's `why` can explain a divergence.
   // Callers with no dictionary entry to offer (a phrase, ADR-008) just omit
@@ -1098,7 +1098,7 @@ function SidePanelContent() {
       word: string,
       sentence: string,
       card: CardRequest,
-      dictionaryChinese?: string
+      dictionaryDefinition?: string
     ) => {
       const patch = (fields: Partial<WordCardData>) =>
         void patchEntries(prev =>
@@ -1109,7 +1109,7 @@ function SidePanelContent() {
         type: 'translateWordInContext',
         word,
         sentence,
-        dictionaryChinese,
+        dictionaryDefinition,
       } satisfies ContentMessage)
         .then(checkAccountFreshness)
         .then(delivered => {
@@ -1423,7 +1423,7 @@ function SidePanelContent() {
         sentence: combined.sentence,
         sentenceWords: combined.words.map(w => ({
           word: w.word,
-          dictionaryChinese: w.dictionaryChinese,
+          dictionaryDefinition: w.dictionaryChinese,
         })),
       } satisfies ContentMessage)
         .then(checkAccountFreshness)
@@ -1609,7 +1609,7 @@ function SidePanelContent() {
         >
           Click any highlighted word in the page text, then click the
           sentence-translation icon in the popup. The full English sentence and
-          its Chinese translation will appear here.
+          an explanation of it will appear here.
         </div>
       </div>
     )

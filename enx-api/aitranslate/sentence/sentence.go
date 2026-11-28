@@ -1,5 +1,6 @@
-// Package sentence holds the plain "translate one English sentence into
-// Chinese" call: its prompt and temperature, Call, and the Check on the reply.
+// Package sentence holds the "say what one English sentence says" call, as a
+// Chinese translation or as a restatement in simpler English (ADR-098): its
+// prompts and temperature, Call and CallEnglish, and the checks on the reply.
 package sentence
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/en"
 	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/zh"
 )
@@ -20,6 +22,14 @@ Rules:
 - Reply with the Chinese translation only, no explanation, no pinyin, no quotes.
 ` + zh.SimplifiedRule
 
+// EnglishSystemPrompt asks for a restatement in simpler English instead of a
+// translation: the same job, telling the reader what the sentence says.
+const EnglishSystemPrompt = `You help a learner of English. Restate the given English sentence in simpler English, so that the reader understands what it says.
+
+Rules:
+- Reply with one restatement only: no notes on words, no explanation of hard words, no quotes.
+` + en.PlainRule
+
 // Temperature: one most-natural rendering, not creative variety.
 const Temperature = 0.3
 
@@ -27,6 +37,19 @@ const Temperature = 0.3
 // wrote it; the caller runs Check on it.
 func Call(ctx context.Context, chat llm.Chat, text string) (string, aiusage.Usage, error) {
 	return chat(ctx, "translate_sentence", Temperature, SystemPrompt, text)
+}
+
+// CallEnglish restates text in simpler English; otherwise like Call.
+func CallEnglish(ctx context.Context, chat llm.Chat, text string) (string, aiusage.Usage, error) {
+	return chat(ctx, "translate_sentence", Temperature, EnglishSystemPrompt, text)
+}
+
+// CheckEnglish rejects a restatement of source that is in Chinese.
+func CheckEnglish(raw, source string) error {
+	if en.IsChinese(raw, source) {
+		return en.ErrChineseReply
+	}
+	return nil
 }
 
 // ErrEmptyTranslation: the model replied, but with nothing to show.

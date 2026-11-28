@@ -10,26 +10,26 @@ import (
 )
 
 var bankRun = []WordInput{
-	{Word: "bank", DictionaryChinese: "银行"},
-	{Word: "run", DictionaryChinese: ""},
+	{Word: "bank", DictionaryDefinition: "银行"},
+	{Word: "run", DictionaryDefinition: ""},
 }
 
 func TestDedupeWordsKeepsFirstByNormalizedText(t *testing.T) {
 	got := DedupeWords([]WordInput{
-		{Word: " Bank ", DictionaryChinese: "银行"},
-		{Word: "bank", DictionaryChinese: "other"},
-		{Word: "  ", DictionaryChinese: "x"},
-		{Word: "Look   up", DictionaryChinese: "查"},
+		{Word: " Bank ", DictionaryDefinition: "银行"},
+		{Word: "bank", DictionaryDefinition: "other"},
+		{Word: "  ", DictionaryDefinition: "x"},
+		{Word: "Look   up", DictionaryDefinition: "查"},
 		{Word: "look up"},
 	})
-	if len(got) != 2 || got[0].Word != " Bank " || got[0].DictionaryChinese != "银行" || got[1].Word != "Look   up" {
+	if len(got) != 2 || got[0].Word != " Bank " || got[0].DictionaryDefinition != "银行" || got[1].Word != "Look   up" {
 		t.Fatalf("got %+v", got)
 	}
 }
 
 func TestDedupeWordsMatchesChromeCardKeys(t *testing.T) {
 	got := DedupeWords([]WordInput{
-		{Word: "\uFEFFbank", DictionaryChinese: "银行"},
+		{Word: "\uFEFFbank", DictionaryDefinition: "银行"},
 		{Word: "bank"},
 		{Word: "\uFEFF"},
 		{Word: "LOOK\u00A0\uFEFFup"},
@@ -42,7 +42,7 @@ func TestDedupeWordsMatchesChromeCardKeys(t *testing.T) {
 		{Word: "\u0085bank"},
 	})
 	want := []WordInput{
-		{Word: "\uFEFFbank", DictionaryChinese: "银行"},
+		{Word: "\uFEFFbank", DictionaryDefinition: "银行"},
 		{Word: "LOOK\u00A0\uFEFFup"},
 		{Word: "İ"},
 		{Word: "i"},

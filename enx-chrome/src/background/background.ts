@@ -1431,7 +1431,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleTranslateWordInContext(
             request.sentence || '',
             request.word || '',
-            request.dictionaryChinese || ''
+            request.dictionaryDefinition || ''
           )
 
         case 'translateSentenceWithWords':
@@ -2050,7 +2050,7 @@ const handleTranslateSentence = async (sentence: string) => {
 // `chinese`: SidePanel.tsx sends that one a standalone translateWordInContext.
 const handleTranslateSentenceWithWords = async (
   sentence: string,
-  words: { word: string; dictionaryChinese: string }[]
+  words: { word: string; dictionaryDefinition: string }[]
 ) => {
   const requested = words.filter(w => w.word && w.word.trim() !== '')
   if (!sentence || sentence.trim() === '' || requested.length === 0) {
@@ -2063,7 +2063,7 @@ const handleTranslateSentenceWithWords = async (
       sentence: sentence.trim(),
       words: requested.map(w => ({
         word: w.word.trim(),
-        dictionaryChinese: w.dictionaryChinese || '',
+        dictionaryDefinition: w.dictionaryDefinition || '',
       })),
     }),
   })
@@ -2089,7 +2089,7 @@ const handleTranslateSentenceWithWords = async (
 // Handle a single word's contextual translation for the Side Panel word-click
 // flow (spec §3.7/§3.8): unlike getOneWord/ECDICT, this returns the word's
 // meaning as used in the given sentence, not a generic dictionary gloss.
-// dictionaryChinese is that word's dictionary definition, looked up by the
+// dictionaryDefinition is that word's dictionary definition, looked up by the
 // Side Panel BEFORE sending this message (dictionary-first): it's embedded
 // in the AI prompt so the model can explain (`why`) a divergence instead of
 // guessing blind. Empty when the word has no dictionary entry or the lookup
@@ -2097,7 +2097,7 @@ const handleTranslateSentenceWithWords = async (
 const handleTranslateWordInContext = async (
   sentence: string,
   word: string,
-  dictionaryChinese: string
+  dictionaryDefinition: string
 ) => {
   if (!sentence || sentence.trim() === '' || !word || word.trim() === '') {
     return { success: false, error: 'sentence and word are required' }
@@ -2108,7 +2108,7 @@ const handleTranslateWordInContext = async (
     body: JSON.stringify({
       sentence: sentence.trim(),
       word: word.trim(),
-      dictionaryChinese,
+      dictionaryDefinition,
     }),
   })
 

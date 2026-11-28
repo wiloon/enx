@@ -1834,8 +1834,8 @@ describe('background onMessage / translateSentenceWithWords (ADR-023 Decision 9)
       type: 'translateSentenceWithWords',
       sentence: ' Cats are great pets. ',
       sentenceWords: [
-        { word: 'cats', dictionaryChinese: '猫科动物' },
-        { word: 'great', dictionaryChinese: '' },
+        { word: 'cats', dictionaryDefinition: '猫科动物' },
+        { word: 'great', dictionaryDefinition: '' },
       ],
     })
 
@@ -1852,9 +1852,28 @@ describe('background onMessage / translateSentenceWithWords (ADR-023 Decision 9)
     expect(JSON.parse(init.body)).toEqual({
       sentence: 'Cats are great pets.',
       words: [
-        { word: 'cats', dictionaryChinese: '猫科动物' },
-        { word: 'great', dictionaryChinese: '' },
+        { word: 'cats', dictionaryDefinition: '猫科动物' },
+        { word: 'great', dictionaryDefinition: '' },
       ],
+    })
+  })
+
+  it('POSTs the word-in-context definition as dictionaryDefinition', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse(200, { success: true, chinese: '很棒的', why: '' })
+    )
+    await send({
+      type: 'translateWordInContext',
+      sentence: 'Cats are great pets.',
+      word: 'great',
+      dictionaryDefinition: 'adj. 很棒的',
+    })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toContain('/api/translate/word-in-context')
+    expect(JSON.parse(init.body)).toEqual({
+      sentence: 'Cats are great pets.',
+      word: 'great',
+      dictionaryDefinition: 'adj. 很棒的',
     })
   })
 
@@ -1865,7 +1884,7 @@ describe('background onMessage / translateSentenceWithWords (ADR-023 Decision 9)
     const response = await send({
       type: 'translateSentenceWithWords',
       sentence: 'Cats.',
-      sentenceWords: [{ word: 'cats', dictionaryChinese: '' }],
+      sentenceWords: [{ word: 'cats', dictionaryDefinition: '' }],
     })
     expect(response).toEqual({ success: true, chinese: '猫。', words: [] })
   })
@@ -1877,7 +1896,7 @@ describe('background onMessage / translateSentenceWithWords (ADR-023 Decision 9)
     const response = (await send({
       type: 'translateSentenceWithWords',
       sentence: 'Cats.',
-      sentenceWords: [{ word: 'cats', dictionaryChinese: '' }],
+      sentenceWords: [{ word: 'cats', dictionaryDefinition: '' }],
     })) as { success: boolean; status?: number }
     expect(response.success).toBe(false)
     expect(response.status).toBe(402)

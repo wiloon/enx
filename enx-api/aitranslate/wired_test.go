@@ -91,7 +91,7 @@ var (
 		request:     `{"sentence":"I deposited cash at the bank.","words":[{"word":"bank","dictionaryChinese":"n. 水岸"}]}`,
 		reply:       `{"sentence":"我在银行存了现金。","words":[{"word":"bank","chinese":"银行","why":"金融机构"}]}`,
 		system:      sentenceword.WordsSystemPrompt,
-		user:        sentenceword.BuildWordsUserContent("I deposited cash at the bank.", []sentenceword.WordInput{{Word: "bank", DictionaryChinese: "n. 水岸"}}),
+		user:        sentenceword.BuildWordsUserContent("I deposited cash at the bank.", []sentenceword.WordInput{{Word: "bank", DictionaryDefinition: "n. 水岸"}}),
 		temperature: sentenceword.Temperature,
 		response:    `{"success":true,"chinese":"我在银行存了现金。","words":[{"word":"bank","chinese":"银行","why":"金融机构"}]}`,
 		billing:     "translate_sentence_with_word",
