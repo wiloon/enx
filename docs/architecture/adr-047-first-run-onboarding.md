@@ -43,13 +43,17 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 - 为什么视同跳过：否则已登录用户从 logo 离开后，每次打开 `/app` 都会被送回 `/welcome`。跳过的用户仍会被提醒安装：Home 显示 `OnboardingChecklist`（零查词）或 `ExtensionBanner`（未检测到扩展），侧边栏的「Check setup」（#873）可重新打开 `/welcome`。
 - 修订记录（#1100）：取代 #872 的「logo 不是链接」，让品牌标识在全站一致地通往首页。
 
+## 2026-11-27 修订（#1238，试用条款由配置下发）
+
+- 修订 #1016：`/welcome` 登录步骤的试用文案改为读取 `GET /api/billing/trial-terms`（金额与天数来自 `credits.trial`）。读到条款时写出金额与天数；读不到时保留「Free AI credits included to get you started.»；试用关闭（amount 或 ttl-days 为 0）时不显示积分行，无需再手工删代码。
+
 ## 2026-11-19 修订（#1016，说明创建账号的用途）
 
 - 问题：「Free to start.」重复标题里的「free」，没有说明账号能用来做什么；只有一句说明和一个小按钮，当前步骤显得空。重装扩展或换电脑的老用户也看不到明确的登录入口。
-- 登录为当前步骤时，保留标题「Create your free account」，展开用途说明「Look up words and translate sentences as you read.」，并始终显示「Free AI credits included to get you started.」。积分数额、有效期和领取条件见 adr-048 与 adr-062 Decision 3。在积分文案旁加代码注释，提醒维护者关闭试用（`CREDITS_TRIAL_AMOUNT=0`）时移除这行文案。
+- 登录为当前步骤时，保留标题「Create your free account」，展开用途说明「Look up words and translate sentences as you read.」，并始终显示「Free AI credits included to get you started.」。积分数额、有效期和领取条件见 adr-048 与 adr-062 Decision 3。在积分文案旁加代码注释，提醒维护者关闭试用（`CREDITS_TRIAL_AMOUNT=0`）时移除这行文案。（试用行的展示规则已被 2026-11-27 #1238 修订取代。）
 - 主操作为默认尺寸的品牌按钮「Create free account」，通往 `/sign-up`，下方的文字链接「Already have an account? Sign in」通往 `/sign-in`。两个入口按 Decision 2 第 2 步回跳。这里的大多数访客是新用户，主按钮的目标页面应与按钮文案一致。按钮文案独立于登录提供方，`/sign-in` 仍支持 #868 验证过的 OAuth transfer。
 - 修订记录（#1016）：更新 Decision 2 第 2 步，取代 #868 的单一「Continue」按钮和「Free to start.」，让新用户知道创建账号的用途，也让老用户能找到登录入口。
-- 修订记录（#1016，owner 确认）：注册与登录分别进入对应的 Clerk 页面，让注册按钮与落地页一致。试用积分说明始终显示，关闭试用时须移除这行文案，避免继续宣传已关闭的试用。
+- 修订记录（#1016，owner 确认）：注册与登录分别进入对应的 Clerk 页面，让注册按钮与落地页一致。试用积分说明始终显示，关闭试用时须移除这行文案，避免继续宣传已关闭的试用。（关闭试用时隐藏积分行的方式已被 #1238 修订为读配置，不再手工删代码。）
 
 ## 2026-11-17 修订（#911，启用步骤显示实际快捷键）
 

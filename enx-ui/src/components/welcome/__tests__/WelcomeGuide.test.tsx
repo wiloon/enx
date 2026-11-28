@@ -12,6 +12,7 @@ import AppHome from '@/app/(default)/(app)/app/page'
 import { apiService } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { setRuntimeEnv } from '@/test/runtimeEnv'
+import type { TrialTerms } from '@/lib/trialTerms'
 
 jest.mock('@/services/api', () => ({
   apiService: {
@@ -100,10 +101,18 @@ function newClient() {
   })
 }
 
-function renderGuide(fromInstall = false, client = newClient()) {
+function renderGuide(
+  fromInstall = false,
+  client = newClient(),
+  trialTerms: TrialTerms = { status: 'unknown' }
+) {
   return render(
     <QueryClientProvider client={client}>
-      <WelcomeGuide fromInstall={fromInstall} pollMs={POLL_MS} />
+      <WelcomeGuide
+        fromInstall={fromInstall}
+        pollMs={POLL_MS}
+        trialTerms={trialTerms}
+      />
     </QueryClientProvider>
   )
 }
@@ -145,6 +154,7 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
       'Look up words and translate sentences as you read.'
     )
   ).toHaveClass('text-muted-foreground')
+  // Unknown trial terms: keep the generic sentence (#1238).
   expect(
     within(signIn).getByText('Free AI credits included to get you started.')
   ).toBeInTheDocument()
@@ -172,6 +182,38 @@ it('shows signed-out pinned visitors one complete list with only sign-in expande
     expect(within(step(title)).getByLabelText('To do')).toBeInTheDocument()
     expect(within(step(title)).queryByRole('button')).not.toBeInTheDocument()
   }
+})
+
+it('names the trial amount and length on the sign-in step when terms are known', async () => {
+  installExtension({ isOnToolbar: true })
+  renderGuide(false, newClient(), {
+    status: 'terms',
+    amount: 100,
+    ttlDays: 30,
+  })
+
+  await screen.findByRole('link', { name: 'Create free account' })
+  const signIn = step('Create your free account')
+  expect(
+    within(signIn).getByText('100 free AI credits included, valid for 30 days.')
+  ).toBeInTheDocument()
+  expect(
+    within(signIn).queryByText('Free AI credits included to get you started.')
+  ).toBeNull()
+})
+
+it('hides the credits line on the sign-in step when the trial is off', async () => {
+  installExtension({ isOnToolbar: true })
+  renderGuide(false, newClient(), { status: 'off' })
+
+  await screen.findByRole('link', { name: 'Create free account' })
+  const signIn = step('Create your free account')
+  expect(within(signIn).queryByText(/free AI credits included/i)).toBeNull()
+  expect(
+    within(signIn).getByText(
+      'Look up words and translate sentences as you read.'
+    )
+  ).toBeInTheDocument()
 })
 
 it.each([true, false])(

@@ -15,6 +15,7 @@ import {
   TOPUP_TIERS,
 } from '@/lib/plans'
 import { SITE } from '@/lib/site'
+import { loadTrialTerms } from '@/lib/trialTerms'
 
 // Public pricing page (LAUNCH-CHECKLIST §7.3). Visitors decide before they
 // sign up, and Stripe's review expects prices to be visible without an
@@ -22,8 +23,9 @@ import { SITE } from '@/lib/site'
 // page, which renders the same plans.ts data through the same PriceCard.
 // Annual billing is not offered yet (LAUNCH-CHECKLIST §0.3), so none is shown.
 //
-// Dynamic: the Free card reads the effective free daily lookup ceiling from
-// enx-api on each request (ADR-029), including deployment env overrides.
+// Dynamic: the Free card reads the effective free daily lookup ceiling and
+// sign-up trial terms from enx-api on each request (ADR-029, ADR-098 Decision
+// 9), including deployment env overrides.
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
@@ -32,8 +34,15 @@ export const metadata: Metadata = {
 }
 
 export default async function PricingPage() {
-  const freeDailyLookupLimit = await loadFreeDailyLookupLimit()
-  const freeFeatures = freePlanFeatures(freeDailyLookupLimit)
+  const [freeDailyLookupLimit, trialTerms] = await Promise.all([
+    loadFreeDailyLookupLimit(),
+    loadTrialTerms(),
+  ])
+  const trial =
+    trialTerms.status === 'terms'
+      ? { amount: trialTerms.amount, ttlDays: trialTerms.ttlDays }
+      : null
+  const freeFeatures = freePlanFeatures(freeDailyLookupLimit, trial)
 
   return (
     <>

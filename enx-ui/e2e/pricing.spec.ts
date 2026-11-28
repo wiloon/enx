@@ -27,6 +27,13 @@ test.describe('/pricing (signed out)', () => {
     await expect(card(page, 'Free')).toContainText('$0')
     // Stub API returns 1234 (playwright webServer); formatted with en-US commas.
     await expect(card(page, 'Free')).toContainText('up to 1,234 lookups a day')
+    // Stub API returns trial terms (#1238); note fits with the trial line.
+    await expect(card(page, 'Free')).toContainText(
+      'New accounts get 100 free AI credits, valid for 30 days'
+    )
+    await expect(card(page, 'Free')).toContainText(
+      'AI translation uses credits from a trial, a plan, or a top-up.'
+    )
     for (const name of ['Catglish Pro', 'Catglish Pro+', 'Catglish Max']) {
       await expect(card(page, name)).not.toContainText(/lookups? a day/i)
     }

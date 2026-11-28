@@ -982,7 +982,7 @@ func defaults() map[string]any {
 	// Sign-up trial (ADR-048): amount 0 switches trials off; the two call
 	// ceilings apply only to trial-only users, 0 = no ceiling.
 	set("credits.trial.amount", 100)
-	set("credits.trial.ttl-days", 7)
+	set("credits.trial.ttl-days", 30)
 	set("credits.trial.calls-per-minute", 5)
 	set("credits.trial.calls-per-day", 30)
 	// Popup / billing low-balance notice (ADR-052 Decision 2a). 0 turns
@@ -992,7 +992,7 @@ func defaults() map[string]any {
 	// Referral credits (ADR-051 Decision 7): estimated values, to be
 	// calibrated after internal testing. 0 switches each grant off.
 	set("credits.referral.invitee-bonus", 100)
-	set("credits.referral.invitee-ttl-days", 14)
+	set("credits.referral.invitee-ttl-days", 30)
 	set("credits.referral.referrer-reward-subscription", 300)
 	set("credits.referral.referrer-reward-topup-percent", 20)
 	set("credits.referral.reward-delay-days", 14)

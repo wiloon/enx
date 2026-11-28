@@ -44,6 +44,7 @@ import BrandMark from '@/components/site/BrandMark'
 import HomeLink from '@/components/site/HomeLink'
 import { Button } from '@/components/ui/button'
 import { unwrap } from '@/lib/apiResult'
+import type { TrialTerms } from '@/lib/trialTerms'
 
 // How often /welcome asks the extension for its status and re-reads the
 // user's lookups while waiting on a step (ADR-047 Decision 2).
@@ -72,9 +73,12 @@ const FINAL_LANDINGS: ReadonlySet<WelcomeLanding> = new Set([
 export default function WelcomeGuide({
   fromInstall,
   pollMs = POLL_MS,
+  trialTerms = { status: 'unknown' },
 }: {
   fromInstall: boolean
   pollMs?: number
+  /** Sign-up trial copy for the sign-in step (#1238 / ADR-098 Decision 9). */
+  trialTerms?: TrialTerms
 }) {
   const router = useRouter()
   const { isLoading, isAuthenticated } = useAuth()
@@ -261,6 +265,7 @@ export default function WelcomeGuide({
         returnTo={returnTo}
         onSkipPin={onSkipPin}
         shortcut={extension?.shortcut}
+        trialTerms={trialTerms}
       />
     )
   const skipPin = () => {
@@ -347,12 +352,14 @@ function StepList({
   returnTo,
   onSkipPin,
   shortcut,
+  trialTerms,
 }: {
   steps: OnboardingStep[]
   returnTo: string
   /** Without it, the pin step offers no Skip. */
   onSkipPin?: () => void
   shortcut?: LearningModeShortcut
+  trialTerms: TrialTerms
 }) {
   const nextId = steps.find((step) => step.status === 'todo')?.id
   const [showSkippedPin, setShowSkippedPin] = useState(false)
@@ -398,6 +405,7 @@ function StepList({
                 returnTo={returnTo}
                 onSkipPin={onSkipPin}
                 shortcut={shortcut}
+                trialTerms={trialTerms}
               />
             )}
           </div>
@@ -447,28 +455,36 @@ function StepDetail({
   returnTo,
   onSkipPin,
   shortcut,
+  trialTerms,
 }: {
   id: OnboardingStep['id']
   returnTo: string
   onSkipPin?: () => void
   shortcut?: LearningModeShortcut
+  trialTerms: TrialTerms
 }) {
   switch (id) {
     case 'install':
       return <InstallButton />
     case 'sign-in': {
       const redirect = encodeURIComponent(returnTo)
+      // Trial copy from GET /api/billing/trial-terms (#1238 / ADR-098 Decision
+      // 9): amount+length when known, the generic sentence when unknown, and
+      // no line when the trial is off (ADR-047 #1016, amended).
+      const creditsLine =
+        trialTerms.status === 'terms'
+          ? `${trialTerms.amount.toLocaleString('en-US')} free AI credits included, valid for ${trialTerms.ttlDays} days.`
+          : trialTerms.status === 'unknown'
+            ? 'Free AI credits included to get you started.'
+            : null
       return (
         <div className="space-y-2">
           <p className="text-muted-foreground">
             Look up words and translate sentences as you read.
           </p>
-          {/* Remove this line when the trial is turned off
-              (CREDITS_TRIAL_AMOUNT=0); ADR-047 #1016 revision. No amount or
-              duration here: trial terms come from CREDITS_TRIAL_*. */}
-          <p className="text-muted-foreground">
-            Free AI credits included to get you started.
-          </p>
+          {creditsLine ? (
+            <p className="text-muted-foreground">{creditsLine}</p>
+          ) : null}
           <Button asChild variant="brand">
             <Link href={`/sign-up?redirect_url=${redirect}`}>
               Create free account

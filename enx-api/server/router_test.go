@@ -114,9 +114,51 @@ func TestReferralRoutes(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/referral/offer", nil))
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"credits":200`) || !strings.Contains(w.Body.String(), `"days":14`) {
-		t.Fatalf("signed-out GET /api/referral/offer = %d %s, want 200 with the default 200 credits / 14 days", w.Code, w.Body.String())
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"credits":200`) || !strings.Contains(w.Body.String(), `"days":30`) {
+		t.Fatalf("signed-out GET /api/referral/offer = %d %s, want 200 with the default 200 credits / 30 days", w.Code, w.Body.String())
 	}
+}
+
+// ADR-098 Decision 9 / #1238: pricing and /welcome read the sign-up trial
+// terms without a session. Off is amount=0 or ttl-days=0 → both fields 0.
+func TestTrialTermsRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	setupRouter(config.Default(), metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+	if w.Code != http.StatusOK || w.Body.String() != `{"amount":100,"ttl_days":30}` {
+		t.Fatalf("signed-out GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":100,\"ttl_days\":30}", w.Code, w.Body.String())
+	}
+
+	t.Run("amount zero is off", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("CREDITS_TRIAL_AMOUNT", "0")
+		cfg, err := config.Load("")
+		if err != nil {
+			t.Fatalf("config.Load: %v", err)
+		}
+		w := httptest.NewRecorder()
+		setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+		if w.Code != http.StatusOK || w.Body.String() != `{"amount":0,"ttl_days":0}` {
+			t.Fatalf("amount=0 GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":0,\"ttl_days\":0}", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("ttl-days zero is off", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("CREDITS_TRIAL_TTL_DAYS", "0")
+		cfg, err := config.Load("")
+		if err != nil {
+			t.Fatalf("config.Load: %v", err)
+		}
+		w := httptest.NewRecorder()
+		setupRouter(cfg, metrics.New()).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/billing/trial-terms", nil))
+		if w.Code != http.StatusOK || w.Body.String() != `{"amount":0,"ttl_days":0}` {
+			t.Fatalf("ttl-days=0 GET /api/billing/trial-terms = %d %s, want 200 with {\"amount\":0,\"ttl_days\":0}", w.Code, w.Body.String())
+		}
+	})
 }
 
 // ADR-029: the pricing page reads the free daily lookup ceiling without a
