@@ -8,7 +8,6 @@ import (
 
 	"enx-api/dictionary"
 	dictionaryhttp "enx-api/dictionary/httpapi"
-	entadapters "enx-api/entitlement/adapters"
 	"enx-api/enx"
 	"enx-api/metrics"
 	"enx-api/middleware"
@@ -47,10 +46,6 @@ type Handler struct {
 	policy  AIPolicy
 
 	languages dictionary.ExplanationLanguages // nil: everyone is zh-Hans
-}
-
-func NewHandler(dict dictionary.Resolver, meter dictionary.Meter, reviews WordCounts) *Handler {
-	return NewHandlerWithQuotaTiers(dict, meter, reviews, entadapters.Billing{})
 }
 
 func (h *Handler) WithQuotaTiers(tiers dictionary.QuotaTierSource) *Handler {

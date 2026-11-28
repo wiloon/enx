@@ -134,7 +134,7 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 	// One entitlement judgement (ADR-045 Decision 14) for the lookup, which
 	// hides AI-made definitions from users who can't use AI, and for the
 	// preferences, whose editability follows the same rule.
-	readers := newBillingReaders()
+	readers := newBillingReaders(db)
 	quotaTiers := readers.quotaTiers
 	entitlements := readers.entitlements
 
@@ -163,7 +163,7 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 	if m != nil {
 		dictionaryService.RecordAIWordOutcomes(m)
 	}
-	preferencesService := preferences.NewService(prefadapters.Table{}, entitlements)
+	preferencesService := preferences.NewService(prefadapters.NewTable(db), entitlements)
 	explanationLanguages := adapters.ExplanationLanguages{Preferences: preferencesService}
 
 	// The AI word fallback (ADR-045) is a second request after a lookup
@@ -319,7 +319,7 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 	apiGroup.DELETE("/me/words/:english", wordlist.RemoveHandler)
 	// Mark Known (#133): idempotent, so the extension can retry it.
 	// Lookups and Know it are also review signals (ADR-097).
-	reviews := review.NewService(reviewadapters.Store{}, time.Now)
+	reviews := review.NewService(reviewadapters.NewStore(db), time.Now)
 	knownWordHandler := handlers.NewKnownWordHandler(reviews)
 	apiGroup.PUT("/me/words/:english/known", knownWordHandler.Set)
 	apiGroup.DELETE("/me/words/:english/known", knownWordHandler.Clear)

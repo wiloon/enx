@@ -48,7 +48,7 @@ func knownRequestWithQuery(t *testing.T, method, userID, english, query string) 
 
 // knownRouter serves the known endpoints as userID with the production wiring.
 func knownRouter(userID string) *gin.Engine {
-	h := NewKnownWordHandler(review.NewService(reviewadapters.Store{}, time.Now))
+	h := NewKnownWordHandler(review.NewService(reviewadapters.NewStore(sqlitex.DB), time.Now))
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set("user_id", userID) })
 	router.PUT("/api/me/words/:english/known", h.Set)
