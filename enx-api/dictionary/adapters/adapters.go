@@ -11,6 +11,7 @@ import (
 
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
+	"enx-api/aitranslate/wordeng"
 	"enx-api/billing/credit"
 	"enx-api/dictionary"
 	"enx-api/ecdict"
@@ -139,6 +140,28 @@ func (a AIDefiner) DefineWord(ctx context.Context, word string) (dictionary.Defi
 		return dictionary.Definition{}, usage, err
 	}
 	return dictionary.Definition{IsWord: res.IsWord, Quality: res.Quality, Chinese: res.Chinese()}, usage, nil
+}
+
+// AIEnglishDefiner is the dictionary.EnglishWordDefiner backed by a provider's
+// DefineEnglishWord.
+type AIEnglishDefiner struct {
+	Definer aitranslate.EnglishWordDefiner
+}
+
+func (a AIEnglishDefiner) DefineEnglishWord(ctx context.Context, word string) (dictionary.EnglishModelDefinition, dictionary.AIUsage, error) {
+	res, u, err := a.Definer.DefineEnglishWord(ctx, word)
+	usage := dictionary.AIUsage{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens}
+	switch {
+	case errors.Is(err, wordeng.ErrInvalidReply):
+		return dictionary.EnglishModelDefinition{}, usage, fmt.Errorf("%w: %v", dictionary.ErrInvalidAIReply, err)
+	case err != nil:
+		return dictionary.EnglishModelDefinition{}, usage, err
+	}
+	senses := make([]dictionary.Sense, len(res.Senses))
+	for i, s := range res.Senses {
+		senses[i] = dictionary.Sense{POS: s.POS, Gloss: s.Gloss, Example: s.Example}
+	}
+	return dictionary.EnglishModelDefinition{IsWord: res.IsWord, Quality: res.Quality, Senses: senses}, usage, nil
 }
 
 // TokenBilling is the dictionary.AIBilling that charges the credit ledger by

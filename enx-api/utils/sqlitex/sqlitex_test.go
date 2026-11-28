@@ -54,6 +54,7 @@ func TestInitCreatesDatabaseAndMigratesSchema(t *testing.T) {
 		"users", "words", "user_dicts", "sessions", "sync_state",
 		"subscriptions", "credit_accounts", "credit_transactions", "lookup_events",
 		"active_users_daily", "referral_codes", "referrals",
+		"ai_english_definitions",
 	} {
 		if !DB.Migrator().HasTable(table) {
 			t.Errorf("expected AutoMigrate to create table %q", table)

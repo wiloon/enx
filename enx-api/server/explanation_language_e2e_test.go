@@ -80,9 +80,10 @@ func TestE2E_EnglishExplanationsNeverAnswerInChinese(t *testing.T) {
 		t.Errorf("refused GETs used quota: %d, want %d", got, used)
 	}
 
+	// No Wiktionary file: the en AI path refuses before the model (ADR-098).
 	code, body := doJSONBody(t, http.MethodPost, base+"/api/dictionary/ai-word", token, map[string]any{"word": "hello"})
-	if code != http.StatusServiceUnavailable || body["code"] != "ai_unavailable" || body["message"] != "AI lookup is not available for English explanations yet." {
-		t.Errorf("ai-word in en: %d %v, want it refused for the language", code, body)
+	if code != http.StatusServiceUnavailable || body["code"] != "ai_unavailable" {
+		t.Errorf("ai-word in en without Wiktionary: %d %v, want ai_unavailable", code, body)
 	}
 
 	code, body = doJSONBody(t, http.MethodPost, base+"/api/me/word-lookups", token, map[string]any{"wordId": wordID})

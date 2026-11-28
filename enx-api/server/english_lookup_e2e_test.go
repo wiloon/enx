@@ -45,7 +45,8 @@ func TestE2E_EnglishExplanationsAnswerFromWiktionary(t *testing.T) {
 		t.Errorf("words row = %+v, answered id %v", row, left["Id"])
 	}
 
-	if miss := results[2]; miss["Status"] != "not_found" || miss["ExplanationLanguage"] != "en" || miss["AIFallback"] != nil || miss["Chinese"] != nil {
-		t.Errorf("miss = %v, want not_found with no AI offer", miss)
+	// ADR-098 Decision 5 / #1236: an en miss offers the AI fallback.
+	if miss := results[2]; miss["Status"] != "not_found" || miss["ExplanationLanguage"] != "en" || miss["AIFallback"] == nil || miss["Chinese"] != nil {
+		t.Errorf("miss = %v, want not_found with an AI offer", miss)
 	}
 }

@@ -97,7 +97,7 @@ func newAIEnv() *aiEnv {
 }
 
 func (e *aiEnv) define(word string) (Result, error) {
-	return e.svc.DefineWithAI(context.Background(), word, "u1")
+	return e.svc.DefineWithAI(context.Background(), word, "u1", LanguageZhHans)
 }
 
 func TestDefineWithAIStoresAConfidentDefinition(t *testing.T) {
@@ -491,7 +491,7 @@ func TestDefineWithAIUnavailableWhenNotConfiguredOrUnpriced(t *testing.T) {
 			if tc.svc.AIConfigured() {
 				t.Fatal("AIConfigured should be false")
 			}
-			if _, err := tc.svc.DefineWithAI(context.Background(), "rizzler", "u1"); !errors.Is(err, ErrAIUnavailable) {
+			if _, err := tc.svc.DefineWithAI(context.Background(), "rizzler", "u1", LanguageZhHans); !errors.Is(err, ErrAIUnavailable) {
 				t.Fatalf("err = %v, want ErrAIUnavailable", err)
 			}
 			assertAIWordOutcome(t, rec, "failed")
@@ -591,7 +591,7 @@ func TestDefineWithAIRunsToTheEndWhenTheClientGoesAway(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	res, err := env.svc.DefineWithAI(ctx, "rizzler", "u1")
+	res, err := env.svc.DefineWithAI(ctx, "rizzler", "u1", LanguageZhHans)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -33,7 +33,9 @@ export type AiLookupDeps = {
 // popup as it was.
 export const handleLookupMiss = (miss: WordData, deps: AiLookupDeps): void => {
   const fallback = miss.AIFallback
-  if (miss.Chinese || !fallback) return
+  const hasDefinition =
+    Boolean(miss.Chinese) || (miss.Senses?.length ?? 0) > 0
+  if (hasDefinition || !fallback) return
 
   if (fallback.Auto) {
     void runAiLookup(miss.English, { auto: true }, deps)

@@ -120,6 +120,7 @@ type Service struct {
 	ent        Entitlements
 	ai         *aiFallback // nil until EnableAI
 	aiRecorder AIWordRecorder
+	englishAI  EnglishAIStore // nil: no English AI table
 }
 
 // NoUser is the userID of a lookup made without an account (ADR-095): it
@@ -167,7 +168,7 @@ func (s *Service) findCached(ctx context.Context, english, userID string) (strin
 // and ErrWiktionaryUnavailable (no Wiktionary for an English explanation).
 func (s *Service) Resolve(ctx context.Context, english, userID string, lang Language) (Result, error) {
 	if lang == LanguageEnglish {
-		return s.resolveEnglish(ctx, english)
+		return s.resolveEnglish(ctx, english, userID)
 	}
 	id, cached, ok, err := s.findCached(ctx, english, userID)
 	if err != nil {

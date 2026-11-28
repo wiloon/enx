@@ -16,6 +16,7 @@ type fakeWords struct {
 	finds   []bool // the includeAI argument of every Find call, in order
 	findErr error
 	addErr  error
+	idErr   error // fails ID only, so Find still works
 }
 
 func newFakeWords() *fakeWords {
@@ -57,6 +58,9 @@ func (f *fakeWords) Find(_ context.Context, english string, includeAI bool) (str
 func (f *fakeWords) ID(_ context.Context, english string) (string, bool, error) {
 	if f.findErr != nil {
 		return "", false, f.findErr
+	}
+	if f.idErr != nil {
+		return "", false, f.idErr
 	}
 	for id, e := range f.rows {
 		if strings.EqualFold(e.English, english) {

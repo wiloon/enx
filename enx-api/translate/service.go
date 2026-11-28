@@ -25,9 +25,9 @@ type WordCounts interface {
 }
 
 // AIDefiner defines a word the dictionaries lack: dictionary.Service in
-// production (ADR-045).
+// production (ADR-045 / ADR-098).
 type AIDefiner interface {
-	DefineWithAI(ctx context.Context, english, userID string) (dictionary.Result, error)
+	DefineWithAI(ctx context.Context, english, userID string, lang dictionary.Language) (dictionary.Result, error)
 }
 
 // AIPolicy says what the AI fallback offers a user: adapters.AIPolicy in

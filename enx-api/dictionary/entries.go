@@ -45,8 +45,8 @@ type EntryResult struct {
 	// Result is set when Status is EntryFound; its ID is empty when the
 	// ECDICT hit could not be cached.
 	Result Result
-	// AIFallback is set when Status is EntryNotFound, in zh-Hans only, and a
-	// policy exists.
+	// AIFallback is set when Status is EntryNotFound and a policy exists
+	// (zh-Hans and en; ADR-098 Decision 5).
 	AIFallback *AIFallbackOffer
 	// Language is the explanation language the word was answered in; empty
 	// when the user's could not be read.
@@ -135,8 +135,7 @@ func (e *Entries) Lookup(ctx context.Context, userID string, raw []string) ([]En
 	var offer *AIFallbackOffer
 	for i, word := range words {
 		results[i] = resolveEntry(ctx, e.resolver, word, userID, lang)
-		// The AI fallback writes Chinese definitions.
-		if results[i].Status == EntryNotFound && lang == LanguageZhHans && e.policy != nil {
+		if results[i].Status == EntryNotFound && e.policy != nil {
 			if offer == nil {
 				canUse, auto := e.policy.Fallback(ctx, userID)
 				offer = &AIFallbackOffer{CanUse: canUse, Auto: auto}

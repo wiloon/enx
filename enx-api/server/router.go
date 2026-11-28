@@ -8,6 +8,7 @@ import (
 	"enx-api/ailimit"
 	"enx-api/aitranslate"
 	"enx-api/aitranslate/worddef"
+	"enx-api/aitranslate/wordeng"
 	"enx-api/billing"
 	billingapp "enx-api/billing/app"
 	"enx-api/billing/checkout"
@@ -217,6 +218,10 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 					CallTimeout:   cfg.AIWord.CallTimeout,
 				},
 			)
+			if eng, ok := aitranslate.AsEnglishWordDefiner(sentenceTranslator); ok {
+				dictionaryService.EnableEnglishAI(adapters.AIEnglishDefiner{Definer: eng}, wordeng.PromptVersion)
+			}
+			dictionaryService.UseEnglishAI(adapters.AIEnglishDefinitions{})
 			dictionaryService.LimitTrial(trialGate)
 			dictionaryService.UseCandidates(adapters.AICandidates{})
 			if !dictionaryService.AIConfigured() {

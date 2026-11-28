@@ -19,10 +19,12 @@ type fakeAI struct {
 	res   dictionary.Result
 	err   error
 	words []string
+	langs []dictionary.Language
 }
 
-func (f *fakeAI) DefineWithAI(_ context.Context, english, _ string) (dictionary.Result, error) {
+func (f *fakeAI) DefineWithAI(_ context.Context, english, _ string, lang dictionary.Language) (dictionary.Result, error) {
 	f.words = append(f.words, english)
+	f.langs = append(f.langs, lang)
 	return f.res, f.err
 }
 
@@ -301,8 +303,7 @@ func TestLookupHitDoesNotMentionTheAIFallback(t *testing.T) {
 	}
 }
 
-// ADR-098: the model writes Chinese, so it is not called for a user who may
-// want English.
+// ADR-098: a failed language read is 503, never a Chinese answer by default.
 func TestAIWordRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
 	ai := &fakeAI{}
 	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, nil).WithExplanationLanguages(failingLanguages{})
@@ -311,5 +312,72 @@ func TestAIWordRefusesWhenTheExplanationLanguageCannotBeRead(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable || decode(t, w)["code"] != "ai_unavailable" || len(ai.words) != 0 {
 		t.Fatalf("status %d body %s, asked %v; want ai_unavailable and no AI call", w.Code, w.Body, ai.words)
+	}
+}
+
+type fixedLanguages struct{ lang dictionary.Language }
+
+func (f fixedLanguages) ExplanationLanguage(context.Context, string) (dictionary.Language, error) {
+	return f.lang, nil
+}
+
+func TestAIWordInEnglishReturnsSensesAndExplanationLanguage(t *testing.T) {
+	ai := &fakeAI{res: dictionary.Result{
+		ID: "w1", English: "rizzler", Source: dictionary.SourceAI, Origin: dictionary.OriginAI,
+		Definition: &dictionary.EnglishDefinition{Senses: []dictionary.Sense{
+			{POS: "noun", Gloss: "A stylish person.", Example: "He is a rizzler."},
+		}},
+	}}
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+
+	body := decode(t, w)
+	word, _ := body["word"].(map[string]any)
+	if w.Code != http.StatusOK || body["found"] != true {
+		t.Fatalf("status %d body %s", w.Code, w.Body)
+	}
+	if word["ExplanationLanguage"] != "en" || word["Origin"] != "ai" || word["Source"] != "ai" {
+		t.Fatalf("word = %+v", word)
+	}
+	if word["Chinese"] != "" || word["Pronunciation"] != "" {
+		t.Fatalf("want empty Chinese/Pronunciation, got %+v", word)
+	}
+	senses, _ := word["Senses"].([]any)
+	if len(senses) != 1 {
+		t.Fatalf("Senses = %+v", word["Senses"])
+	}
+	if len(ai.langs) != 1 || ai.langs[0] != dictionary.LanguageEnglish {
+		t.Fatalf("langs = %v", ai.langs)
+	}
+}
+
+func TestAIWordInEnglishReturnsAWiktionaryReCheckHit(t *testing.T) {
+	ai := &fakeAI{res: dictionary.Result{
+		ID: "w1", English: "run", Source: dictionary.SourceWiktionary, Origin: dictionary.OriginWiktionary,
+		Definition: &dictionary.EnglishDefinition{
+			LemmaNote: "past tense of go", PronunciationUS: "/rʌn/",
+			Senses: []dictionary.Sense{{POS: "verb", Gloss: "To move.", Example: "I run."}},
+		},
+	}}
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(ai, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"run"}`)
+
+	word := decode(t, w)["word"].(map[string]any)
+	if word["Origin"] != "wiktionary" || word["LemmaNote"] != "past tense of go" || word["PronunciationUS"] != "/rʌn/" {
+		t.Fatalf("word = %+v", word)
+	}
+}
+
+func TestAIWordWiktionaryUnavailableIsAiUnavailable(t *testing.T) {
+	h := newHandler(nil, nil, &fakeReviews{}).WithAI(&fakeAI{err: dictionary.ErrWiktionaryUnavailable}, fakePolicy{}).
+		WithExplanationLanguages(fixedLanguages{lang: dictionary.LanguageEnglish})
+
+	w := post(t, h.AIWord, "u1", `{"word":"rizzler"}`)
+	if w.Code != http.StatusServiceUnavailable || decode(t, w)["code"] != "ai_unavailable" {
+		t.Fatalf("status %d body %s", w.Code, w.Body)
 	}
 }
