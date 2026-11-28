@@ -374,7 +374,7 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 	// User feedback (ADR-076): records the user chose to send, such as a
 	// confirmed "this page didn't work" report. Stores a cleaned URL, so the
 	// extension only calls it after the user confirms. Not on the metered path.
-	feedbackHandler := feedback.NewHandler(feedback.NewService(feedbackadapters.Table{},
+	feedbackHandler := feedback.NewHandler(feedback.NewService(feedbackadapters.NewTable(db),
 		feedbackadapters.Mail{Sender: email.NewSender(cfg.Resend)}, cfg.Feedback.DailyLimit, time.Now))
 	apiGroup.POST("/feedback", feedbackHandler.Submit)
 

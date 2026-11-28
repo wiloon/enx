@@ -128,7 +128,7 @@ func TestSubmitKeepsOneArticleChoicePerUserHostAndSelectorEvenAtTheLimit(t *test
 }
 
 func TestSubmitStoresOneArticleChoiceUnderConcurrentDuplicates(t *testing.T) {
-	e := newEnvWith(t, slowStore{})
+	e := newEnvWith(t, newSlowStore)
 
 	codes := make([]int, 8)
 	var wg sync.WaitGroup
