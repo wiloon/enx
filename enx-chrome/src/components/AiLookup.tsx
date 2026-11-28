@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useAtomValue } from 'jotai'
 import { LockClosedIcon, SparklesIcon } from '@heroicons/react/20/solid'
 import { billingUrl, stopAutomaticAiLookup } from '@/lib/aiLookup'
+import { sendToBackground } from '@/lib/messaging'
 import { fetchPreferences } from '@/lib/serverPreferences'
 import { aiLookupAtom, aiNoticeAtom } from '@/store/atoms'
 
@@ -193,7 +194,7 @@ export function AiDefinition({ children }: { children: ReactNode }) {
             href={`chrome-extension://${chrome.runtime.id}/options.html`}
             onClick={event => {
               event.preventDefault()
-              void chrome.runtime.sendMessage({ type: 'openOptionsPage' })
+              void sendToBackground({ type: 'openOptionsPage' })
             }}
             className="block text-brand hover:underline active:text-brand/70 focus-visible:outline-2 focus-visible:outline-brand"
           >

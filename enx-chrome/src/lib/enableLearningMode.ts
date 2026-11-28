@@ -2,6 +2,7 @@ import type { ArticleChoiceStatus } from '@/lib/articleChoice'
 import { failureMessage, type EnableFailureReason } from '@/lib/enableOutcome'
 import type { PageFeedbackContext } from '@/lib/feedback'
 import type { LearningModeStatus } from '@/lib/learningModeStatus'
+import { sendToTab } from '@/lib/messaging'
 
 export interface EnxRunResponse {
   success: boolean
@@ -83,8 +84,8 @@ const sendPageAction = (
   action: PageAction
 ): Promise<PageActionResponse> =>
   action === 'enxRun'
-    ? chrome.tabs.sendMessage(tabId, { action })
-    : chrome.tabs.sendMessage(tabId, { action }, { frameId: 0 })
+    ? sendToTab(tabId, { action })
+    : sendToTab(tabId, { action }, { frameId: 0 })
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -122,7 +123,7 @@ async function sendPageActionWithRetry(
 // so it is left alone rather than injected into.
 export async function disableLearningModeOnTab(tabId: number): Promise<void> {
   try {
-    await chrome.tabs.sendMessage(tabId, { action: 'enxStop' })
+    await sendToTab(tabId, { action: 'enxStop' })
   } catch (err) {
     if (!isNoReceiverError(err)) throw err
   }
@@ -137,7 +138,7 @@ export async function autoEnableOnSignInReturnOnTab(
   tabId: number
 ): Promise<void> {
   try {
-    await chrome.tabs.sendMessage(
+    await sendToTab(
       tabId,
       { action: 'autoEnableOnSignInReturn' },
       { frameId: 0 }
@@ -155,7 +156,7 @@ export async function getLearningModeStatusOnTab(
   tabId: number
 ): Promise<LearningModeStatus> {
   try {
-    const response = await chrome.tabs.sendMessage(
+    const response = await sendToTab(
       tabId,
       { action: 'getLearningModeStatus' },
       { frameId: 0 }
@@ -176,7 +177,7 @@ export async function getArticleChoiceOnTab(
   available: boolean
 ): Promise<PageActionResponse> {
   try {
-    return await chrome.tabs.sendMessage(
+    return await sendToTab(
       tabId,
       { action: 'getArticleChoice' },
       { frameId: 0 }
@@ -194,7 +195,7 @@ export async function getFeedbackContextOnTab(
   tabId: number
 ): Promise<PageFeedbackContext> {
   try {
-    const response = await chrome.tabs.sendMessage(
+    const response = await sendToTab(
       tabId,
       { action: 'getFeedbackContext' },
       { frameId: 0 }

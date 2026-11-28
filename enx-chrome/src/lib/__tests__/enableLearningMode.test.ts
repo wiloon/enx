@@ -1,7 +1,9 @@
 import {
+  autoEnableOnSignInReturnOnTab,
   disableLearningModeOnTab,
   enableLearningModeOnTab,
   getArticleChoiceOnTab,
+  getFeedbackContextOnTab,
   getLearningModeStatusOnTab,
 } from '@/lib/enableLearningMode'
 
@@ -255,6 +257,85 @@ describe('getArticleChoiceOnTab', () => {
       success: true,
       available: false,
     })
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
+  })
+
+  it('passes any other messaging failure on to the caller', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('No tab with id: 7')
+    )
+
+    await expect(getArticleChoiceOnTab(7, true)).rejects.toThrow(
+      'No tab with id: 7'
+    )
+  })
+})
+
+describe('autoEnableOnSignInReturnOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+  })
+
+  it("asks only the tab's top frame to auto-enable again", async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue({ success: true })
+
+    await expect(autoEnableOnSignInReturnOnTab(7)).resolves.toBeUndefined()
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { action: 'autoEnableOnSignInReturn' },
+      { frameId: 0 }
+    )
+  })
+
+  it('leaves a tab with no content script alone, without injecting one', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(noReceiverError())
+
+    await expect(autoEnableOnSignInReturnOnTab(7)).resolves.toBeUndefined()
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
+  })
+
+  it('passes any other messaging failure on to the caller', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('No tab with id: 7')
+    )
+
+    await expect(autoEnableOnSignInReturnOnTab(7)).rejects.toThrow(
+      'No tab with id: 7'
+    )
+  })
+})
+
+describe('getFeedbackContextOnTab', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+  })
+
+  it("asks the tab's top frame and returns what the page adds", async () => {
+    const context = { learningMode: true, adapter: 'generic' }
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(context)
+
+    expect(await getFeedbackContextOnTab(7)).toEqual(context)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { action: 'getFeedbackContext' },
+      { frameId: 0 }
+    )
+  })
+
+  it('says learning mode is off when the content script gives no answer', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
+
+    expect(await getFeedbackContextOnTab(7)).toEqual({ learningMode: false })
+  })
+
+  it('says learning mode is off for a tab the browser will not message', async () => {
+    ;(chrome.tabs.sendMessage as jest.Mock).mockRejectedValue(
+      new Error('No tab with id: 7')
+    )
+
+    expect(await getFeedbackContextOnTab(7)).toEqual({ learningMode: false })
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled()
   })
 })

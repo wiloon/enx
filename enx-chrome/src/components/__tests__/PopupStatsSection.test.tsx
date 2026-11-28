@@ -105,4 +105,24 @@ describe('PopupStatsSection', () => {
       screen.queryByTestId('popup-stats-credit-notice')
     ).not.toBeInTheDocument()
   })
+
+  it('shows em dashes and no notice when the summary cannot be fetched', async () => {
+    let fail!: (reason: Error) => void
+    const failing = new Promise<PopupSummary>((_resolve, reject) => {
+      fail = reject
+    })
+    ;(chrome.runtime.sendMessage as jest.Mock).mockReturnValue(failing)
+
+    render(<PopupStatsSection />)
+
+    await act(async () => {
+      fail(new Error('Could not establish connection.'))
+      await failing.catch(() => {})
+    })
+
+    expect(screen.getAllByText('—')).toHaveLength(2)
+    expect(
+      screen.queryByTestId('popup-stats-credit-notice')
+    ).not.toBeInTheDocument()
+  })
 })

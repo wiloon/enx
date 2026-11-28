@@ -38,6 +38,7 @@ import {
   type LearningModeShortcut,
 } from '@/lib/learningModeCommand'
 import { isLearningModeOn } from '@/lib/learningModeStatus'
+import { sendToBackground } from '@/lib/messaging'
 import {
   PageReportPayload,
   sanitizePageUrl,
@@ -307,7 +308,7 @@ function SignedInBody({
     if (!reportCandidate) return
     setReportStatus('sending')
     const outcome = await sendPageReport(
-      message => chrome.runtime.sendMessage(message),
+      message => sendToBackground(message),
       reportCandidate
     )
     setReportError(outcome.sent ? undefined : outcome.message)
@@ -464,8 +465,7 @@ function PopupContent() {
   useEffect(() => {
     if (!isLoaded || isSignedIn) return
     let cancelled = false
-    void chrome.runtime
-      .sendMessage({ type: 'learningAccess' })
+    void sendToBackground({ type: 'learningAccess' })
       .then((reply: { access?: LearningAccess } | undefined) => {
         if (cancelled) return
         setSignedOutAccess(reply?.access ?? 'signed-out')
