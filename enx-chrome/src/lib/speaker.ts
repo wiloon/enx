@@ -21,6 +21,5 @@ export const popoverHasSpeaker = ({
   !isTranslating && !error && !!word && isSingleWord(word.English)
 
 export const cardHasSpeaker = (
-  card: Pick<WordCardData, 'word' | 'dictionaryStatus' | 'dictionaryChinese'>
-): boolean =>
-  card.dictionaryStatus === 'loaded' && !!card.word && !!card.dictionaryChinese
+  card: Pick<WordCardData, 'word' | 'dictionaryStatus'>
+): boolean => card.dictionaryStatus === 'loaded' && isSingleWord(card.word)

@@ -31,6 +31,8 @@ export type ExplanationLanguageRereadDeps = {
   record: (wordId: string) => Promise<BackgroundResponse>
   isActive: () => boolean
   isCurrent: () => boolean
+  // Shows the new definition in the side panel, counting nothing.
+  mirror: (word: WordData) => void
   onMiss: (word: WordData) => void
 }
 
@@ -108,5 +110,8 @@ export async function rereadForExplanationLanguage(
       },
     }
   )
-  if (accepted && wordData && deps.isCurrent()) deps.onMiss(wordData)
+  if (accepted && wordData && deps.isCurrent()) {
+    deps.mirror(wordData)
+    deps.onMiss(wordData)
+  }
 }

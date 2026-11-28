@@ -22,6 +22,10 @@ jest.mock('@/config/env', () => ({
   },
 }))
 
+// These tests count background messages; the language query is stubbed.
+jest.mock('@/lib/assumedLanguageQuery', () => ({
+  assumedLanguage: async () => 'zh-Hans',
+}))
 jest.mock('@/services/api', () => ({
   sendMessageToBackground: jest.fn(),
 }))
@@ -3148,6 +3152,7 @@ describe('SidePanel', () => {
       await renderEmpty()
       await send({ sentence: SENTENCE })
       selectWord('great')
+      await act(async () => {}) // the card is made
       await clickClear()
       await settle(take('getOneWord'), {
         success: true,
@@ -3570,6 +3575,7 @@ describe('SidePanel', () => {
         await renderEmpty()
         await send({ sentence: SENTENCE })
         selectWord('great')
+        await act(async () => {}) // the card is made
         await clear()
         await undo()
         await settle(take('getOneWord'), {
@@ -3704,6 +3710,7 @@ describe('SidePanel', () => {
         await renderEmpty()
         await send({ sentence: SENTENCE })
         selectWord('great')
+        await act(async () => {}) // the card is made
         await clear()
         await settle(take('getOneWord'), {
           success: true,

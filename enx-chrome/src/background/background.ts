@@ -1393,8 +1393,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return await handleRecordPageWordLookup(
             sender.tab?.id,
             request.word || '',
-            request.ecp
+            request.ecp,
+            request.reread
           )
+
+        // The side panel makes its word cards in this language (ADR-098).
+        case 'getExplanationLanguage':
+          await ensureAssumedLanguage()
+          return {
+            success: true,
+            explanationLanguage: assumedExplanationLanguage,
+          }
 
         // ADR-081/082: tabs send each action at once; the writer debounces.
         case 'recordReadingPosition':
@@ -2207,7 +2216,8 @@ const handleOpenSentencePanel = async (
 const handleRecordPageWordLookup = async (
   tabId: number | undefined,
   word: string,
-  ecp?: WordData
+  ecp?: WordData,
+  reread?: boolean
 ) => {
   if (tabId === undefined) return { success: false, error: 'No sender tab' }
   if (!word || !ecp)
@@ -2218,6 +2228,7 @@ const handleRecordPageWordLookup = async (
     ecp,
     createdAt: Date.now(),
     eventId: crypto.randomUUID(),
+    ...(reread && { reread: true }),
   }
   await chrome.storage.session.set({ [latestPageWordKey(tabId)]: lookup })
 

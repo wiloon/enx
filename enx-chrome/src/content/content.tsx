@@ -719,6 +719,13 @@ const showWordPopover = async (word: string, reference: Range) => {
         currentOverlay === overlay &&
         isCurrentAccount() &&
         switchGate.isCurrent(),
+      mirror: wordData =>
+        void sendRuntimeMessage({
+          type: 'recordPageWordLookup',
+          word: word.trim().toLowerCase(),
+          ecp: wordData,
+          reread: true,
+        }),
       onMiss: wordData => handleLookupMiss(wordData, aiDepsFor(switchGate)),
     })
   }
