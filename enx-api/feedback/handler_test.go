@@ -7,17 +7,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"enx-api/feedback"
 	"enx-api/feedback/adapters"
 	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 )
 
 // 10:00 UTC on a Monday; the UTC day under test runs from 00:00 that day.
@@ -47,16 +48,12 @@ type env struct {
 // The caller's user id travels in X-Test-User, standing in for clerkAuth.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	return newEnvWith(t, adapters.Table{})
+	return newEnvWith(t, func(db *gorm.DB) feedback.Store { return adapters.NewTable(db) })
 }
 
-func newEnvWith(t *testing.T, store feedback.Store) *env {
+func newEnvWith(t *testing.T, newStore func(*gorm.DB) feedback.Store) *env {
 	t.Helper()
-	prev := sqlitex.DB
-	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "feedback.db"), "warn"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { sqlitex.DB = prev })
+	store := newStore(sqlitextest.Open(t))
 
 	e := &env{t: t, now: today, notifier: &recordingNotifier{}}
 	h := feedback.NewHandler(feedback.NewService(store, e.notifier, 50, func() time.Time { return e.now }))
@@ -249,6 +246,8 @@ func TestSubmitAnswersARepeatPageReportAsDoneEvenAtTheLimit(t *testing.T) {
 // their checks before any of them writes.
 type slowStore struct{ adapters.Table }
 
+func newSlowStore(db *gorm.DB) feedback.Store { return slowStore{adapters.NewTable(db)} }
+
 type slowAdmission struct{ feedback.Admission }
 
 func (s slowStore) Admit(ctx context.Context, fn func(feedback.Admission) error) error {
@@ -261,7 +260,7 @@ func (a slowAdmission) Insert(r feedback.Record) error {
 }
 
 func TestSubmitAdmitsNoMoreThanTheLimitUnderConcurrentSubmissions(t *testing.T) {
-	e := newEnvWith(t, slowStore{})
+	e := newEnvWith(t, newSlowStore)
 	seed(t, "u1", "text", today.Add(-time.Hour), 47)
 
 	codes := make([]int, 12)

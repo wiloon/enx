@@ -20,7 +20,7 @@ var base = time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
 func open(t *testing.T) (Table, *gorm.DB) {
 	t.Helper()
 	db := sqlitextest.Open(t)
-	return Table{}, db
+	return NewTable(db), db
 }
 
 // choice is an article choice by u1 of "main" on x.com, to be varied per test.
@@ -375,5 +375,38 @@ func TestSetArticleChoiceGroupStatusChangesEveryRecordOfThatGroupOnly(t *testing
 		"other-host": "new", "other-selector": "new", "other-kind": "new"}
 	if got := statuses(t, db); !reflect.DeepEqual(got, want) {
 		t.Fatalf("statuses = %v, want %v", got, want)
+	}
+}
+
+func TestTableUsesTheHandleItWasBuiltOn(t *testing.T) {
+	first := sqlitextest.Open(t)
+	// Open points the global at the handle it opened last.
+	second := sqlitextest.Open(t)
+	ctx := context.Background()
+	tbl := NewTable(first)
+
+	insert(t, tbl, choice("a", base))
+	if a, b := len(stored(t, first)), len(stored(t, second)); a != 1 || b != 0 {
+		t.Errorf("after Admit: %d rows in the first database and %d in the second, want 1 and 0", a, b)
+	}
+	found, err := tbl.SetStatus(ctx, "a", feedback.StatusResolved)
+	if err != nil || !found {
+		t.Errorf("SetStatus = %v, %v, want the first database's record", found, err)
+	}
+	if got := listIDs(t, tbl, feedback.ListQuery{Status: feedback.StatusResolved, Limit: 10}); !reflect.DeepEqual(got, []string{"a"}) {
+		t.Errorf("List = %v, want the resolved record", got)
+	}
+	if got := groups(t, tbl, feedback.GroupQuery{Limit: 10}); len(got) != 1 {
+		t.Errorf("ArticleChoiceGroups = %+v, want the record's group", got)
+	}
+	n, err := tbl.SetArticleChoiceGroupStatus(ctx, "x.com", "main", feedback.StatusNew)
+	if err != nil || n != 1 {
+		t.Errorf("SetArticleChoiceGroupStatus = %d, %v, want 1", n, err)
+	}
+	if got, want := statuses(t, first), map[string]string{"a": "new"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("first database statuses = %v, want %v", got, want)
+	}
+	if rows := stored(t, second); len(rows) != 0 {
+		t.Errorf("second database rows = %+v, want none", rows)
 	}
 }
