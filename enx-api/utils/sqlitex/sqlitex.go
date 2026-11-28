@@ -92,6 +92,21 @@ func (AICandidate) TableName() string {
 	return "ai_candidates"
 }
 
+// AIEnglishDefinition is a shared English-English AI definition (ADR-098
+// Decision 5). word_id is words.id; senses is the JSON Sense list.
+type AIEnglishDefinition struct {
+	WordID        string `gorm:"column:word_id;primaryKey"`
+	Senses        string `gorm:"column:senses;not null"` // JSON array of {pos,gloss,example}
+	Quality       int    `gorm:"column:quality;not null"`
+	PromptVersion string `gorm:"column:prompt_version;not null"`
+	CreatedAt     int64  `gorm:"column:created_at;not null"` // Unix milliseconds
+	UpdatedAt     int64  `gorm:"column:updated_at;not null"` // Unix milliseconds
+}
+
+func (AIEnglishDefinition) TableName() string {
+	return "ai_english_definitions"
+}
+
 type UserDict struct {
 	UserId     string `gorm:"column:user_id;primaryKey"`
 	WordId     string `gorm:"column:word_id;primaryKey"`
@@ -237,6 +252,7 @@ func initDatabase(dbPath, level string) error {
 		&ReaderDocument{}, &DailyStat{}, &StatsIngestLog{}, &Feedback{}, &SavedPage{},
 		&UserPreference{}, &ActiveUsersDay{}, &ReferralCode{}, &Referral{}, &TrialGrant{},
 		&User{}, &CreditAccount{}, &CreditTransaction{}, &DictionaryQuotaUsage{}, &AICandidate{},
+		&AIEnglishDefinition{},
 		&AnonymousDeviceUsage{}, &AnonymousLookupsDay{}, &ReviewState{}, &ReviewLog{}}
 	err = DB.AutoMigrate(models...)
 	if err != nil {

@@ -1,7 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Provider, createStore } from 'jotai'
 import WordPopover from '@/components/WordPopover'
-import { currentWordAtom, isTranslatingAtom } from '@/store/atoms'
+import {
+  aiLookupAtom,
+  aiNoticeAtom,
+  currentWordAtom,
+  isTranslatingAtom,
+  type AiLookupState,
+} from '@/store/atoms'
 import type { WordData } from '@/types'
 
 jest.mock('@/lib/aiLookup', () => ({
@@ -9,7 +15,15 @@ jest.mock('@/lib/aiLookup', () => ({
   stopAutomaticAiLookup: jest.fn(),
   shouldShowAiNotice: jest.fn().mockResolvedValue(false),
 }))
-jest.mock('@/lib/serverPreferences', () => ({ fetchPreferences: jest.fn() }))
+jest.mock('@/lib/serverPreferences', () => ({
+  fetchPreferences: jest.fn().mockResolvedValue({
+    ok: true,
+    data: {
+      aiWordFallback: { value: null, effective: true, editable: true },
+      aiWordFallbackNoticeAck: { value: null, effective: true, editable: true },
+    },
+  }),
+}))
 jest.mock('@/components/ExplanationLanguageSwitch', () => ({
   __esModule: true,
   default: () => null,
@@ -39,10 +53,19 @@ const word = (overrides: Partial<WordData> = {}): WordData => ({
   ...overrides,
 })
 
-function renderPopover(current: WordData) {
+function renderPopover(
+  current: WordData,
+  {
+    ai = { status: 'idle' } as AiLookupState,
+    notice = { show: false, offerStop: false },
+    onAiLookup = jest.fn(),
+  } = {}
+) {
   const store = createStore()
   store.set(currentWordAtom, current)
   store.set(isTranslatingAtom, false)
+  store.set(aiLookupAtom, ai)
+  store.set(aiNoticeAtom, notice)
   render(
     <Provider store={store}>
       <WordPopover
@@ -50,9 +73,11 @@ function renderPopover(current: WordData) {
         onClose={jest.fn()}
         onMarkKnown={jest.fn()}
         onOpenSentencePanel={jest.fn()}
+        onAiLookup={onAiLookup}
       />
     </Provider>
   )
+  return { onAiLookup }
 }
 
 it('shows the lemma note, one US pronunciation, and at most four senses', () => {
@@ -92,7 +117,70 @@ it('shows an English miss with no AI offer', () => {
   )
 
   expect(screen.getByTestId('word-popover-en-miss')).toHaveTextContent(
-    'No definition found.'
+    'No English definition found.'
   )
-  expect(screen.queryByTestId('word-popover-ai-offer')).toBeNull()
+  expect(screen.queryByTestId('word-popover-ai-lookup')).toBeNull()
+})
+
+it('offers Look up with AI on an English miss when CanUse is true', () => {
+  const { onAiLookup } = renderPopover(
+    word({
+      Id: undefined,
+      Senses: undefined,
+      LemmaNote: undefined,
+      PronunciationUS: undefined,
+      PronunciationUK: undefined,
+    }),
+    { ai: { status: 'offer', canUse: true } }
+  )
+
+  expect(screen.getByText('No English definition found.')).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('word-popover-ai-lookup'))
+  expect(onAiLookup).toHaveBeenCalled()
+})
+
+it('shows the upgrade link on an English miss when CanUse is false', () => {
+  renderPopover(
+    word({
+      Id: undefined,
+      Senses: undefined,
+      LemmaNote: undefined,
+      PronunciationUS: undefined,
+      PronunciationUK: undefined,
+    }),
+    { ai: { status: 'offer', canUse: false } }
+  )
+
+  expect(screen.getByText('No English definition found.')).toBeInTheDocument()
+  expect(screen.getByTestId('word-popover-ai-upgrade')).toBeInTheDocument()
+})
+
+it('shows an AI badge and at most four senses for an English AI result', () => {
+  renderPopover(
+    word({
+      Origin: 'ai',
+      LemmaNote: undefined,
+      PronunciationUS: undefined,
+      PronunciationUK: undefined,
+      Senses: [
+        { pos: 'noun', gloss: 'Sense one.', example: 'Ex one.' },
+        { pos: 'noun', gloss: 'Sense two.' },
+        { pos: 'noun', gloss: 'Sense three.' },
+        { pos: 'verb', gloss: 'Sense four.' },
+        { pos: 'verb', gloss: 'Sense five.' },
+        { pos: 'adj', gloss: 'Sense six.' },
+      ],
+    })
+  )
+
+  expect(screen.getByTestId('word-popover-ai-badge')).toBeInTheDocument()
+  expect(screen.getAllByTestId('word-popover-sense')).toHaveLength(4)
+})
+
+it('shows the AI notice in English mode', () => {
+  renderPopover(word({ Origin: 'ai', Senses: [{ pos: 'noun', gloss: 'A thing.' }] }), {
+    notice: { show: true, offerStop: false },
+  })
+
+  expect(screen.getByTestId('word-popover-ai-notice')).toBeInTheDocument()
 })

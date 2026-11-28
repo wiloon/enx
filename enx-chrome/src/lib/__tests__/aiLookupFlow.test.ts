@@ -118,6 +118,40 @@ describe('handleLookupMiss', () => {
     expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
     expect(lookup).not.toHaveBeenCalled()
   })
+
+  it('starts Auto for an English miss with no Chinese', async () => {
+    lookup.mockResolvedValue({ kind: 'found', word: defined })
+    const { store, deps } = setup()
+
+    handleLookupMiss(
+      {
+        ...miss({ CanUse: true, Auto: true }),
+        ExplanationLanguage: 'en',
+      },
+      deps
+    )
+    await settle()
+
+    expect(lookup).toHaveBeenCalledWith('rizzler')
+    expect(store.get(aiLookupAtom)).toEqual({ status: 'found' })
+  })
+
+  it('does nothing for an English definition that already has senses', () => {
+    const { store, deps } = setup()
+
+    handleLookupMiss(
+      {
+        ...miss({ CanUse: true, Auto: true }),
+        ExplanationLanguage: 'en',
+        Origin: 'ai',
+        Senses: [{ pos: 'noun', gloss: 'A stylish person.' }],
+      },
+      deps
+    )
+
+    expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
+    expect(lookup).not.toHaveBeenCalled()
+  })
 })
 
 describe('runAiLookup', () => {

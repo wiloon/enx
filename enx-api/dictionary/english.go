@@ -12,10 +12,11 @@ import (
 // maxSenses is the most senses an English definition carries.
 const maxSenses = 10
 
-// resolveEnglish explains english from Wiktionary alone (ADR-098): never from
-// the words table or ECDICT, which hold Chinese. A miss is SourceMiss and a
-// read failure SourceError; neither writes a words row.
-func (s *Service) resolveEnglish(ctx context.Context, english string) (Result, error) {
+// resolveEnglish explains english from Wiktionary, then the shared English AI
+// table for users who may use AI (ADR-098): never from the words table or
+// ECDICT for the definition. A miss is SourceMiss and a read failure
+// SourceError; the AI table read writes nothing.
+func (s *Service) resolveEnglish(ctx context.Context, english, userID string) (Result, error) {
 	if s.wiktionary == nil || !s.wiktionary.Available() {
 		return Result{}, ErrWiktionaryUnavailable
 	}
@@ -26,6 +27,9 @@ func (s *Service) resolveEnglish(ctx context.Context, english string) (Result, e
 		logger.Warnf("dictionary: Wiktionary read of %s failed: %v", key, err)
 		return Result{English: english, Source: SourceError}, nil
 	case definition == nil:
+		if res, ok, err := s.findEnglishAI(ctx, english, key, userID); ok || err != nil {
+			return res, err
+		}
 		return Result{English: english, Source: SourceMiss}, nil
 	}
 	return Result{

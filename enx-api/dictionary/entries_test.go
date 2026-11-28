@@ -407,9 +407,9 @@ func TestEntriesReadsTheExplanationLanguageOncePerBatch(t *testing.T) {
 	if results[0].Status != EntryFailed || results[0].Language != LanguageEnglish {
 		t.Fatalf("unavailable Wiktionary: %+v, want failed in en", results[0])
 	}
-	// The AI fallback writes Chinese, so an en miss offers none.
-	if results[1].Status != EntryNotFound || results[1].AIFallback != nil || f.policy.calls != 0 {
-		t.Fatalf("en miss: %+v, want no AI offer", results[1])
+	// ADR-098 Decision 5: an en miss offers the AI fallback too.
+	if results[1].Status != EntryNotFound || results[1].AIFallback == nil || !results[1].AIFallback.CanUse {
+		t.Fatalf("en miss: %+v, want an AI offer", results[1])
 	}
 }
 

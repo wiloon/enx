@@ -14,8 +14,18 @@ const linkClass = 'text-brand hover:underline font-medium'
 const buttonClass =
   'inline-flex items-center gap-1 text-sm text-brand hover:text-brand/80 font-medium'
 
-export function AiMissPanel({ onLookup }: { onLookup: () => void }) {
+export function AiMissPanel({
+  onLookup,
+  english = false,
+}: {
+  onLookup: () => void
+  // en mode: idle and offer miss lines say "No English definition found."
+  english?: boolean
+}) {
   const state = useAtomValue(aiLookupAtom)
+  const missLine = english
+    ? 'No English definition found.'
+    : 'Not found in the dictionary.'
 
   const lookupButton = (
     <button
@@ -60,9 +70,7 @@ export function AiMissPanel({ onLookup }: { onLookup: () => void }) {
     case 'offer':
       return (
         <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">
-            Not found in the dictionary.
-          </p>
+          <p className="text-sm text-muted-foreground">{missLine}</p>
           {state.canUse ? (
             lookupButton
           ) : (
@@ -112,10 +120,10 @@ export function AiMissPanel({ onLookup }: { onLookup: () => void }) {
     default:
       return (
         <p
-          data-testid="word-popover-not-found"
+          data-testid={english ? 'word-popover-en-miss' : 'word-popover-not-found'}
           className="text-sm text-muted-foreground"
         >
-          Not found in the dictionary.
+          {english ? 'No English definition found.' : 'Not found in the dictionary.'}
         </p>
       )
   }
@@ -169,21 +177,25 @@ export function AiDefinition({ children }: { children: ReactNode }) {
     setAuto((await stopAutomaticAiLookup()) ? 'stopped' : 'unknown')
   }
 
+  const badge = (
+    <button
+      type="button"
+      data-testid="word-popover-ai-badge"
+      onClick={toggle}
+      aria-expanded={open}
+      className="inline-flex items-center rounded-sm border border-border px-1 text-[10px] font-semibold leading-4 text-muted-foreground align-middle hover:bg-muted active:bg-muted focus-visible:outline-2 focus-visible:outline-brand"
+      title="Defined by AI. Click for options."
+    >
+      AI
+    </button>
+  )
+
   return (
     <>
-      <p className="text-sm leading-relaxed text-foreground">
-        {children}{' '}
-        <button
-          type="button"
-          data-testid="word-popover-ai-badge"
-          onClick={toggle}
-          aria-expanded={open}
-          className="inline-flex items-center rounded-sm border border-border px-1 text-[10px] font-semibold leading-4 text-muted-foreground align-middle hover:bg-muted active:bg-muted focus-visible:outline-2 focus-visible:outline-brand"
-          title="Defined by AI. Click for options."
-        >
-          AI
-        </button>
-      </p>
+      {/* div, not p: an English sense list is a ul and must not sit in a p. */}
+      <div className="text-sm leading-relaxed text-foreground">
+        {children} {badge}
+      </div>
       {open && (
         <div
           data-testid="word-popover-ai-menu"

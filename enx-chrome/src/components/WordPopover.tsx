@@ -376,18 +376,23 @@ export default function WordPopover({
                   </p>
                 )}
                 {englishSenses.length > 0 ? (
-                  <EnglishSensesList
-                    key={`${currentWord?.LemmaNote ?? ''}:${englishSenses.map(s => s.gloss).join('|')}`}
-                    senses={englishSenses}
-                    contentRef={contentRef}
-                  />
+                  currentWord.Origin === 'ai' ? (
+                    <AiDefinition>
+                      <EnglishSensesList
+                        key={`${currentWord?.LemmaNote ?? ''}:${englishSenses.map(s => s.gloss).join('|')}`}
+                        senses={englishSenses}
+                        contentRef={contentRef}
+                      />
+                    </AiDefinition>
+                  ) : (
+                    <EnglishSensesList
+                      key={`${currentWord?.LemmaNote ?? ''}:${englishSenses.map(s => s.gloss).join('|')}`}
+                      senses={englishSenses}
+                      contentRef={contentRef}
+                    />
+                  )
                 ) : anonymousNotice ? null : (
-                  <p
-                    data-testid="word-popover-en-miss"
-                    className="text-sm text-muted-foreground"
-                  >
-                    No definition found.
-                  </p>
+                  <AiMissPanel onLookup={onAiLookup} english />
                 )}
               </>
             ) : /* Chinese translation; a definition a model wrote is marked as
@@ -405,7 +410,7 @@ export default function WordPopover({
             ) : anonymousNotice ? null : (
               <AiMissPanel onLookup={onAiLookup} />
             )}
-            {!englishMode && <AiNotice />}
+            <AiNotice />
             {anonymousNotice && (
               <SignedOutNotice
                 testId="word-popover-anonymous"
