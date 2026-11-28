@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { sendToBackground } from '@/lib/messaging'
 import { saveOutcome } from '@/lib/pageSave'
 import {
   findSavedPage,
@@ -50,7 +51,7 @@ export function useSavedPage(userId: string | undefined) {
     setError(undefined)
     try {
       const outcome = saveOutcome(
-        await chrome.runtime.sendMessage({ type: 'savePage', savedPage: tab })
+        await sendToBackground({ type: 'savePage', savedPage: tab })
       )
       if (outcome.ok) {
         await rememberSavedPage(userId, tab.url, outcome.page)
@@ -73,7 +74,7 @@ export function useSavedPage(userId: string | undefined) {
     setBusy('removing')
     setError(undefined)
     try {
-      const result = await chrome.runtime.sendMessage({
+      const result = await sendToBackground({
         type: 'removeSavedPage',
         savedPageId: saved.id,
       })

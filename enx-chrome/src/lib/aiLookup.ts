@@ -30,7 +30,7 @@ export type AiLookupOutcome =
 export const lookupWithAi = async (word: string): Promise<AiLookupOutcome> => {
   let response: BackgroundResponse | undefined
   try {
-    response = await sendMessageToBackground<BackgroundResponse>({
+    response = await sendMessageToBackground({
       type: 'defineWordWithAI',
       word,
     })
