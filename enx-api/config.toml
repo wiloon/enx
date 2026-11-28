@@ -233,7 +233,7 @@ client-ip-header = ""
 # 0 = no ceiling. Override with CREDITS_TRIAL_AMOUNT / _TTL_DAYS /
 # _CALLS_PER_MINUTE / _CALLS_PER_DAY.
 amount = 100
-ttl-days = 7
+ttl-days = 30
 calls-per-minute = 5
 calls-per-day = 30
 
@@ -249,7 +249,7 @@ calls-per-day = 30
 # _REFERRER_REWARD_SUBSCRIPTION / _REFERRER_REWARD_TOPUP_PERCENT /
 # _REWARD_DELAY_DAYS / _CLAIM_WINDOW_HOURS.
 invitee-bonus = 100
-invitee-ttl-days = 14
+invitee-ttl-days = 30
 referrer-reward-subscription = 300
 referrer-reward-topup-percent = 20
 reward-delay-days = 14

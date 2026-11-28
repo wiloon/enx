@@ -153,9 +153,13 @@ test.describe('/welcome (signed out)', () => {
     await expect(
       current.getByText('Look up words and translate sentences as you read.')
     ).toBeVisible()
+    // Stub API returns trial terms (#1238); amount and length from config.
+    await expect(
+      current.getByText('100 free AI credits included, valid for 30 days.')
+    ).toBeVisible()
     await expect(
       current.getByText('Free AI credits included to get you started.')
-    ).toBeVisible()
+    ).toHaveCount(0)
     await expect(current.getByText('Free to start.')).toHaveCount(0)
     await expect(current.getByRole('link')).toHaveCount(2)
     const returnTo = encodeURIComponent('/welcome?src=install')

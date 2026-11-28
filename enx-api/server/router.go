@@ -15,6 +15,7 @@ import (
 	"enx-api/billing/credit"
 	"enx-api/billing/creditledger"
 	"enx-api/billing/deletion"
+	billinghttp "enx-api/billing/httpapi"
 	billingstripe "enx-api/billing/stripe"
 	"enx-api/config"
 	"enx-api/dictionary"
@@ -458,6 +459,12 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 	// only; the paid-tier ceiling stays off the wire.
 	router.GET("/api/dictionary/free-daily-lookup-limit",
 		dictionaryhttp.FreeDailyLookupLimit(cfg.Stripe.Quota.DictionaryLookupDailyFree))
+
+	// Sign-up trial amount and length for enx-ui's signed-out /pricing and
+	// /welcome pages (ADR-098 Decision 9, ADR-048). Not in apiGroup: visitors
+	// have no session. Config numbers only; amount=0 or ttl-days=0 is off.
+	router.GET("/api/billing/trial-terms",
+		billinghttp.TrialTerms(cfg.Credits.Trial.Amount, cfg.Credits.Trial.TTLDays))
 
 	// Click-to-lookup without an account (ADR-095): not in apiGroup, there
 	// is no session. Dictionary definitions only, through the same Resolve

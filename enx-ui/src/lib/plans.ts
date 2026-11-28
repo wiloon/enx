@@ -58,23 +58,40 @@ export const SUBSCRIPTION_PLANS: PlanOption[] = [
 ]
 
 /** Free-card feature lines; `dailyLimit` null/unusable → no-number copy. */
-export function freePlanFeatures(dailyLimit: number | null): string[] {
+export function freePlanFeatures(
+  dailyLimit: number | null,
+  trial?: { amount: number; ttlDays: number } | null
+): string[] {
   const lookupLine =
     dailyLimit !== null && Number.isSafeInteger(dailyLimit) && dailyLimit > 0
       ? `Click any word for its dictionary meaning, up to ${fmt(dailyLimit)} lookups a day`
       : 'Click any word for its dictionary meaning, with a daily limit'
-  return [
+  const features = [
     'Underlines the words you have looked up, on any English page',
     lookupLine,
     'A word list built from what you look up',
   ]
+  if (
+    trial &&
+    Number.isSafeInteger(trial.amount) &&
+    trial.amount > 0 &&
+    Number.isSafeInteger(trial.ttlDays) &&
+    trial.ttlDays > 0
+  ) {
+    features.push(
+      `New accounts get ${fmt(trial.amount)} free AI credits, valid for ${trial.ttlDays} days`
+    )
+  }
+  return features
 }
 
 // What a signed-in user gets without paying.
 export const FREE_PLAN = {
   name: 'Free',
   priceLabel: '$0',
-  note: 'AI translation uses credits, which come with a plan or a top-up.',
+  // Fits with or without the trial feature line (#1238): credits can come from
+  // a sign-up trial, a plan, or a top-up.
+  note: 'AI translation uses credits from a trial, a plan, or a top-up.',
 } as const
 
 // What a credit buys. AI features are billed by tokens ([stripe.costs.*] in

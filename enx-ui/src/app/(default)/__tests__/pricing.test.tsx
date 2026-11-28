@@ -26,19 +26,31 @@ jest.mock('next/navigation', () =>
 
 const originalFetch = global.fetch
 
-function stubFreeLimitResponse(body: unknown, init: { ok?: boolean } = {}) {
-  const ok = init.ok ?? true
-  global.fetch = jest.fn().mockResolvedValue({
-    ok,
-    json: async () => body,
+function stubApiResponses(
+  responses: Record<string, { body: unknown; ok?: boolean }>
+) {
+  global.fetch = jest.fn((input: RequestInfo | URL) => {
+    const href = typeof input === 'string' ? input : input.toString()
+    for (const [path, res] of Object.entries(responses)) {
+      if (href.includes(path)) {
+        return Promise.resolve({
+          ok: res.ok ?? true,
+          json: async () => res.body,
+        })
+      }
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({}),
+    })
   }) as unknown as typeof fetch
 }
 
 beforeEach(() => {
   mockUseAuth.mockReturnValue({ isSignedIn: false })
   process.env.API_BASE_URL = 'http://api.test'
-  // Default: unusable body → no-number Free copy unless a test stubs otherwise.
-  stubFreeLimitResponse({})
+  // Default: unusable bodies → no-number Free copy / no trial line.
+  stubApiResponses({})
 })
 
 afterEach(() => {
@@ -88,7 +100,9 @@ describe('/pricing', () => {
 
   // ADR-029: Free card shows the effective free ceiling from enx-api.
   it('names the free daily lookup limit from a usable upstream value', async () => {
-    stubFreeLimitResponse({ free_daily_lookup_limit: 2345 })
+    stubApiResponses({
+      'free-daily-lookup-limit': { body: { free_daily_lookup_limit: 2345 } },
+    })
     await renderPricing()
 
     const c = within(card(FREE_PLAN.name))
@@ -111,7 +125,9 @@ describe('/pricing', () => {
   })
 
   it('falls back to the no-number Free copy when the limit is unusable', async () => {
-    stubFreeLimitResponse({ free_daily_lookup_limit: 0 })
+    stubApiResponses({
+      'free-daily-lookup-limit': { body: { free_daily_lookup_limit: 0 } },
+    })
     await renderPricing()
 
     const c = within(card(FREE_PLAN.name))
@@ -120,6 +136,41 @@ describe('/pricing', () => {
         /Click any word for its dictionary meaning, with a daily limit/
       )
     ).toBeInTheDocument()
+  })
+
+  // ADR-098 Decision 9 / #1238: Free card shows trial amount and length from
+  // enx-api; no trial line when the endpoint fails or the trial is off.
+  it('names the sign-up trial credits and length from the trial-terms endpoint', async () => {
+    stubApiResponses({
+      'trial-terms': { body: { amount: 100, ttl_days: 30 } },
+    })
+    await renderPricing()
+
+    const c = within(card(FREE_PLAN.name))
+    expect(
+      c.getByText(/New accounts get 100 free AI credits, valid for 30 days/)
+    ).toBeInTheDocument()
+    expect(c.getByText(FREE_PLAN.note)).toBeInTheDocument()
+  })
+
+  it('shows no trial line when the trial-terms request fails', async () => {
+    global.fetch = jest
+      .fn()
+      .mockRejectedValue(new Error('network')) as unknown as typeof fetch
+    await renderPricing()
+
+    const c = within(card(FREE_PLAN.name))
+    expect(c.queryByText(/free AI credits, valid for/i)).toBeNull()
+  })
+
+  it('shows no trial line when the trial is off', async () => {
+    stubApiResponses({
+      'trial-terms': { body: { amount: 0, ttl_days: 0 } },
+    })
+    await renderPricing()
+
+    const c = within(card(FREE_PLAN.name))
+    expect(c.queryByText(/free AI credits, valid for/i)).toBeNull()
   })
 
   it('lists what every paid plan adds without a daily lookup line', async () => {
