@@ -24,6 +24,9 @@ const wiktionarySchema = "1"
 // migrated or edited.
 type Wiktionary struct {
 	db *sql.DB // nil: unavailable
+	// lemmaPreferred says the file has that table; one built before it marks
+	// no key.
+	lemmaPreferred bool
 }
 
 // OpenWiktionary opens the file at path. An empty, missing or unreadable one
@@ -33,16 +36,16 @@ func OpenWiktionary(path string) *Wiktionary {
 		logger.Warnf("WIKTIONARY_DB_PATH not set, English-English lookups will be unavailable")
 		return &Wiktionary{}
 	}
-	db, err := openWiktionaryFile(path)
+	file, err := openWiktionaryFile(path)
 	if err != nil {
 		logger.Warnf("could not open the Wiktionary file %s, English-English lookups will be unavailable: %v", path, err)
 		return &Wiktionary{}
 	}
 	logger.Infof("Wiktionary file opened (read-only): %s", path)
-	return &Wiktionary{db: db}
+	return file
 }
 
-func openWiktionaryFile(path string) (*sql.DB, error) {
+func openWiktionaryFile(path string) (*Wiktionary, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -52,15 +55,19 @@ func openWiktionaryFile(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	file := &Wiktionary{db: db}
 	var version string
 	err = db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&version)
 	if err == nil && version != wiktionarySchema {
 		err = fmt.Errorf("schema_version %q, want %q", version, wiktionarySchema)
 	}
+	if err == nil {
+		err = db.QueryRow(`SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lemma_preferred')`).Scan(&file.lemmaPreferred)
+	}
 	if err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
-	return db, nil
+	return file, nil
 }
 
 func (w *Wiktionary) Available() bool { return w.db != nil }
@@ -114,6 +121,15 @@ func (w *Wiktionary) Read(ctx context.Context, key string) (dictionary.Wiktionar
 	})
 	if err != nil {
 		return dictionary.WiktionaryRecords{}, err
+	}
+	if w.lemmaPreferred {
+		err = w.each(ctx, `SELECT 1 FROM lemma_preferred WHERE key = ?`, key, func(*sql.Rows) error {
+			records.LemmaPreferred = true
+			return nil
+		})
+		if err != nil {
+			return dictionary.WiktionaryRecords{}, err
+		}
 	}
 	return records, nil
 }

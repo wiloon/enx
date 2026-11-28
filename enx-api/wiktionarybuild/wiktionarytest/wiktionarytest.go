@@ -16,8 +16,14 @@ import (
 )
 
 // Create builds a Wiktionary file from Wiktextract JSONL lines, one object
-// per argument, and returns its path.
+// per argument, and returns its path. Its build sees an empty ECDICT.
 func Create(t testing.TB, lines ...string) string {
+	t.Helper()
+	return CreateWithECDICT(t, nil, lines...)
+}
+
+// CreateWithECDICT is Create with the ECDICT rows the build reads.
+func CreateWithECDICT(t testing.TB, ecdict []ecdicttest.Row, lines ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	input := filepath.Join(dir, "input.jsonl.gz")
@@ -38,7 +44,7 @@ func Create(t testing.TB, lines ...string) string {
 	out := filepath.Join(dir, "wiktionary-2026-10-30.db")
 	err = wiktionarybuild.Run(context.Background(), wiktionarybuild.Options{
 		Input:      input,
-		ECDICT:     ecdicttest.Create(t),
+		ECDICT:     ecdicttest.Create(t, ecdict...),
 		Out:        out,
 		SourceDate: "2026-10-30",
 		Log:        io.Discard,

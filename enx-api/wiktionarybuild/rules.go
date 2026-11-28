@@ -6,6 +6,7 @@ package wiktionarybuild
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,7 +14,52 @@ import (
 	"enx-api/dictionary/wordform"
 )
 
-const builderVersion = "1"
+const builderVersion = "2"
+
+var (
+	// An "example" Wiktextract did not mark as a quotation that still is not
+	// a sentence: a relation list, a link, or a citation opening with a date.
+	relationLabel = regexp.MustCompile(`^(?:(?:Synonym|Near-synonym|Antonym|Hypernym|Hyponym|Meronym|Holonym|Coordinate term|Alternative form|Former name)s?|See also|Pitch contour):`)
+	link          = regexp.MustCompile(`^https?://`)
+	citationDate  = regexp.MustCompile(`^(?:(?:c\. )?\d{4}(?:[-–]\d{4})?|\d{1,2} ` + month + ` \d{4}|` + month + ` \d{1,2}, \d{4}),`)
+)
+
+const month = `(?:January|February|March|April|May|June|July|August|September|October|November|December)`
+
+// isSentence says whether an example's text is a real example sentence.
+func isSentence(text string) bool {
+	text = strings.TrimSpace(text)
+	return !relationLabel.MatchString(text) && !link.MatchString(text) && !citationDate.MatchString(text)
+}
+
+// The grammar of an ECDICT translation line that only says which word this one
+// is a form of: "v. run的过去式", "be的现在时复数或第二人称单数".
+const (
+	relationTerm = `(?:过去式|过去时|过去分词|现在分词|现在式|现在时|第一人称单数|第二人称单数|第三人称单数|单数|复数|比较级|最高级)`
+	lemmaRef     = `\p{Latin}+(?:[-'’]\p{Latin}+)*的` + relationTerm + `(?:(?:和|与|及|或)?` + relationTerm + `)*(?:形式)?`
+)
+
+var lemmaRefLine = regexp.MustCompile(`^(?:[A-Za-z]+\.\s*)?` + lemmaRef + `(?:\s*[;；,，]\s*` + lemmaRef + `)*$`)
+
+// explainsLemma says whether the lemma's senses should stand in for the own
+// entries of a form, from its ECDICT translation: only if every line of it is
+// a lemma reference. With no translation, only if its own entries are all
+// proper names. The translation itself never reaches the file.
+func explainsLemma(translation string, onlyNames bool) bool {
+	said := false
+	// ECDICT separates lines by a newline or by a literal `\n`.
+	for _, line := range strings.Split(strings.ReplaceAll(translation, `\n`, "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !lemmaRefLine.MatchString(line) {
+			return false
+		}
+		said = true
+	}
+	return said || onlyNames
+}
 
 // wiktextractEntry holds the fields of an input line the builder reads.
 type wiktextractEntry struct {
@@ -123,7 +169,7 @@ func convert(w wiktextractEntry) converted {
 		}
 		kept := sense{gloss: s.Glosses[len(s.Glosses)-1], tags: strings.Join(s.Tags, " ")}
 		for _, x := range s.Examples {
-			if x.Ref == "" && x.Type != "quotation" {
+			if x.Ref == "" && x.Type != "quotation" && isSentence(x.Text) {
 				kept.examples = append(kept.examples, x.Text)
 			}
 		}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"enx-api/dictionary"
+	"enx-api/ecdict/ecdicttest"
 	"enx-api/utils/sqlitex"
 	"enx-api/wiktionarybuild/wiktionarytest"
 )
@@ -75,6 +76,96 @@ func TestWiktionaryIsUnavailableWithoutAUsableFile(t *testing.T) {
 	}
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
 		t.Errorf("opening a missing file created it: %v", err)
+	}
+}
+
+// formsFile is a built file with forms that have entries of their own, and the
+// ECDICT translations the build reads to tell which of them are only forms.
+func formsFile(t *testing.T) string {
+	t.Helper()
+	own := func(word, pos, ipa string) string {
+		return `{"word":"` + word + `","lang_code":"en","pos":"` + pos + `","sounds":[{"ipa":"` + ipa + `","tags":["US"]}],"senses":[{"glosses":["Own ` + word + `."]}]}`
+	}
+	lemma := func(word, forms string) string {
+		return `{"word":"` + word + `","lang_code":"en","pos":"verb","sounds":[{"ipa":"/lemma/","tags":["US"]}],"senses":[{"glosses":["To ` + word + `."]}],"forms":[` + forms + `]}`
+	}
+	return wiktionarytest.CreateWithECDICT(t, []ecdicttest.Row{
+		{Word: "was", Translation: "be的过去式"},
+		{Word: "ran", Translation: "v. run的过去式"},
+		{Word: "has", Translation: "have的第三人称单数现在式"},
+		{Word: "are", Translation: "be的现在时复数或第二人称单数"},
+		{Word: "left", Translation: `a. 左边的\nleave的过去式`},
+	},
+		lemma("be", `{"form":"was","tags":["past"]},{"form":"are","tags":["present","plural"]}`),
+		lemma("run", `{"form":"ran","tags":["past"]}`),
+		lemma("have", `{"form":"has","tags":["present","singular","third-person"]}`),
+		lemma("leave", `{"form":"left","tags":["past"]}`),
+		lemma("write", `{"form":"wrote","tags":["past"]}`),
+		own("was", "verb", "/wʌz/"),
+		own("ran", "noun", "/ræn/"),
+		own("has", "noun", "/hæz/"),
+		own("are", "noun", "/ɑɹ/"),
+		own("left", "adj", "/lɛft/"),
+		own("wrote", "name", "/ɹoʊt/"),
+	)
+}
+
+func TestLookupExplainsTheLemmaOfAFormECDICTKnowsOnlyAsOne(t *testing.T) {
+	setupWordsDB(t)
+	service := dictionary.NewService(WordsTable{}, Ecdict{}, nil, OpenWiktionary(formsFile(t)))
+
+	for _, tc := range []struct{ word, gloss, note, ipa string }{
+		{"was", "To be.", "past tense of be", "/wʌz/"},
+		{"ran", "To run.", "past tense of run", "/ræn/"},
+		{"has", "To have.", "third-person singular of have", "/hæz/"},
+		{"are", "To be.", "plural of be", "/ɑɹ/"},
+		// Not in ECDICT, and its own entries are all proper names.
+		{"wrote", "To write.", "past tense of write", "/ɹoʊt/"},
+		// ECDICT has a sense of its own for it: its own entries, no note.
+		{"left", "Own left.", "", "/lɛft/"},
+	} {
+		res, err := service.Resolve(context.Background(), tc.word, "u1", dictionary.LanguageEnglish)
+		if err != nil {
+			t.Fatal(err)
+		}
+		def := res.Definition
+		if def == nil || len(def.Senses) != 1 || def.Senses[0].Gloss != tc.gloss ||
+			def.LemmaNote != tc.note || def.PronunciationUS != tc.ipa {
+			t.Errorf("%s: definition %+v; want %q, note %q, IPA %s", tc.word, def, tc.gloss, tc.note, tc.ipa)
+		}
+	}
+}
+
+func TestWiktionaryReadsTheLemmaPreferredMark(t *testing.T) {
+	path := formsFile(t)
+	marked := func(file *Wiktionary, key string) bool {
+		t.Helper()
+		records, err := file.Read(context.Background(), key)
+		if err != nil || len(records.Entries) == 0 {
+			t.Fatalf("read %s = %+v, %v", key, records, err)
+		}
+		return records.LemmaPreferred
+	}
+
+	file := OpenWiktionary(path)
+	if !marked(file, "was") || marked(file, "left") {
+		t.Errorf("was %v, left %v; want only was marked", marked(file, "was"), marked(file, "left"))
+	}
+
+	// A file built before the table existed: it opens, and marks nothing.
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE lemma_preferred`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	old := OpenWiktionary(path)
+	if !old.Available() || marked(old, "was") {
+		t.Errorf("available %v; want an old file readable with no marks", old.Available())
 	}
 }
 
