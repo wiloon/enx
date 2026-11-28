@@ -1,4 +1,5 @@
 import { useAuthSession } from '@/lib/auth'
+import { sendToBackground } from '@/lib/messaging'
 import { errorAtom, signingOutAtom } from '@/store/atoms'
 import { useAtom, useAtomValue } from 'jotai'
 import { useEffect, type ReactNode } from 'react'
@@ -55,7 +56,7 @@ export default function Login({
   // came from, and switches focus back once /extension/connected reports the
   // sign-in.
   const openWebSignIn = () => {
-    chrome.runtime.sendMessage({ action: 'openWebSignIn' })
+    sendToBackground({ action: 'openWebSignIn' })
   }
 
   return (

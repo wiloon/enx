@@ -7,6 +7,7 @@ import {
   isFeedbackBlank,
   sendFeedback,
 } from '@/lib/feedback'
+import { sendToBackground } from '@/lib/messaging'
 import { sanitizePageUrl } from '@/lib/pageReport'
 import { ArrowLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
@@ -76,17 +77,14 @@ export default function SendFeedback({
         tabId === undefined
           ? { learningMode: false }
           : await getFeedbackContextOnTab(tabId)
-      const outcome = await sendFeedback(
-        message => chrome.runtime.sendMessage(message),
-        {
-          text,
-          url,
-          context: {
-            browser: browserName(navigator as unknown as BrowserIdentity),
-            ...page,
-          },
-        }
-      )
+      const outcome = await sendFeedback(message => sendToBackground(message), {
+        text,
+        url,
+        context: {
+          browser: browserName(navigator as unknown as BrowserIdentity),
+          ...page,
+        },
+      })
       if (outcome.sent) {
         setText('')
         setUrl(defaultUrl)

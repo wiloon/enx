@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Provider } from 'jotai'
 import Login from '@/components/Login'
 
@@ -55,5 +55,23 @@ describe('Login', () => {
       screen.queryByRole('button', { name: 'Read with Catglish' })
     ).not.toBeInTheDocument()
     expect(screen.getByText('signed in body')).toBeInTheDocument()
+  })
+
+  it('asks the background to open sign-in on the website', () => {
+    const sendMessage = chrome.runtime.sendMessage as jest.Mock
+    sendMessage.mockReset()
+    sendMessage.mockResolvedValue(undefined)
+
+    renderLogin(
+      <Login>
+        <div>signed in body</div>
+      </Login>
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign in on the website' })
+    )
+
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage).toHaveBeenCalledWith({ action: 'openWebSignIn' })
   })
 })
