@@ -124,7 +124,7 @@ func TestMarkingAWordKnownLeavesItsLastLookupTime(t *testing.T) {
 		t.Fatalf("find word: %v", err)
 	}
 
-	reviews := review.NewService(reviewadapters.Store{}, time.Now)
+	reviews := review.NewService(reviewadapters.NewStore(sqlitex.DB), time.Now)
 	if _, _, err := reviews.SetKnown(context.Background(), user, word.Id, true, ""); err != nil {
 		t.Fatalf("SetKnown: %v", err)
 	}

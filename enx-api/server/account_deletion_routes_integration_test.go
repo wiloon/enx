@@ -5,13 +5,13 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 
 	"github.com/golang-jwt/jwt/v5"
 	stripeSDK "github.com/stripe/stripe-go/v86"
@@ -38,14 +38,14 @@ func TestDeletionRoutesCheckBillingAndHoldTheDeletionGate(t *testing.T) {
 				cfg.Admin.AuthSubjects = []string{adminSub}
 				cfg.Account.EmailHMACKey = "test-key"
 
-				sqlitex.Init(filepath.Join(t.TempDir(), "account.db"))
-				if err := sqlitex.InitializeBillingSchema(sqlitex.DB); err != nil {
+				db := sqlitextest.Open(t)
+				if err := sqlitex.InitializeBillingSchema(db); err != nil {
 					t.Fatal(err)
 				}
-				if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", nonAdminSub, accountPlainEmail).Error; err != nil {
+				if err := db.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", nonAdminSub, accountPlainEmail).Error; err != nil {
 					t.Fatal(err)
 				}
-				if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES ('sub_1', 'target', 'active', 'cus_1', 1, 1)").Error; err != nil {
+				if err := db.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES ('sub_1', 'target', 'active', 'cus_1', 1, 1)").Error; err != nil {
 					t.Fatal(err)
 				}
 				stripeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func TestDeletionRoutesCheckBillingAndHoldTheDeletionGate(t *testing.T) {
 				backend := stripeSDK.GetBackendWithConfig(stripeSDK.APIBackend, &stripeSDK.BackendConfig{URL: stripeSDK.String(stripeServer.URL), HTTPClient: stripeServer.Client()})
 				sc := stripeSDK.NewClient("sk_test", stripeSDK.WithBackends(&stripeSDK.Backends{API: backend}))
 				clerk := &fakeClerkBackend{}
-				server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), sc, clerk.client(t)))
+				server := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), sc, clerk.client(t)))
 				defer server.Close()
 
 				var status int
@@ -74,7 +74,7 @@ func TestDeletionRoutesCheckBillingAndHoldTheDeletionGate(t *testing.T) {
 
 				blocked := tc.status != http.StatusOK
 				var states []string
-				if err := sqlitex.DB.Raw("SELECT state FROM account_deletion_gates WHERE user_id = ?", "target").Scan(&states).Error; err != nil {
+				if err := db.Raw("SELECT state FROM account_deletion_gates WHERE user_id = ?", "target").Scan(&states).Error; err != nil {
 					t.Fatal(err)
 				}
 				if blocked && len(states) != 0 {
@@ -84,7 +84,7 @@ func TestDeletionRoutesCheckBillingAndHoldTheDeletionGate(t *testing.T) {
 					t.Fatalf("a deletion must keep a deleted gate: %v", states)
 				}
 				var users int64
-				if err := sqlitex.DB.Model(&sqlitex.User{}).Where("id = ?", "target").Count(&users).Error; err != nil {
+				if err := db.Model(&sqlitex.User{}).Where("id = ?", "target").Count(&users).Error; err != nil {
 					t.Fatal(err)
 				}
 				if (users == 1) != blocked {

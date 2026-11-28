@@ -15,7 +15,7 @@ import (
 func newAccountDB(t *testing.T) {
 	t.Helper()
 	prev := sqlitex.DB
-	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "account.db"), "warn"); err != nil {
+	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "account.db"), "warn"); err != nil {
 		t.Fatal(err)
 	}
 	if sqlitex.DB == nil || sqlitex.DB == prev {

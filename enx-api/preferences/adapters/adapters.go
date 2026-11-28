@@ -10,20 +10,24 @@ import (
 	"enx-api/utils/logger"
 	"enx-api/utils/sqlitex"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // Table stores preferences as rows of (user_id, key, JSON value).
-type Table struct{}
+type Table struct{ db *gorm.DB }
+
+// NewTable returns a Table that reads and writes db.
+func NewTable(db *gorm.DB) Table { return Table{db: db} }
 
 var _ preferences.Store = Table{}
 
 // Load returns userID's explicit values, decoded from JSON. A row that is not
 // valid JSON is skipped (treated as unset) rather than failing the whole
 // read. Whether a value suits its key is the domain's call, not this one's.
-func (Table) Load(ctx context.Context, userID string) (map[preferences.Key]any, error) {
+func (t Table) Load(ctx context.Context, userID string) (map[preferences.Key]any, error) {
 	var rows []sqlitex.UserPreference
-	if err := sqlitex.DB.WithContext(ctx).Where("user_id = ?", userID).Find(&rows).Error; err != nil {
+	if err := t.db.WithContext(ctx).Where("user_id = ?", userID).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	values := make(map[preferences.Key]any, len(rows))
@@ -39,12 +43,12 @@ func (Table) Load(ctx context.Context, userID string) (map[preferences.Key]any, 
 }
 
 // Save upserts one explicit value.
-func (Table) Save(ctx context.Context, userID string, key preferences.Key, value any) error {
+func (t Table) Save(ctx context.Context, userID string, key preferences.Key, value any) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	return sqlitex.DB.WithContext(ctx).Clauses(clause.OnConflict{
+	return t.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
 	}).Create(&sqlitex.UserPreference{
@@ -57,8 +61,8 @@ func (Table) Save(ctx context.Context, userID string, key preferences.Key, value
 
 // Clear deletes an explicit value, returning the key to its default. Clearing
 // a key that has no row is not an error.
-func (Table) Clear(ctx context.Context, userID string, key preferences.Key) error {
-	return sqlitex.DB.WithContext(ctx).
+func (t Table) Clear(ctx context.Context, userID string, key preferences.Key) error {
+	return t.db.WithContext(ctx).
 		Where("user_id = ? AND key = ?", userID, string(key)).
 		Delete(&sqlitex.UserPreference{}).Error
 }

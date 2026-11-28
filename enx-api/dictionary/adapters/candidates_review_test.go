@@ -20,7 +20,7 @@ func setupFileCandidatesDB(t *testing.T, connections int) {
 	t.Helper()
 	previous := sqlitex.DB
 	t.Cleanup(func() { sqlitex.DB = previous })
-	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
+	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := sqlitex.DB.DB()

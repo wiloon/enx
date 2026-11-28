@@ -14,15 +14,18 @@ import (
 )
 
 // Table is feedback.Store over the feedback table (ADR-076).
-type Table struct{}
+type Table struct{ db *gorm.DB }
+
+// NewTable is the Table over db.
+func NewTable(db *gorm.DB) Table { return Table{db: db} }
 
 var _ feedback.Store = Table{}
 
 // Admit relies on the connection's _txlock=immediate: the transaction takes
 // the write lock at BEGIN, so concurrent admissions run one after another
 // and each sees the rows the previous one committed.
-func (Table) Admit(ctx context.Context, fn func(feedback.Admission) error) error {
-	return sqlitex.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+func (t Table) Admit(ctx context.Context, fn func(feedback.Admission) error) error {
+	return t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fn(feedbackAdmission{tx: tx})
 	})
 }
@@ -63,8 +66,8 @@ func (a feedbackAdmission) Insert(r feedback.Record) error {
 	}).Error
 }
 
-func (Table) List(ctx context.Context, q feedback.ListQuery) ([]feedback.Record, error) {
-	db := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Feedback{})
+func (t Table) List(ctx context.Context, q feedback.ListQuery) ([]feedback.Record, error) {
+	db := t.db.WithContext(ctx).Model(&sqlitex.Feedback{})
 	if q.Kind != "" {
 		db = db.Where("kind = ?", string(q.Kind))
 	}
@@ -86,8 +89,8 @@ func (Table) List(ctx context.Context, q feedback.ListQuery) ([]feedback.Record,
 	return out, nil
 }
 
-func (Table) SetStatus(ctx context.Context, id string, status feedback.Status) (bool, error) {
-	res := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Feedback{}).Where("id = ?", id).Update("status", string(status))
+func (t Table) SetStatus(ctx context.Context, id string, status feedback.Status) (bool, error) {
+	res := t.db.WithContext(ctx).Model(&sqlitex.Feedback{}).Where("id = ?", id).Update("status", string(status))
 	return res.RowsAffected > 0, res.Error
 }
 
@@ -113,16 +116,16 @@ GROUP BY f.host, json_extract(f.details, '$.selector')
 ORDER BY count DESC, host, selector
 LIMIT @limit OFFSET @offset`
 
-func (Table) ArticleChoiceGroups(ctx context.Context, q feedback.GroupQuery) ([]feedback.ArticleChoiceGroup, error) {
+func (t Table) ArticleChoiceGroups(ctx context.Context, q feedback.GroupQuery) ([]feedback.ArticleChoiceGroup, error) {
 	var groups []feedback.ArticleChoiceGroup
-	err := sqlitex.DB.WithContext(ctx).Raw(articleChoiceGroupsSQL, map[string]any{
+	err := t.db.WithContext(ctx).Raw(articleChoiceGroupsSQL, map[string]any{
 		"kind": string(feedback.KindArticleChoice), "status": string(q.Status), "limit": q.Limit, "offset": q.Offset,
 	}).Scan(&groups).Error
 	return groups, err
 }
 
-func (Table) SetArticleChoiceGroupStatus(ctx context.Context, host, selector string, status feedback.Status) (int64, error) {
-	res := sqlitex.DB.WithContext(ctx).Model(&sqlitex.Feedback{}).
+func (t Table) SetArticleChoiceGroupStatus(ctx context.Context, host, selector string, status feedback.Status) (int64, error) {
+	res := t.db.WithContext(ctx).Model(&sqlitex.Feedback{}).
 		Where("kind = ? AND host = ? AND "+selectorExpr+" = ?", string(feedback.KindArticleChoice), host, selector).
 		Update("status", string(status))
 	return res.RowsAffected, res.Error
