@@ -93,7 +93,14 @@ export interface BackgroundExchanges {
     BackgroundResponse
   >
   recordPageWordLookup: Exchange<
-    ByType<'recordPageWordLookup', { word: string; ecp?: WordData }>,
+    ByType<
+      'recordPageWordLookup',
+      { word: string; ecp?: WordData; reread?: boolean }
+    >,
+    BackgroundResponse
+  >
+  getExplanationLanguage: Exchange<
+    ByType<'getExplanationLanguage'>,
     BackgroundResponse
   >
   recordReadingPosition: Exchange<
@@ -270,6 +277,7 @@ export const BACKGROUND_MESSAGE_NAMES = [
   'markKnown',
   'recordWordLookup',
   'openSentencePanel',
+  'getExplanationLanguage',
   'recordPageWordLookup',
   'recordReadingPosition',
   'openReadingPosition',

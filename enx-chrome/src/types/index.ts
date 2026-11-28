@@ -97,6 +97,7 @@ export interface ContentMessage {
     | 'pinHintDismissed'
     | 'learningAccess'
     | 'getAnonymousEntry'
+    | 'getExplanationLanguage'
   word?: string
   // Set on 'recordWordLookup': the words row id the lookup answered with.
   wordId?: string
@@ -122,6 +123,9 @@ export interface ContentMessage {
   // mirror into the Side Panel (ADR-006). A mirrored card shows this lookup;
   // it never records it a second time.
   ecp?: WordData
+  // Set on 'recordPageWordLookup' when `ecp` is the popover's re-read after
+  // an explanation-language switch: no lookup was counted (ADR-098).
+  reread?: boolean
   // Set on 'translateWordInContext': that word's dictionary definition,
   // looked up by the caller BEFORE sending this message (dictionary-first),
   // so the model can explain a divergence instead of guessing blind. Empty
@@ -272,6 +276,8 @@ export interface PanelWordLookupMessage {
 // pending sentence, writing it never triggers sentence translation and never
 // forces the Side Panel open.
 export interface LatestPageWordLookup {
+  // The popover re-read after an explanation-language switch (ADR-098).
+  reread?: boolean
   word: string
   ecp: WordData
   createdAt: number

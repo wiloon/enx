@@ -10,6 +10,8 @@ export type Sense = {
 
 export const MAX_POPOVER_SENSES = 4
 export const MAX_SENSES_PER_POS = 2
+// The side panel's word card has more room than the popover (ADR-098).
+export const MAX_PANEL_SENSES = 8
 
 export const selectPopoverSenses = (
   senses: readonly Sense[],

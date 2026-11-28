@@ -3140,6 +3140,35 @@ describe('background tab-scoped Side Panel (ADR-050)', () => {
     })
   })
 
+  it.each([
+    ['stores the re-read mark', true],
+    ['stores no mark on a counted lookup', undefined],
+  ])('%s with the page word lookup', async (_name, reread) => {
+    await new Promise(resolve => {
+      listener(
+        {
+          type: 'recordPageWordLookup',
+          word: 'great',
+          ecp: { English: 'great' },
+          reread,
+        },
+        { tab: { id: 7 } },
+        resolve
+      )
+    })
+
+    const [items] = (chrome.storage.session.set as jest.Mock).mock.calls.at(-1)
+    expect(items['enx-latest-page-word:7'].reread).toBe(reread)
+  })
+
+  it('answers the assumed explanation language', async () => {
+    const response = await new Promise(resolve => {
+      listener({ type: 'getExplanationLanguage' }, { tab: { id: 7 } }, resolve)
+    })
+
+    expect(response).toEqual({ success: true, explanationLanguage: 'zh-Hans' })
+  })
+
   it('drops a page word lookup from a sender without a tab', async () => {
     const response = await new Promise(resolve => {
       listener(

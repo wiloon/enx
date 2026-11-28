@@ -1,10 +1,17 @@
 // The Side Panel's history list (ADR-023) and the identity of its cards
-// (ADR-023 Decision 8): no two sentence cards hold the same sentence, and no
-// two word/phrase cards in one scope share a key. Every async response is
-// written back by (sentenceId, key) and only while the card still carries
-// the token of the request it is waiting on.
+// (ADR-023 Decision 8): no two sentence cards hold the same sentence, no two
+// phrase cards in one scope share a key, and no two word cards in one scope
+// share a key and an explanation language (cardId). Every async response is
+// written back to the card of its scope and key that still carries the token
+// of the request it is waiting on, whatever language that card now holds.
 
+import {
+  storageLanguageForResponse,
+  type ExplanationLanguage,
+} from './assumedExplanationLanguage'
+import type { Sense } from './englishSenses'
 import { tokenizeWords } from './wordHighlight'
+import type { WordData } from '@/types'
 
 export type Status = 'idle' | 'loading' | 'loaded' | 'error'
 
@@ -32,6 +39,13 @@ export interface WordCardData {
   pronunciation?: string
   loadCount?: number
   dictionaryChinese?: string
+  // The language the card was looked up in (ADR-098); none recorded means
+  // zh-Hans. A card keeps it: switching the preference rewrites no card.
+  explanationLanguage?: ExplanationLanguage
+  senses?: Sense[]
+  lemmaNote?: string
+  pronunciationUS?: string
+  pronunciationUK?: string
   dictionaryStatus: FetchStatus | 'none'
   // Set when dictionaryStatus is 'error'. The status, code and upgrade flag
   // tell a free user's daily lookup quota (TASK-SPEC §4.2; rendered with an
@@ -140,12 +154,36 @@ export const topLevelPhraseCardKey = (
 ): string =>
   `${normalizeCardText(phrase)}\n${normalizeCardText(contextSentence)}`
 
+// The card fields a getOneWord / popover definition fills.
+export const cardDefinition = (ecp: WordData) => ({
+  pronunciation: ecp.Pronunciation,
+  loadCount: ecp.LoadCount,
+  dictionaryChinese: ecp.Chinese,
+  explanationLanguage: storageLanguageForResponse(ecp.ExplanationLanguage),
+  senses: ecp.Senses,
+  lemmaNote: ecp.LemmaNote,
+  pronunciationUS: ecp.PronunciationUS,
+  pronunciationUK: ecp.PronunciationUK,
+})
+
+// A word card's identity within its scope. A zh-Hans id is the bare key, as
+// is a phrase card's (no language, ADR-023 Decision 8).
+export const wordCardId = (
+  key: string,
+  language: ExplanationLanguage
+): string => (language === 'en' ? `${key}\ten` : key)
+
+export const cardId = (card: WordCardData): string =>
+  card.dictionaryStatus === 'none'
+    ? card.key
+    : wordCardId(card.key, card.explanationLanguage ?? 'zh-Hans')
+
 // A card's identity across the whole panel, for state kept outside entries
 // (which cards are expanded).
 export const panelCardKey = (
   sentenceId: string | undefined,
-  key: string
-): string => `${sentenceId ?? ''}\n${key}`
+  id: string
+): string => `${sentenceId ?? ''}\n${id}`
 
 // -- Pure helpers over PanelEntry[] -------------------------------------
 // `sentenceId === undefined` targets the top-level word/phrase entries;
@@ -159,18 +197,32 @@ export const findSentence = (
     (e): e is SentenceEntry => e.kind === 'sentence' && e.id === sentenceId
   )
 
+const scopeCards = (
+  entries: PanelEntry[],
+  sentenceId: string | undefined
+): WordCardData[] =>
+  sentenceId === undefined
+    ? entries.filter((e): e is WordEntry => e.kind === 'word')
+    : (findSentence(entries, sentenceId)?.words ?? [])
+
 export const findCard = (
   entries: PanelEntry[],
   sentenceId: string | undefined,
-  key: string
-): WordCardData | undefined => {
-  if (sentenceId === undefined) {
-    return entries.find(
-      (e): e is WordEntry => e.kind === 'word' && e.key === key
-    )
-  }
-  return findSentence(entries, sentenceId)?.words.find(w => w.key === key)
-}
+  id: string
+): WordCardData | undefined =>
+  scopeCards(entries, sentenceId).find(c => cardId(c) === id)
+
+// The card an in-flight request belongs to. Tokens are unique panel-wide, so
+// the language the card had when the request was sent takes no part.
+export const findCardByToken = (
+  entries: PanelEntry[],
+  sentenceId: string | undefined,
+  key: string,
+  token: number
+): WordCardData | undefined =>
+  scopeCards(entries, sentenceId).find(
+    c => c.key === key && c.token === token
+  )
 
 const toFront = <T>(items: T[], index: number): T[] => [
   items[index],
@@ -178,23 +230,25 @@ const toFront = <T>(items: T[], index: number): T[] => [
   ...items.slice(index + 1),
 ]
 
-// Reorders the card to the front if `key` already exists at this scope
+// Reorders the card to the front if `id` already exists at this scope
 // (reusing its existing data, never re-fetching); otherwise inserts a new
 // card built by `makeCard()` at the front.
 export const reorderOrInsertCard = (
   entries: PanelEntry[],
   sentenceId: string | undefined,
-  key: string,
+  id: string,
   makeCard: () => WordCardData
 ): PanelEntry[] => {
   if (sentenceId === undefined) {
-    const index = entries.findIndex(e => e.kind === 'word' && e.key === key)
+    const index = entries.findIndex(
+      e => e.kind === 'word' && cardId(e) === id
+    )
     if (index !== -1) return toFront(entries, index)
     return [{ kind: 'word', ...makeCard() }, ...entries]
   }
   return entries.map(e => {
     if (e.kind !== 'sentence' || e.id !== sentenceId) return e
-    const index = e.words.findIndex(w => w.key === key)
+    const index = e.words.findIndex(w => cardId(w) === id)
     if (index !== -1) return { ...e, words: toFront(e.words, index) }
     return { ...e, words: [makeCard(), ...e.words] }
   })
@@ -202,29 +256,35 @@ export const reorderOrInsertCard = (
 
 // A page popover lookup mirrored into the panel (ADR-006): it carries the
 // popover's latest dictionary data, so a top-level card already holding the
-// word takes that data as it moves to the front -- a miss the AI fallback
+// word in that language takes that data as it moves to the front -- a miss the AI fallback
 // later defined, or a newer lookup count. Nested cards are left alone.
 export const upsertPageLookupCard = (
   entries: PanelEntry[],
   card: WordCardData
 ): PanelEntry[] => {
-  const index = entries.findIndex(e => e.kind === 'word' && e.key === card.key)
+  const index = entries.findIndex(
+    e => e.kind === 'word' && cardId(e) === cardId(card)
+  )
   if (index === -1) return [{ kind: 'word', ...card }, ...entries]
   const moved = toFront(entries, index)
   return [{ ...moved[0], ...card } as WordEntry, ...moved.slice(1)]
 }
 
-// Merges `patch` into the card; with `token` given, only while the card
-// still carries it (a response to the request that token started).
+// Merges `patch` into the card. With `token` given (a response to the request
+// that token started), `target` is the card's key and the card is found by
+// token; without one, `target` is its cardId.
 export const patchCard = (
   entries: PanelEntry[],
   sentenceId: string | undefined,
-  key: string,
+  target: string,
   patch: Partial<WordCardData>,
   token?: number
 ): PanelEntry[] => {
-  const card = findCard(entries, sentenceId, key)
-  if (!card || (token !== undefined && card.token !== token)) return entries
+  const card =
+    token === undefined
+      ? findCard(entries, sentenceId, target)
+      : findCardByToken(entries, sentenceId, target, token)
+  if (!card) return entries
   if (sentenceId === undefined) {
     return entries.map(e => (e === card ? { ...e, ...patch } : e))
   }
@@ -235,19 +295,45 @@ export const patchCard = (
   )
 }
 
-export const removeCard = (
+const dropCards = (
   entries: PanelEntry[],
   sentenceId: string | undefined,
-  key: string
+  drop: (card: WordCardData) => boolean
 ): PanelEntry[] => {
   if (sentenceId === undefined) {
-    return entries.filter(e => !(e.kind === 'word' && e.key === key))
+    return entries.filter(e => !(e.kind === 'word' && drop(e)))
   }
   return entries.map(e =>
     e.kind === 'sentence' && e.id === sentenceId
-      ? { ...e, words: e.words.filter(w => w.key !== key) }
+      ? { ...e, words: e.words.filter(w => !drop(w)) }
       : e
   )
+}
+
+export const removeCard = (
+  entries: PanelEntry[],
+  sentenceId: string | undefined,
+  id: string
+): PanelEntry[] => dropCards(entries, sentenceId, c => cardId(c) === id)
+
+// The dictionary answer of the request holding `token`. If it is in another
+// language than the card assumed, the card takes it and replaces the older
+// card of that identity, whose requests can then write nothing.
+export const writeDefinition = (
+  entries: PanelEntry[],
+  sentenceId: string | undefined,
+  key: string,
+  token: number,
+  patch: Partial<WordCardData>
+): PanelEntry[] => {
+  const card = findCardByToken(entries, sentenceId, key, token)
+  if (!card) return entries
+  const id = cardId({ ...card, ...patch })
+  const kept =
+    id === cardId(card)
+      ? entries
+      : dropCards(entries, sentenceId, c => c !== card && cardId(c) === id)
+  return patchCard(kept, sentenceId, key, patch, token)
 }
 
 // After a switch to a signed-in account (#236), no row offers Sign in: each
@@ -322,12 +408,13 @@ export const moveSentenceToTop = (
 // The top-level page-lookup cards a sentence absorbs (ADR-023 Decision 9):
 // scanning from the top, up to the first sentence card (the target's own
 // included), every page-lookup word card (dictionary loaded, no context) whose
-// key matches a word of `sentence` -- tokenized as page clicks are. Returned in
-// their top-level order; phrase cards, scoped cards and cards beyond the
-// window are never touched.
+// key matches a word of `sentence` -- tokenized as page clicks are -- and is in
+// the current explanation language. Returned in their top-level order; phrase
+// cards, scoped cards and cards beyond the window are never touched.
 export const absorbablePageCards = (
   entries: PanelEntry[],
-  sentence: string
+  sentence: string,
+  language: ExplanationLanguage
 ): WordEntry[] => {
   const keys = new Set(tokenizeWords(sentence).map(t => wordCardKey(t.word)))
   const found: WordEntry[] = []
@@ -336,7 +423,8 @@ export const absorbablePageCards = (
     if (
       entry.dictionaryStatus === 'loaded' &&
       entry.contextStatus === 'none' &&
-      keys.has(entry.key)
+      keys.has(entry.key) &&
+      cardId(entry) === wordCardId(entry.key, language)
     )
       found.push(entry)
   }

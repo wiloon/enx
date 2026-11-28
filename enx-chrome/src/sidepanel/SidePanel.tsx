@@ -76,15 +76,20 @@ import {
 import {
   PANEL_REQUEST_TIMEOUT_MS,
   earliestLoadingStartedAt,
+  cardDefinition,
+  cardId,
   panelCardKey,
   patchCard,
   patchSentence,
   supersedeSessionRows,
   wordCardKey,
+  writeDefinition,
   type PanelEntry,
   type SentenceEntry,
   type WordCardData,
 } from '@/lib/panelHistory'
+import { assumedLanguage } from '@/lib/assumedLanguageQuery'
+import { MAX_PANEL_SENSES } from '@/lib/englishSenses'
 import {
   BackgroundResponse,
   ContentMessage,
@@ -313,7 +318,19 @@ function WordCard({
   // reads as "belongs to this sentence" and keeps the width (ADR-023).
   nested?: boolean
 }) {
-  const phonetic = formatPhonetic(card.pronunciation)
+  const english =
+    card.explanationLanguage === 'en' && card.dictionaryStatus !== 'none'
+  // Wiktionary's IPA strings carry their own slashes (ADR-098).
+  const phonetic = english
+    ? [
+        card.pronunciationUS && `US ${card.pronunciationUS}`,
+        card.pronunciationUK && `UK ${card.pronunciationUK}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : formatPhonetic(card.pronunciation)
+  const senses = (english && card.senses?.slice(0, MAX_PANEL_SENSES)) || []
+  const lemmaNote = english ? card.lemmaNote : undefined
   const hasSpeaker = cardHasSpeaker(card)
   // One failure (the API down for a moment) fails the dictionary and the AI
   // halves alike; show its message once. The context row is the one kept:
@@ -511,7 +528,9 @@ function WordCard({
       {(card.contextStatus === 'loading' ||
         card.contextStatus === 'loaded' ||
         card.dictionaryStatus === 'loading' ||
-        card.dictionaryChinese) && (
+        card.dictionaryChinese ||
+        lemmaNote ||
+        senses.length > 0) && (
         <div className="mt-1.5 space-y-1">
           {card.contextStatus === 'loading' && (
             <LoadingSkeleton label="Translating..." lines={['w-2/3']} />
@@ -537,6 +556,33 @@ function WordCard({
             <p className="text-muted-foreground text-xs">
               Loading dictionary definition...
             </p>
+          ) : english ? (
+            <>
+              {lemmaNote && (
+                <p className="text-xs text-muted-foreground">{lemmaNote}</p>
+              )}
+              {senses.length > 0 && (
+                <ol className="space-y-1">
+                  {senses.map((sense, i) => (
+                    <li
+                      key={i}
+                      data-testid="sidepanel-sense"
+                      className="text-sm text-foreground wrap-break-word"
+                    >
+                      <span className="rounded-sm bg-brand-muted px-1 py-0.5 text-[10px] font-medium text-brand">
+                        {sense.pos}
+                      </span>{' '}
+                      {sense.gloss}
+                      {sense.example && (
+                        <span className="block text-xs italic text-muted-foreground">
+                          {sense.example}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </>
           ) : (
             card.dictionaryChinese && (
               <div>
@@ -776,21 +822,24 @@ function SentenceBlock({
           data-testid="sidepanel-sentence-words"
           className="space-y-2 pb-1.5"
         >
-          {entry.words.map(card => (
-            <WordCard
-              key={card.key}
-              card={card}
-              expanded={expandedWords.has(panelCardKey(entry.id, card.key))}
-              onToggleExpand={() =>
-                onToggleExpand(panelCardKey(entry.id, card.key))
-              }
-              onRemove={() => onRemoveWord(entry.id, card.key)}
-              onRetryContext={() => onRetryContext(entry.id, card.key)}
-              onRetryDictionary={() => onRetryDictionary(entry.id, card.key)}
-              shownAbove={sentenceErrorText}
-              nested
-            />
-          ))}
+          {entry.words.map(card => {
+            const id = cardId(card)
+            return (
+              <WordCard
+                key={id}
+                card={card}
+                expanded={expandedWords.has(panelCardKey(entry.id, id))}
+                onToggleExpand={() =>
+                  onToggleExpand(panelCardKey(entry.id, id))
+                }
+                onRemove={() => onRemoveWord(entry.id, id)}
+                onRetryContext={() => onRetryContext(entry.id, id)}
+                onRetryDictionary={() => onRetryDictionary(entry.id, id)}
+                shownAbove={sentenceErrorText}
+                nested
+              />
+            )
+          })}
         </div>
       )}
     </div>
@@ -979,13 +1028,17 @@ function SidePanelContent() {
         wordStatesRef.current = { ...wordStatesRef.current, ...carriedStates }
         setWordStates(prev => ({ ...prev, ...carriedStates }))
       }
-      const result = await store.claimSentenceEvent(tabId, {
-        eventId: event.eventId,
-        sentence: event.sentence,
-        word: event.word,
-        phrase: event.phrase,
-        wordStates: event.wordStates,
-      })
+      const result = await store.claimSentenceEvent(
+        tabId,
+        {
+          eventId: event.eventId,
+          sentence: event.sentence,
+          word: event.word,
+          phrase: event.phrase,
+          wordStates: event.wordStates,
+        },
+        assumedLanguage
+      )
       if (!result.committed) return
       publish(result.state)
       dispatchPlanRef.current(result.plan)
@@ -997,11 +1050,15 @@ function SidePanelContent() {
     async (lookup: LatestPageWordLookup) => {
       if (tabId === undefined || !lookup.eventId) return
       const word = wordKey(lookup.word)
-      setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
+      // A re-read counted nothing, so it says nothing new about the word.
+      if (!lookup.reread) {
+        setWordStates(prev => ({ ...prev, [word]: lookup.ecp }))
+      }
       const result = await store.claimPageWordEvent(tabId, {
         eventId: lookup.eventId,
         word: lookup.word,
         ecp: lookup.ecp,
+        reread: lookup.reread,
       })
       if (!result.committed) return
       publish(result.state)
@@ -1241,10 +1298,8 @@ function SidePanelContent() {
                 isActive,
                 isCurrent: () => true,
                 onDefinition: ecp => {
-                  patch({
-                    pronunciation: ecp.Pronunciation,
-                    dictionaryChinese: ecp.Chinese,
-                    loadCount: ecp.LoadCount,
+                  const definition: Partial<WordCardData> = {
+                    ...cardDefinition(ecp),
                     dictionaryStatus: 'loaded',
                     dictionaryError: undefined,
                     dictionaryErrorHttpStatus: undefined,
@@ -1252,7 +1307,18 @@ function SidePanelContent() {
                     dictionaryErrorUpgrade: undefined,
                     dictionarySessionExpired: false,
                     dictionarySessionUnverified: false,
-                  })
+                  }
+                  // In another language than assumed, this card replaces
+                  // the older one of that language.
+                  void patchEntries(prev =>
+                    writeDefinition(
+                      prev,
+                      card.sentenceId,
+                      card.key,
+                      card.token,
+                      definition
+                    )
+                  )
                   if (!counts && ecp.LoadCount !== undefined)
                     recordWordLookup(word, ecp)
                   shown(ecp.Chinese)
@@ -1545,7 +1611,9 @@ function SidePanelContent() {
 
   const handleWordClick = useCallback(
     (rawWord: string, sentence: string, sentenceId: string) =>
-      runAction(id => store.clickWord(id, rawWord, sentence, sentenceId)),
+      runAction(id =>
+        store.clickWord(id, rawWord, sentence, sentenceId, assumedLanguage)
+      ),
     [runAction, store]
   )
 
@@ -1661,18 +1729,20 @@ function SidePanelContent() {
             />
           ) : (
             <WordCard
-              key={entry.key}
+              key={cardId(entry)}
               card={entry}
-              expanded={expandedWords.has(panelCardKey(undefined, entry.key))}
+              expanded={expandedWords.has(
+                panelCardKey(undefined, cardId(entry))
+              )}
               onToggleExpand={() =>
-                toggleExpanded(panelCardKey(undefined, entry.key))
+                toggleExpanded(panelCardKey(undefined, cardId(entry)))
               }
-              onRemove={() => handleRemoveCard(undefined, entry.key)}
+              onRemove={() => handleRemoveCard(undefined, cardId(entry))}
               onRetryContext={() =>
-                handleRetryContextTranslation(undefined, entry.key)
+                handleRetryContextTranslation(undefined, cardId(entry))
               }
               onRetryDictionary={() =>
-                handleRetryDictionary(undefined, entry.key)
+                handleRetryDictionary(undefined, cardId(entry))
               }
             />
           )

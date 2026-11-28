@@ -1,4 +1,8 @@
-import { findCard, type PanelEntry, type SentenceEntry } from './panelHistory'
+import {
+  findCardByToken,
+  type PanelEntry,
+  type SentenceEntry,
+} from './panelHistory'
 
 const entryTokensHeld = (
   entries: PanelEntry[],
@@ -18,12 +22,12 @@ const entryTokensHeld = (
     return entry.words.some(
       card =>
         card.token !== undefined &&
-        findCard(entries, entry.id, card.key)?.token === card.token
+        findCardByToken(entries, entry.id, card.key, card.token) !== undefined
     )
   }
   return (
     entry.token !== undefined &&
-    findCard(entries, undefined, entry.key)?.token === entry.token
+    findCardByToken(entries, undefined, entry.key, entry.token) !== undefined
   )
 }
 
@@ -123,7 +127,8 @@ export class PanelHistorySession {
   // card. While Undo is offered, retain the work without issuing new I/O.
   whenVisible<T>(card: CardRequest, action: () => T): Promise<T | undefined> {
     const holds = (entries: PanelEntry[]) =>
-      findCard(entries, card.sentenceId, card.key)?.token === card.token
+      findCardByToken(entries, card.sentenceId, card.key, card.token) !==
+      undefined
     if (holds(this.entries)) return new Promise<T>(resolve => resolve(action()))
     if (!this.snapshot.cleared || !holds(this.snapshot.cleared.entries)) {
       return Promise.resolve(undefined)

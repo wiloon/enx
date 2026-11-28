@@ -204,7 +204,7 @@ describe('a word card', () => {
     expect(speakerOf('great')).toBeNull()
   })
 
-  it('offers no speaker for a dictionary miss, even once the in-context translation arrives', async () => {
+  it('offers the speaker for a dictionary miss', async () => {
     answer({
       translateSentence: () => ({ success: true, chinese: '猫是很棒的宠物。' }),
       getOneWord: () => ({
@@ -216,7 +216,7 @@ describe('a word card', () => {
     const card = await lookUpGreat()
 
     await waitFor(() => expect(card).toHaveTextContent('很棒的'))
-    expect(speakerOf('great')).toBeNull()
+    expect(speakerOf('great')).toBeInTheDocument()
   })
 })
 
@@ -239,7 +239,7 @@ describe('a word mirrored from the page popover', () => {
     expect(play).toHaveBeenCalledWith('rizzler')
   })
 
-  it('offers no speaker for a dictionary miss', async () => {
+  it('offers the speaker for a dictionary miss', async () => {
     render(<SidePanel />)
     await screen.findByTestId('sidepanel-empty-state')
 
@@ -250,7 +250,7 @@ describe('a word mirrored from the page popover', () => {
     })
 
     await screen.findByTestId('sidepanel-card-rizzler')
-    expect(speakerOf('rizzler')).toBeNull()
+    expect(speakerOf('rizzler')).toBeInTheDocument()
   })
 })
 

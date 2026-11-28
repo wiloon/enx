@@ -53,8 +53,57 @@ const setup = () => {
     })
   )
   const onMiss = jest.fn()
-  return { store, get, record, onMiss }
+  const mirror = jest.fn()
+  return { store, get, record, onMiss, mirror }
 }
+
+it.each([
+  ['a hit', english],
+  ['a miss', { ...english, Senses: undefined }],
+])('mirrors %s to the panel without recording a lookup', async (_n, ecp) => {
+  const { store, get, record, onMiss, mirror } = setup()
+  get.mockResolvedValue({ success: true, ecp })
+
+  await rereadForExplanationLanguage('cat', 'en', {
+    store,
+    state: chinese,
+    get,
+    record,
+    isActive: () => true,
+    isCurrent: () => true,
+    onMiss,
+    mirror,
+  })
+
+  expect(mirror).toHaveBeenCalledWith(
+    expect.objectContaining({ ExplanationLanguage: 'en', LoadCount: 19 })
+  )
+  expect(record).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['a late answer', 'en', false],
+  ['an answer in another language', 'zh-Hans', true],
+])('mirrors nothing for %s', async (_n, answered, current) => {
+  const { store, get, record, onMiss, mirror } = setup()
+  get.mockResolvedValue({
+    success: true,
+    ecp: { ...english, ExplanationLanguage: answered as 'en' | 'zh-Hans' },
+  })
+
+  await rereadForExplanationLanguage('cat', 'en', {
+    store,
+    state: chinese,
+    get,
+    record,
+    isActive: () => true,
+    isCurrent: () => current,
+    onMiss,
+    mirror,
+  })
+
+  expect(mirror).not.toHaveBeenCalled()
+})
 
 it('shows the new language, preserves LoadCount/Known, and never records a lookup', async () => {
   const { store, get, record, onMiss } = setup()
@@ -67,6 +116,7 @@ it('shows the new language, preserves LoadCount/Known, and never records a looku
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(record).not.toHaveBeenCalled()
@@ -104,6 +154,7 @@ it('drops a late answer once the gate has moved on', async () => {
     isActive: () => true,
     isCurrent: () => switchGate.isCurrent(),
     onMiss,
+    mirror: jest.fn(),
   })
   expect(store.get(isTranslatingAtom)).toBe(true)
 
@@ -130,6 +181,7 @@ it('clears translating when the answer language does not match the switch', asyn
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(store.get(currentWordAtom)).toEqual(chinese)
@@ -149,6 +201,7 @@ it('shows signed-out when the re-read fails that way', async () => {
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(store.get(signedOutAtom)).toBe(true)
@@ -168,6 +221,7 @@ it('shows the unverified notice when the re-read fails that way', async () => {
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(store.get(sessionUnverifiedAtom)).toBe('lookup')
@@ -186,6 +240,7 @@ it('resets any AI offer before the re-read', async () => {
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(store.get(aiLookupAtom)).toEqual({ status: 'idle' })
@@ -213,6 +268,7 @@ it('offers AI on a dictionary miss after the re-read', async () => {
     isActive: () => true,
     isCurrent: () => true,
     onMiss,
+    mirror: jest.fn(),
   })
 
   expect(onMiss).toHaveBeenCalledWith(

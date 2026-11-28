@@ -28,6 +28,10 @@ jest.mock('@/lib/sentry', () => ({ initSentry: jest.fn() }))
 jest.mock('@/lib/auth/selectWorkerAuth', () =>
   jest.requireActual('@/test/fakeWorkerAuth')
 )
+// These tests count background messages; the language query is stubbed.
+jest.mock('@/lib/assumedLanguageQuery', () => ({
+  assumedLanguage: async () => 'zh-Hans',
+}))
 jest.mock('@/services/api', () => ({ sendMessageToBackground: jest.fn() }))
 
 import { createClient } from '@/test/fakeWorkerAuth'

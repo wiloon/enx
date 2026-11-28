@@ -10,6 +10,10 @@ jest.mock('@/config/env', () => ({
   },
 }))
 
+// These tests count background messages; the language query is stubbed.
+jest.mock('@/lib/assumedLanguageQuery', () => ({
+  assumedLanguage: async () => 'zh-Hans',
+}))
 jest.mock('@/services/api', () => ({
   sendMessageToBackground: jest.fn(),
 }))
