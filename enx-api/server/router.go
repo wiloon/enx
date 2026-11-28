@@ -237,7 +237,7 @@ func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics,
 		sentenceTranslator,
 		aitranslate.DefaultTokenLedger,
 		tokenPricing(cfg.Stripe.Costs.Translate),
-	).WithTrialGate(trialGate)
+	).WithTrialGate(trialGate).WithExplanationLanguages(explanationLanguages)
 
 	// Rephrase (ADR-012) reuses the same provider as sentence translation,
 	// but the provider must also serve rephrase. Same

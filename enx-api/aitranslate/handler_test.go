@@ -441,7 +441,7 @@ func TestSentenceWithWordsHandlerSuccess(t *testing.T) {
 		t.Fatalf("expected one provider call, got %d", len(tr.Calls))
 	}
 	want := sentenceword.BuildWordsUserContent("I deposited cash at the bank.",
-		[]sentenceword.WordInput{{Word: "bank", DictionaryChinese: "银行"}, {Word: "cash"}})
+		[]sentenceword.WordInput{{Word: "bank", DictionaryDefinition: "银行"}, {Word: "cash"}})
 	if tr.Calls[0].User != want {
 		t.Fatalf("provider input: %q, want %q", tr.Calls[0].User, want)
 	}

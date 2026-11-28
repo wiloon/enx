@@ -13,9 +13,18 @@ import (
 // why, as JSON. ParseResult is lenient about fences and stray prose; a
 // missing why is tolerated, a missing word gloss is an error. The usage is
 // returned on every path so the caller bills by actual consumption.
-func Call(ctx context.Context, chat llm.Chat, sentence, word, dictionaryChinese string) (Result, aiusage.Usage, error) {
-	content, u, err := chat(ctx, "translate_word_in_context", Temperature, SystemPrompt,
-		BuildUserContent(sentence, word, dictionaryChinese))
+func Call(ctx context.Context, chat llm.Chat, sentence, word, definition string) (Result, aiusage.Usage, error) {
+	return call(ctx, chat, SystemPrompt, sentence, word, definition)
+}
+
+// CallEnglish is Call with the gloss and its why in plain English.
+func CallEnglish(ctx context.Context, chat llm.Chat, sentence, word, definition string) (Result, aiusage.Usage, error) {
+	return call(ctx, chat, EnglishSystemPrompt, sentence, word, definition)
+}
+
+func call(ctx context.Context, chat llm.Chat, system, sentence, word, definition string) (Result, aiusage.Usage, error) {
+	content, u, err := chat(ctx, "translate_word_in_context", Temperature, system,
+		BuildUserContent(sentence, word, definition))
 	if err != nil {
 		return Result{}, u, err
 	}

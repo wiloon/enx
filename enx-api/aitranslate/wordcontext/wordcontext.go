@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strings"
 
+	"enx-api/aitranslate/en"
 	"enx-api/aitranslate/zh"
 )
 
@@ -43,6 +44,23 @@ Rules:
   - One short sentence, no pinyin, no quotes. Never mention or rule out dictionary senses that don't apply.
 ` + zh.SimplifiedRule
 
+// EnglishSystemPrompt is SystemPrompt for a reader who wants explanations in
+// plain English (ADR-098); the reply shape and the "why" rule are the same.
+const EnglishSystemPrompt = `You help a learner of English. You are given an English sentence, one target word or short phrase taken from it, and (optionally) that word's dictionary definition.
+
+Return ONLY a JSON object, no prose around it:
+{"word": "<what the target word means AS USED IN THIS SENTENCE, in plain English, not a generic dictionary definition>",
+ "why": "<one short plain-English sentence relating that meaning to the dictionary, or an empty string; see the rules>"}
+
+Rules:
+- "word": just the contextual meaning, as a short phrase. No quotes, no explanation.
+- "why": first decide whether the dictionary definition covers the meaning in "word", then:
+  - No dictionary definition given, or the meaning is one of its senses or an ordinary sense it already covers: "".
+  - Not covered, but it comes from one dictionary sense: say why the word means this here, and name that one source sense and how the meaning comes from it (figurative extension, part-of-speech shift, idiom, narrowing).
+  - Not covered and no dictionary sense is related (a proper noun, a new usage, a different word): say only why the word means this here.
+  - One short sentence, no quotes. Never mention or rule out dictionary senses that don't apply.
+` + en.PlainRule
+
 // Temperature matches sentenceword's 0.3 -- one most-natural rendering, not
 // creative variety.
 const Temperature = 0.3
@@ -64,14 +82,23 @@ type wireResult struct {
 
 // BuildUserContent formats the user message every provider sends alongside
 // SystemPrompt. The dictionary definition line is omitted entirely when
-// dictionaryChinese is empty, so the prompt never references a missing
-// dictionary entry.
-func BuildUserContent(sentence, word, dictionaryChinese string) string {
+// definition is empty, so the prompt never references a missing dictionary
+// entry.
+func BuildUserContent(sentence, word, definition string) string {
 	content := fmt.Sprintf("Sentence: %s\nWord: %s", sentence, word)
-	if dictionaryChinese != "" {
-		content += fmt.Sprintf("\nDictionary definition: %s", dictionaryChinese)
+	if definition != "" {
+		content += fmt.Sprintf("\nDictionary definition: %s", definition)
 	}
 	return content
+}
+
+// CheckEnglish rejects an English-mode result written in Chinese. It is not
+// part of ParseResult, so a Chinese reply is not asked for again.
+func CheckEnglish(res Result, sentence, word string) error {
+	if en.IsChinese(res.WordChinese, sentence, word) || en.IsChinese(res.Why, sentence, word) {
+		return en.ErrChineseReply
+	}
+	return nil
 }
 
 // ParseResult turns a provider's raw reply into a Result. The word gloss is

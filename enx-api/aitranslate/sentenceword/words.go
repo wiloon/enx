@@ -16,6 +16,7 @@ import (
 	"unicode"
 
 	"enx-api/aitranslate/aiusage"
+	"enx-api/aitranslate/en"
 	"enx-api/aitranslate/llm"
 	"enx-api/aitranslate/zh"
 
@@ -49,10 +50,33 @@ Rules:
   - One short sentence, no pinyin, no quotes. Never mention or rule out dictionary senses that don't apply.
 ` + zh.SimplifiedRule
 
-// WordInput is one word to gloss with its dictionary meaning (may be empty).
+// EnglishWordsSystemPrompt is WordsSystemPrompt in plain English (ADR-098): a
+// restatement of the sentence in place of its translation. The "chinese" field
+// keeps its name on the wire.
+const EnglishWordsSystemPrompt = `You help a learner of English. You are given an English sentence and a numbered list of target words or short phrases taken from it, each with an optional dictionary definition.
+
+Return ONLY a JSON object, no prose around it:
+{"sentence": "<one restatement of the whole sentence in simpler English>",
+ "words": [{"word": "<the target word exactly as listed>",
+            "chinese": "<what it means AS USED IN THIS SENTENCE, in plain English (the field name is fixed; write English), not a generic dictionary definition>",
+            "why": "<one short plain-English sentence relating that meaning to the dictionary, or an empty string; see the rules>"}]}
+
+Rules:
+- "sentence": say what the whole sentence says, in simpler English. One restatement, no notes on words, no quotes.
+- "words": one entry per listed word, in the listed order.
+- "chinese": just the contextual meaning, as a short phrase. No quotes, no explanation.
+- "why": first decide whether the word's dictionary definition covers the meaning in "chinese", then:
+  - No dictionary definition given, or the meaning is one of its senses or an ordinary sense it already covers: "".
+  - Not covered, but it comes from one dictionary sense: say why the word means this here, and name that one source sense and how the meaning comes from it (figurative extension, part-of-speech shift, idiom, narrowing).
+  - Not covered and no dictionary sense is related (a proper noun, a new usage, a different word): say only why the word means this here.
+  - One short sentence, no quotes. Never mention or rule out dictionary senses that don't apply.
+` + en.PlainRule
+
+// WordInput is one word to gloss with its dictionary definition (may be
+// empty), in whichever language the user's card shows it.
 type WordInput struct {
-	Word              string
-	DictionaryChinese string
+	Word                 string
+	DictionaryDefinition string
 }
 
 // WordGloss is one word's contextual meaning. Chinese and Why are both empty
@@ -109,8 +133,8 @@ func BuildWordsUserContent(sentence string, words []WordInput) string {
 	fmt.Fprintf(&b, "Sentence: %s\nWords:", sentence)
 	for i, w := range words {
 		fmt.Fprintf(&b, "\n%d. %s", i+1, w.Word)
-		if w.DictionaryChinese != "" {
-			fmt.Fprintf(&b, " | Dictionary definition: %s", w.DictionaryChinese)
+		if w.DictionaryDefinition != "" {
+			fmt.Fprintf(&b, " | Dictionary definition: %s", w.DictionaryDefinition)
 		}
 	}
 	return b.String()
@@ -163,12 +187,34 @@ func ParseWordsResult(raw string, words []WordInput) (WordsResult, error) {
 	for i, w := range words {
 		gloss := byKey[NormalizeWord(w.Word)]
 		gloss.Word = w.Word
-		if strings.TrimSpace(w.DictionaryChinese) == "" {
+		if strings.TrimSpace(w.DictionaryDefinition) == "" {
 			gloss.Why = ""
 		}
 		out.Words[i] = gloss
 	}
 	return out, nil
+}
+
+// CheckEnglish applies the English-mode Chinese check to a parsed result. A
+// Chinese restatement rejects the whole reply. Chinese in one word's gloss or
+// why blanks both for that word only, so the caller falls back for it.
+func CheckEnglish(res WordsResult, sentence string) (WordsResult, error) {
+	sources := []string{sentence}
+	for _, w := range res.Words {
+		sources = append(sources, w.Word)
+	}
+	if en.IsChinese(res.SentenceChinese, sources...) {
+		return WordsResult{}, en.ErrChineseReply
+	}
+	words := make([]WordGloss, len(res.Words))
+	for i, w := range res.Words {
+		if en.IsChinese(w.Chinese, sources...) || en.IsChinese(w.Why, sources...) {
+			w.Chinese, w.Why = "", ""
+		}
+		words[i] = w
+	}
+	res.Words = words
+	return res, nil
 }
 
 // Read complete top-level fields in order, stopping at the first syntax error.
@@ -201,7 +247,17 @@ func recoverWordsSentence(raw string) string {
 // prompt, one chat call. The usage is returned on every path so the caller
 // bills by actual consumption.
 func CallWords(ctx context.Context, chat llm.Chat, sentence string, words []WordInput) (WordsResult, aiusage.Usage, error) {
-	content, u, err := chat(ctx, "translate_sentence_with_word", Temperature, WordsSystemPrompt,
+	return callWords(ctx, chat, WordsSystemPrompt, sentence, words)
+}
+
+// CallEnglishWords is CallWords with the restatement and glosses in plain
+// English.
+func CallEnglishWords(ctx context.Context, chat llm.Chat, sentence string, words []WordInput) (WordsResult, aiusage.Usage, error) {
+	return callWords(ctx, chat, EnglishWordsSystemPrompt, sentence, words)
+}
+
+func callWords(ctx context.Context, chat llm.Chat, system, sentence string, words []WordInput) (WordsResult, aiusage.Usage, error) {
+	content, u, err := chat(ctx, "translate_sentence_with_word", Temperature, system,
 		BuildWordsUserContent(sentence, words))
 	if err != nil {
 		return WordsResult{}, u, err
