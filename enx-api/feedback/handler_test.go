@@ -53,7 +53,7 @@ func newEnv(t *testing.T) *env {
 func newEnvWith(t *testing.T, store feedback.Store) *env {
 	t.Helper()
 	prev := sqlitex.DB
-	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "feedback.db"), "warn"); err != nil {
+	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "feedback.db"), "warn"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sqlitex.DB = prev })

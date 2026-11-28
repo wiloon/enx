@@ -11,6 +11,8 @@ import (
 	"enx-api/config"
 	"enx-api/metrics"
 	"enx-api/utils/sqlitex"
+
+	"gorm.io/gorm"
 )
 
 type fakeWordModel struct {
@@ -77,8 +79,8 @@ const confidentReply = `{"is_word": true, "quality": 9, "senses": [{"pos": "n.",
 
 func TestE2E_AIWordRecordsAnAttemptWithoutAProvider(t *testing.T) {
 	m := metrics.New()
-	base, _, token := adminDictEnvServed(t, noTrialConfig(), func(t *testing.T, cfg *config.Config) (*httptest.Server, func()) {
-		srv := httptest.NewServer(setupRouter(cfg, m))
+	base, _, token := adminDictEnvServed(t, noTrialConfig(), func(t *testing.T, db *gorm.DB, cfg *config.Config) (*httptest.Server, func()) {
+		srv := httptest.NewServer(setupRouter(db, cfg, m))
 		return srv, srv.Close
 	})
 

@@ -7,7 +7,6 @@ import (
 	"enx-api/email"
 	"enx-api/metrics"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
 	"errors"
 	"net/http"
 	"time"
@@ -26,10 +25,11 @@ type Application struct {
 // Initialize is the production startup seam. Database preparation
 // precedes route construction and every billing background job.
 func Initialize(ctx context.Context, cfg *config.Config, m *metrics.Metrics, sc *stripeSDK.Client) (*Application, error) {
-	if err := initializeBillingDatabase(cfg.DB.Path, cfg.Log.Level); err != nil {
+	db, err := initializeBillingDatabase(cfg.DB.Path, cfg.Log.Level)
+	if err != nil {
 		return nil, err
 	}
-	if err := m.InstrumentDB(sqlitex.DB); err != nil {
+	if err := m.InstrumentDB(db); err != nil {
 		// Losing the busy counter must not stop the API.
 		logger.Errorf("metrics: sqlite instrumentation: %v", err)
 	}
@@ -40,7 +40,7 @@ func Initialize(ctx context.Context, cfg *config.Config, m *metrics.Metrics, sc 
 	if err != nil {
 		return nil, err
 	}
-	a := &Application{router: setupRouterWithBilling(cfg, m, sc, clerkBackend(cfg.Clerk), assembly)}
+	a := &Application{router: setupRouterWithBilling(db, cfg, m, sc, clerkBackend(cfg.Clerk), assembly)}
 	if assembly != nil {
 		lifecycle, err := startBillingLifecycle(ctx, assembly)
 		if err != nil {

@@ -128,24 +128,30 @@ func (SyncState) TableName() string {
 
 // Init opens the database at dbPath with full SQL logging, as tests and
 // tools expect. It panics when initialisation fails, so no caller carries on
-// with a broken database.
-func Init(dbPath string) {
-	if err := InitWithLogLevel(dbPath, "debug"); err != nil {
+// with a broken database. It returns the handle, which is also stored in DB.
+func Init(dbPath string) *gorm.DB {
+	db, err := InitWithLogLevel(dbPath, "debug")
+	if err != nil {
 		panic(err)
 	}
+	return db
 }
 
 // InitWithLogLevel opens the database at dbPath (config db.path), deriving
 // the SQL log level from the application log level (see SQLLogLevel), and
-// migrates it. An error means the database must not be used: main exits.
-func InitWithLogLevel(dbPath, level string) error {
+// migrates it. It returns the handle, which is also stored in DB. An error
+// comes with a nil handle and means the database must not be used: main exits.
+func InitWithLogLevel(dbPath, level string) (*gorm.DB, error) {
 	if err := CheckBillingSchema(dbPath); err != nil {
-		return err
+		return nil, err
 	}
 	if err := initDatabase(dbPath, level); err != nil {
-		return err
+		return nil, err
 	}
-	return InitializeBillingSchema(DB)
+	if err := InitializeBillingSchema(DB); err != nil {
+		return nil, err
+	}
+	return DB, nil
 }
 
 func initDatabase(dbPath, level string) error {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -118,6 +119,28 @@ func startTestApplication(t *testing.T, ctx context.Context, cfg *config.Config,
 		}
 	})
 	return a
+}
+
+func TestApplicationRefusesADatabaseItCannotOpen(t *testing.T) {
+	restoreBillingDatabase(t)
+	cfg := billingStartupConfig(t)
+	file := filepath.Join(t.TempDir(), "regular-file")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.DB.Path = filepath.Join(file, "enx.db")
+	a, err := Initialize(context.Background(), cfg, metrics.New(), startupStripeClient(t))
+	if err == nil || a != nil {
+		t.Fatalf("Initialize = %v, %v; want no application and an error", a, err)
+	}
+}
+
+func TestApplicationCountsBusyErrorsOnItsDatabase(t *testing.T) {
+	restoreBillingDatabase(t)
+	startTestApplication(t, context.Background(), billingStartupConfig(t), startupStripeClient(t))
+	if sqlitex.DB.Callback().Query().Get("enx:sqlite_busy") == nil {
+		t.Fatal("the opened database has no busy counter")
+	}
 }
 
 func closeCurrentStartupDatabase(t *testing.T) {

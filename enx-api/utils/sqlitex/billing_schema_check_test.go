@@ -19,7 +19,7 @@ func initializedDatabase(t *testing.T) string {
 	path := filepath.Join(t.TempDir(), "billing.db")
 	previous := DB
 	t.Cleanup(func() { DB = previous })
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := DB.DB()
@@ -88,7 +88,7 @@ func assertStartupRefusesUnchanged(t *testing.T, path string) {
 	previous := DB
 	t.Cleanup(func() { DB = previous })
 
-	err = InitWithLogLevel(path, "error")
+	_, err = InitWithLogLevel(path, "error")
 
 	if err == nil || !strings.Contains(err.Error(), "unsupported billing schema") {
 		t.Fatalf("InitWithLogLevel = %v, want unsupported billing schema", err)
@@ -123,7 +123,7 @@ func TestReopeningACurrentDatabaseRestoresDroppedColumnsAndKeepsBillingState(t *
 	previous := DB
 	t.Cleanup(func() { DB = previous })
 
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	t.Cleanup(func() {

@@ -18,7 +18,7 @@ import (
 // (WAL, busy_timeout, _txlock=immediate) and schema.
 func newProductionUserDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
+	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
 		t.Fatal(err)
 	}
 	db := sqlitex.DB

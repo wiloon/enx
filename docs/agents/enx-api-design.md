@@ -61,6 +61,11 @@ func NewUserRepository(db *gorm.DB) account.UserRepository {
 }
 ```
 
+**The database handle:** an adapter gets its `*gorm.DB` through its constructor,
+and no new code reads `sqlitex.DB`. `server.Initialize` gets the handle from
+`sqlitex` and passes it down. Tests get a handle from `sqlitextest.Open`
+(`utils/sqlitex/sqlitextest`).
+
 ### 3. Service Layer
 
 **Purpose:** Encapsulate business logic and orchestrate operations
