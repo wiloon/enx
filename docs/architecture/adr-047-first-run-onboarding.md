@@ -45,7 +45,7 @@ adr-046 去掉了正文里的「Article processed • Click words for translatio
 
 ## 2026-11-27 修订（#1238，试用条款由配置下发）
 
-- 修订 #1016：`/welcome` 登录步骤的试用文案改为读取 `GET /api/billing/trial-terms`（金额与天数来自 `credits.trial`）。读到条款时写出金额与天数；读不到时保留「Free AI credits included to get you started.»；试用关闭（amount 或 ttl-days 为 0）时不显示积分行，无需再手工删代码。
+- 修订 #1016：`/welcome` 登录步骤的试用文案改为读取 `GET /api/billing/trial-terms`（金额与天数来自 `credits.trial`）。读到条款时写出金额与天数；读不到时保留「Free AI credits included to get you started.」；试用关闭（amount 或 ttl-days 为 0）时不显示积分行，无需再手工删代码。
 
 ## 2026-11-19 修订（#1016，说明创建账号的用途）
 
