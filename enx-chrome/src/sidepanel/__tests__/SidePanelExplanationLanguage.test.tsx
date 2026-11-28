@@ -64,11 +64,7 @@ let panelChrome: ReturnType<typeof installPanelHistoryChrome>
 const sentTypes = (type: string) =>
   send.mock.calls.filter(([message]) => message.type === type)
 
-const page = (
-  key: string,
-  value: Record<string, unknown>,
-  eventId: string
-) =>
+const page = (key: string, value: Record<string, unknown>, eventId: string) =>
   act(async () => {
     panelChrome.fireStorageChange(
       { [key]: { newValue: { createdAt: 1, eventId, ...value } } },
@@ -120,9 +116,7 @@ beforeEach(() => {
   ;(chrome.tabs.sendMessage as jest.Mock).mockResolvedValue(undefined)
   assumed = 'zh-Hans'
   dictionary = message =>
-    assumed === 'en'
-      ? enDefinition(message.word!)
-      : zhDefinition(message.word!)
+    assumed === 'en' ? enDefinition(message.word!) : zhDefinition(message.word!)
   context = () => ({ success: true, chinese: '很棒的' })
   send.mockImplementation(async (message: Message) => {
     switch (message.type) {
@@ -175,7 +169,62 @@ describe('after the explanation language switched', () => {
     await screen.findByTestId('sidepanel-sentence')
 
     const card = screen.getByTestId('sidepanel-card-cats')
-    expect(card.closest('[data-testid^="sidepanel-sentence-entry-"]')).toBeNull()
+    expect(
+      card.closest('[data-testid^="sidepanel-sentence-entry-"]')
+    ).toBeNull()
+  })
+})
+
+describe('a Clear while the language query is still pending', () => {
+  // Holds the next language query open until `answer` is called.
+  const holdLanguageQuery = () => {
+    const query = deferred<unknown>()
+    const respond = send.getMockImplementation()!
+    send.mockImplementation((message: Message) =>
+      message.type === 'getExplanationLanguage'
+        ? query.promise
+        : respond(message)
+    )
+    return () =>
+      act(async () =>
+        query.resolve({ success: true, explanationLanguage: assumed })
+      )
+  }
+
+  it('clears the word clicked before it, and Undo brings the word back', async () => {
+    await openSentence()
+    const answer = holdLanguageQuery()
+
+    selectWord('great')
+    fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await answer()
+
+    const undo = await screen.findByTestId('sidepanel-undo-clear')
+    expect(greatCards()).toHaveLength(0)
+
+    fireEvent.click(undo)
+    await waitFor(() => expect(greatCards()).toHaveLength(1))
+  })
+
+  it('clears the sentence sent before it, and Undo brings the sentence back', async () => {
+    await openSentence()
+    const answer = holdLanguageQuery()
+
+    await page(
+      pendingSentenceKey(TAB),
+      { word: '', sentence: 'Dogs are loyal.' },
+      'evt-second'
+    )
+    fireEvent.click(screen.getByTestId('sidepanel-clear-all'))
+    await answer()
+
+    const undo = await screen.findByTestId('sidepanel-undo-clear')
+    expect(screen.queryAllByTestId('sidepanel-sentence')).toHaveLength(0)
+
+    fireEvent.click(undo)
+    await waitFor(() =>
+      expect(screen.getAllByTestId('sidepanel-sentence')).toHaveLength(2)
+    )
   })
 })
 

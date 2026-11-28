@@ -141,9 +141,10 @@ export type PanelHistoryStoreDeps = {
   requestTimeoutMs?: number
 }
 
-export type Mutator = (
+export type Mutator<Input = void> = (
   state: StoredPanelHistory,
-  now: number
+  now: number,
+  input: Input
 ) => {
   /** Return the received state object itself for "nothing to change". */
   state: StoredPanelHistory
@@ -291,9 +292,14 @@ export type SentenceEventInput = {
   word: string
   phrase?: string
   wordStates?: Record<string, import('@/types').WordData>
-  // The background's assumed language when the sentence arrived (ADR-098).
-  explanationLanguage?: ExplanationLanguage
 }
+
+// The background's assumed language for a new card (ADR-098). It is asked
+// inside the history lock, so a Clear pressed meanwhile queues behind the
+// action instead of overtaking it.
+export type LanguageQuery = () => Promise<ExplanationLanguage>
+
+const assumeChinese: LanguageQuery = async () => 'zh-Hans'
 
 export type PageWordEventInput = {
   eventId: string
@@ -306,6 +312,7 @@ export type PageWordEventInput = {
 const claimSentence = (
   start: StoredPanelHistory,
   event: SentenceEventInput,
+  language: ExplanationLanguage,
   now: number
 ): Draft => {
   if (start.claimedSentenceEventIds.includes(event.eventId)) {
@@ -377,7 +384,6 @@ const claimSentence = (
     const anchorWord = event.word?.trim() || ''
     const clickedWord = anchorWord.toLowerCase()
     const anchorKey = wordCardKey(clickedWord)
-    const language = event.explanationLanguage ?? 'zh-Hans'
     const anchorId = wordCardId(anchorKey, language)
     const needsSentence =
       !findSentence(state.entries, id) ||
@@ -720,11 +726,13 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
   // one with an expired Undo stash dropped and timed-out loading cards swept
   // (ADR-090 Decisions 5 and 7). A failed write commits nothing: no plan, the
   // error is logged, and the caller's event stays unclaimed.
-  const transact = (
+  const transact = <Input = void>(
     tabId: number,
-    mutator: Mutator
+    mutator: Mutator<Input>,
+    query?: () => Promise<Input>
   ): Promise<TransactionOutcome> =>
     deps.requestLock(panelHistoryLockName(tabId), async () => {
+      const input = (query ? await query() : undefined) as Input
       const key = panelHistoryKey(tabId)
       const now = deps.now()
       const base = (await deps.storage.get(key)) ?? emptyPanelHistory()
@@ -732,7 +740,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
       const swept = sweepTimedOut(state.entries, now, timeoutMs)
       if (swept !== state.entries) state = { ...state, entries: swept }
 
-      const drafted = mutator(state, now)
+      const drafted = mutator(state, now, input)
       if (drafted.state === state && state === base) {
         return { committed: true, plan: [], state }
       }
@@ -768,9 +776,16 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
     /** Mount / timer sweep: persists timed-out cards as error (Decision 5). */
     sweep: (tabId: number) => transact(tabId, state => ({ state })),
 
-    claimSentenceEvent: (tabId: number, event: SentenceEventInput) =>
-      transact(tabId, (state, now) =>
-        fromDraft(claimSentence(state, event, now))
+    claimSentenceEvent: (
+      tabId: number,
+      event: SentenceEventInput,
+      languageQuery: LanguageQuery = assumeChinese
+    ) =>
+      transact(
+        tabId,
+        (state, now, language: ExplanationLanguage) =>
+          fromDraft(claimSentence(state, event, language, now)),
+        languageQuery
       ),
 
     claimPageWordEvent: (tabId: number, event: PageWordEventInput) =>
@@ -861,11 +876,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
           : { state }
       ),
 
-    removeCard: (
-      tabId: number,
-      sentenceId: string | undefined,
-      id: string
-    ) =>
+    removeCard: (tabId: number, sentenceId: string | undefined, id: string) =>
       transact(tabId, state => ({
         state: {
           ...state,
@@ -1036,11 +1047,7 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
       }),
 
     /** Retry of a word/phrase card's context half (or its whole chain). */
-    retryContext: (
-      tabId: number,
-      sentenceId: string | undefined,
-      id: string
-    ) =>
+    retryContext: (tabId: number, sentenceId: string | undefined, id: string) =>
       transact(tabId, (state, now) => {
         const card = findCard(state.entries, sentenceId, id)
         const sentence = sentenceId
@@ -1165,58 +1172,62 @@ export function createPanelHistoryStore(deps: PanelHistoryStoreDeps) {
       rawWord: string,
       sentence: string,
       sentenceId: string,
-      language: ExplanationLanguage = 'zh-Hans'
+      languageQuery: LanguageQuery = assumeChinese
     ) =>
-      transact(tabId, (start, now) => {
-        const word = rawWord.toLowerCase()
-        const key = wordCardKey(word)
-        const id = wordCardId(key, language)
-        const existing = findCard(start.entries, sentenceId, id)
-        if (existing) {
+      transact(
+        tabId,
+        (start, now, language: ExplanationLanguage) => {
+          const word = rawWord.toLowerCase()
+          const key = wordCardKey(word)
+          const id = wordCardId(key, language)
+          const existing = findCard(start.entries, sentenceId, id)
+          if (existing) {
+            return {
+              state: {
+                ...start,
+                entries: reorderOrInsertCard(
+                  start.entries,
+                  sentenceId,
+                  id,
+                  () => existing
+                ),
+              },
+            }
+          }
+          const alloc = allocateToken(start)
           return {
             state: {
-              ...start,
+              ...alloc.state,
               entries: reorderOrInsertCard(
-                start.entries,
+                alloc.state.entries,
                 sentenceId,
                 id,
-                () => existing
+                () => ({
+                  word,
+                  key,
+                  explanationLanguage: language,
+                  token: alloc.token,
+                  startedAt: now,
+                  dictionaryStatus: 'loading',
+                  contextStatus: 'loading',
+                })
               ),
             },
-          }
-        }
-        const alloc = allocateToken(start)
-        return {
-          state: {
-            ...alloc.state,
-            entries: reorderOrInsertCard(
-              alloc.state.entries,
-              sentenceId,
-              id,
-              () => ({
+            plan: [
+              {
+                type: 'fetchWordContext',
                 word,
+                sentence,
+                sentenceId,
                 key,
-                explanationLanguage: language,
                 token: alloc.token,
-                startedAt: now,
-                dictionaryStatus: 'loading',
-                contextStatus: 'loading',
-              })
-            ),
-          },
-          plan: [
-            {
-              type: 'fetchWordContext',
-              word,
-              sentence,
-              sentenceId,
-              key,
-              token: alloc.token,
-              counts: true,
-            },
-          ],
-        }
-      }),
+                counts: true,
+              },
+            ],
+          }
+        },
+        languageQuery
+      ),
 
     /**
      * The context half of a dictionary-then-context chain is about to be

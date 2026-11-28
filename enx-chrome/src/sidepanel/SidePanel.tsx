@@ -1028,14 +1028,17 @@ function SidePanelContent() {
         wordStatesRef.current = { ...wordStatesRef.current, ...carriedStates }
         setWordStates(prev => ({ ...prev, ...carriedStates }))
       }
-      const result = await store.claimSentenceEvent(tabId, {
-        explanationLanguage: await assumedLanguage(),
-        eventId: event.eventId,
-        sentence: event.sentence,
-        word: event.word,
-        phrase: event.phrase,
-        wordStates: event.wordStates,
-      })
+      const result = await store.claimSentenceEvent(
+        tabId,
+        {
+          eventId: event.eventId,
+          sentence: event.sentence,
+          word: event.word,
+          phrase: event.phrase,
+          wordStates: event.wordStates,
+        },
+        assumedLanguage
+      )
       if (!result.committed) return
       publish(result.state)
       dispatchPlanRef.current(result.plan)
@@ -1608,14 +1611,8 @@ function SidePanelContent() {
 
   const handleWordClick = useCallback(
     (rawWord: string, sentence: string, sentenceId: string) =>
-      runAction(async id =>
-        store.clickWord(
-          id,
-          rawWord,
-          sentence,
-          sentenceId,
-          await assumedLanguage()
-        )
+      runAction(id =>
+        store.clickWord(id, rawWord, sentence, sentenceId, assumedLanguage)
       ),
     [runAction, store]
   )
