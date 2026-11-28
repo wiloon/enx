@@ -7,16 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"enx-api/config"
 	"enx-api/ecdict"
 	"enx-api/ecdict/ecdicttest"
 	"enx-api/platform/clerktest"
-	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 const (
@@ -48,26 +48,25 @@ func adminDictEnvWithConfig(t *testing.T, cfg *config.Config) (baseURL string, a
 
 // adminDictEnvServed is adminDictEnvWithConfig with the server started by
 // serve, for tests that wire the router differently (e.g. a fake Stripe).
-func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T, *config.Config) (*httptest.Server, func())) (baseURL string, adminToken, plainToken string) {
+func adminDictEnvServed(t *testing.T, cfg *config.Config, serve func(*testing.T, *gorm.DB, *config.Config) (*httptest.Server, func())) (baseURL string, adminToken, plainToken string) {
 	t.Helper()
 
 	env := clerktest.NewEnv(t)
 	cfg.Clerk = env.Config()
 	cfg.Admin.AuthSubjects = []string{adminSub}
 
-	dbPath := filepath.Join(t.TempDir(), "enx-admin-dict.db")
-	sqlitex.Init(dbPath)
-	if sqlitex.DB == nil {
-		t.Fatal("sqlitex.DB is nil after Init")
+	db := sqlitextest.Open(t)
+	if db == nil {
+		t.Fatal("db is nil after Open")
 	}
 	t.Cleanup(func() {
-		sqlitex.DB.Exec("DELETE FROM users WHERE auth_subject IN (?, ?)", adminSub, nonAdminSub)
-		sqlitex.DB.Exec("DELETE FROM words WHERE english IN (?, ?, ?)", "hello", "running", "serendipity")
+		db.Exec("DELETE FROM users WHERE auth_subject IN (?, ?)", adminSub, nonAdminSub)
+		db.Exec("DELETE FROM words WHERE english IN (?, ?, ?)", "hello", "running", "serendipity")
 	})
 
 	seedEcdict(t)
 
-	ts, done := serve(t, cfg)
+	ts, done := serve(t, db, cfg)
 	t.Cleanup(done)
 
 	adminToken = env.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com", "name": "admin"})

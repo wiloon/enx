@@ -780,7 +780,7 @@ func TestInit_ReturnsOpenErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := InitWithLogLevel(filepath.Join(file, "enx.db"), "warn"); err == nil {
+	if _, err := InitWithLogLevel(filepath.Join(file, "enx.db"), "warn"); err == nil {
 		t.Fatal("Init under a file succeeded, want an error")
 	}
 }

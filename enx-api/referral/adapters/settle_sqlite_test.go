@@ -25,7 +25,7 @@ var settleAt = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 func newFileDB(t *testing.T) {
 	t.Helper()
 	prev := sqlitex.DB
-	if err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
+	if _, err := sqlitex.InitWithLogLevel(filepath.Join(t.TempDir(), "enx.db"), "warn"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sqlitex.DB = prev })

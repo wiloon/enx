@@ -15,6 +15,7 @@ import (
 	"enx-api/utils/sqlitex"
 
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 func billingMeRoute(t *testing.T) (*httptest.Server, string) {
@@ -24,8 +25,10 @@ func billingMeRoute(t *testing.T) (*httptest.Server, string) {
 	cfg := config.Default()
 	cfg.Clerk = jwks.Config()
 
-	if err := openBillingDatabase(t, func() error {
-		return initializeBillingDatabase(filepath.Join(t.TempDir(), "billing-me.db"), "error")
+	var db *gorm.DB
+	if err := openBillingDatabase(t, func() (err error) {
+		db, err = initializeBillingDatabase(filepath.Join(t.TempDir(), "billing-me.db"), "error")
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +40,7 @@ func billingMeRoute(t *testing.T) (*httptest.Server, string) {
 			t.Fatal(err)
 		}
 	}
-	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
+	server := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), nil, nil))
 	t.Cleanup(server.Close)
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_billing_me", "email": "billing@example.com"})
 	return server, token

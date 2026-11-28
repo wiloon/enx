@@ -3,7 +3,6 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -14,9 +13,11 @@ import (
 	"enx-api/metrics"
 	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 // ADR-062 end to end: account deletion, disabling, signing out, and one
@@ -61,6 +62,7 @@ type accountEnv struct {
 	base  string
 	clerk *fakeClerkBackend
 	sign  func(sub, email string) string
+	db    *gorm.DB
 }
 
 const accountPlainEmail = "plain@example.com"
@@ -74,14 +76,14 @@ func newAccountEnv(t *testing.T) *accountEnv {
 	cfg.Clerk = jwks.Config()
 	cfg.Admin.AuthSubjects = []string{adminSub}
 
-	sqlitex.Init(filepath.Join(t.TempDir(), "enx-account.db"))
-	if sqlitex.DB == nil {
-		t.Fatal("sqlitex.DB is nil after Init")
+	db := sqlitextest.Open(t)
+	if db == nil {
+		t.Fatal("db is nil after Open")
 	}
 
-	e := &accountEnv{clerk: &fakeClerkBackend{}}
+	e := &accountEnv{clerk: &fakeClerkBackend{}, db: db}
 	gin.SetMode(gin.TestMode)
-	ts := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, e.clerk.client(t)))
+	ts := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), nil, e.clerk.client(t)))
 	t.Cleanup(ts.Close)
 	e.base = ts.URL
 	e.sign = func(sub, email string) string {
@@ -93,7 +95,7 @@ func newAccountEnv(t *testing.T) *accountEnv {
 func (e *accountEnv) userID(t *testing.T, sub string) string {
 	t.Helper()
 	var u sqlitex.User
-	if err := sqlitex.DB.Where("auth_subject = ?", sub).First(&u).Error; err != nil {
+	if err := e.db.Where("auth_subject = ?", sub).First(&u).Error; err != nil {
 		t.Fatalf("load user %s: %v", sub, err)
 	}
 	return u.Id
@@ -125,8 +127,8 @@ func TestE2E_DeleteOwnAccountRemovesItAndTheEmailGetsNoSecondTrial(t *testing.T)
 		t.Fatalf("Clerk calls = %v, want the Clerk user deleted", got)
 	}
 	var users, ledger int64
-	sqlitex.DB.Model(&sqlitex.User{}).Where("id = ?", userID).Count(&users)
-	sqlitex.DB.Model(&sqlitex.CreditTransaction{}).Where("user_id = ?", userID).Count(&ledger)
+	e.db.Model(&sqlitex.User{}).Where("id = ?", userID).Count(&users)
+	e.db.Model(&sqlitex.CreditTransaction{}).Where("user_id = ?", userID).Count(&ledger)
 	if users != 0 || ledger != 1 {
 		t.Fatalf("after deletion: %d user row(s), %d ledger row(s); want 0 and the trial grant row kept", users, ledger)
 	}

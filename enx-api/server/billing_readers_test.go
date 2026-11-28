@@ -5,7 +5,6 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"enx-api/metrics"
 	"enx-api/platform/clerktest"
 	"enx-api/utils/sqlitex"
+	"enx-api/utils/sqlitex/sqlitextest"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -24,19 +24,19 @@ func TestAdminRouteUsesCutoverReader(t *testing.T) {
 	cfg.Clerk = jwks.Config()
 	cfg.Admin.AuthSubjects = []string{adminSub}
 
-	sqlitex.Init(filepath.Join(t.TempDir(), "route.db"))
-	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
+	db := sqlitextest.Open(t)
+	if _, err := sqlitex.MigrateSubscriptionOwnership(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
+	if err := db.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"sub_a", "sub_b"} {
-		if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", id, "target", "active", "cus_1").Error; err != nil {
+		if err := db.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", id, "target", "active", "cus_1").Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
+	server := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), nil, nil))
 	defer server.Close()
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": adminSub, "email": "admin@example.com"})
 	code, body := doJSON(t, http.MethodGet, server.URL+"/api/admin/users?q=target@example.com", token)
@@ -56,31 +56,31 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 
 	cfg.Stripe.Quota.DictionaryLookupDailyFree = 1
 	cfg.Stripe.Quota.DictionaryLookupDailyPaid = 1
-	sqlitex.Init(filepath.Join(t.TempDir(), "quota-route.db"))
-	if _, err := sqlitex.MigrateSubscriptionOwnership(sqlitex.DB); err != nil {
+	db := sqlitextest.Open(t)
+	if _, err := sqlitex.MigrateSubscriptionOwnership(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
+	if err := db.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "target", "clerk_target", "target@example.com").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "conflict", "target", "active", "cus_1").Error; err != nil {
+	if err := db.Exec("INSERT INTO subscriptions (stripe_subscription_id, user_id, status, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)", "conflict", "target", "active", "cus_1").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Create(&sqlitex.Word{Id: "w1", English: "example"}).Error; err != nil {
+	if err := db.Create(&sqlitex.Word{Id: "w1", English: "example"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	setUsed := func(userID string, n int64) {
 		t.Helper()
-		if err := sqlitex.DB.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", userID).Error; err != nil {
+		if err := db.Exec("DELETE FROM dictionary_quota_usage WHERE user_id = ?", userID).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := sqlitex.DB.Create(&sqlitex.DictionaryQuotaUsage{UserID: userID, UTCDay: time.Now().UTC().Format("2006-01-02"), Used: n}).Error; err != nil {
+		if err := db.Create(&sqlitex.DictionaryQuotaUsage{UserID: userID, UTCDay: time.Now().UTC().Format("2006-01-02"), Used: n}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
 	useQuota := func() { setUsed("target", 1) }
 	useQuota()
-	server := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
+	server := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), nil, nil))
 	defer server.Close()
 	token := jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_target", "email": "target@example.com"})
 	status, prefs := doJSON(t, http.MethodGet, server.URL+"/api/me/preferences", token)
@@ -89,7 +89,7 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 		t.Fatalf("a conflict made AI fallback effective: %d %v", status, prefs)
 	}
 	cfg.Stripe.Quota.DictionaryLookupDailyPaid = 5
-	tierServer := httptest.NewServer(setupRouterWithClients(cfg, metrics.New(), nil, nil))
+	tierServer := httptest.NewServer(setupRouterWithClients(db, cfg, metrics.New(), nil, nil))
 	defer tierServer.Close()
 	tierCode, tierBody := doJSON(t, http.MethodGet, tierServer.URL+"/api/translate?word=example", token)
 	if tierCode != http.StatusTooManyRequests {
@@ -115,10 +115,10 @@ func TestQuotaRoutesUseCutoverReader(t *testing.T) {
 
 	// ADR-093: no accepted subscription and a top-up balance is the paid tier
 	// (free=1, paid=5 on tierServer).
-	if err := sqlitex.DB.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "topup", "clerk_topup", "topup@example.com").Error; err != nil {
+	if err := db.Exec("INSERT INTO users (id, auth_subject, email) VALUES (?, ?, ?)", "topup", "clerk_topup", "topup@example.com").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlitex.DB.Create(&sqlitex.CreditAccount{UserId: "topup", TopupBalance: 1, UpdatedAt: 1}).Error; err != nil {
+	if err := db.Create(&sqlitex.CreditAccount{UserId: "topup", TopupBalance: 1, UpdatedAt: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
 	topupToken := jwks.SignSessionToken(t, jwt.MapClaims{"sub": "clerk_topup", "email": "topup@example.com"})

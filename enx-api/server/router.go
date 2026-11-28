@@ -46,7 +46,6 @@ import (
 	"enx-api/translate"
 	"enx-api/userstats"
 	"enx-api/utils/logger"
-	"enx-api/utils/sqlitex"
 	"enx-api/wordlist"
 	"os"
 	"strings"
@@ -54,6 +53,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	stripeSDK "github.com/stripe/stripe-go/v86"
+	"gorm.io/gorm"
 )
 
 // GinMode ties gin's mode to the log level: debug keeps gin's route dump and
@@ -65,8 +65,10 @@ func GinMode(logLevel string) string {
 	return gin.ReleaseMode
 }
 
-func setupRouter(cfg *config.Config, m *metrics.Metrics) *gin.Engine {
-	return setupRouterWithStripe(cfg, m, StripeClient(cfg))
+// setupRouter builds the router on db, the application database. db may be nil
+// only for a router that never reaches a route that uses it.
+func setupRouter(db *gorm.DB, cfg *config.Config, m *metrics.Metrics) *gin.Engine {
+	return setupRouterWithStripe(db, cfg, m, StripeClient(cfg))
 }
 
 // StripeClient is the Stripe client the config names, or nil when billing is
@@ -83,8 +85,8 @@ func StripeClient(cfg *config.Config) *stripeSDK.Client {
 
 // setupRouterWithStripe is setupRouter on the given Stripe client (nil turns
 // billing off). End-to-end tests hand in a client backed by a local fake.
-func setupRouterWithStripe(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client) *gin.Engine {
-	return setupRouterWithClients(cfg, m, stripeClient, clerkBackend(cfg.Clerk))
+func setupRouterWithStripe(db *gorm.DB, cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client) *gin.Engine {
+	return setupRouterWithClients(db, cfg, m, stripeClient, clerkBackend(cfg.Clerk))
 }
 
 // clerkBackend is the Clerk Backend API client (ADR-062 Decision 8); nil
@@ -100,11 +102,11 @@ func clerkBackend(c config.Clerk) account.ExternalIdentity {
 
 // setupRouterWithClients is setupRouterWithStripe with the Clerk Backend API
 // client given too (nil: not configured).
-func setupRouterWithClients(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity) *gin.Engine {
-	return setupRouterWithBilling(cfg, m, stripeClient, clerk, nil)
+func setupRouterWithClients(db *gorm.DB, cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity) *gin.Engine {
+	return setupRouterWithBilling(db, cfg, m, stripeClient, clerk, nil)
 }
 
-func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity, assembly *billingapp.Assembly) *gin.Engine {
+func setupRouterWithBilling(db *gorm.DB, cfg *config.Config, m *metrics.Metrics, stripeClient *stripeSDK.Client, clerk account.ExternalIdentity, assembly *billingapp.Assembly) *gin.Engine {
 	router := gin.New()
 
 	// Metrics and the request log wrap Recovery, so a recovered panic is
@@ -359,7 +361,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 	apiGroup.POST("/reader/documents", reader.CreateDocumentHandler)
 	apiGroup.GET("/reader/documents", reader.ListDocumentsHandler)
 	apiGroup.GET("/reader/documents/:id", reader.GetDocumentHandler)
-	apiGroup.PUT("/reader/documents/:id", reader.NewSaveDocumentHandler(saving.NewSaveService(repo.ReaderDocuments{DB: sqlitex.DB})))
+	apiGroup.PUT("/reader/documents/:id", reader.NewSaveDocumentHandler(saving.NewSaveService(repo.ReaderDocuments{DB: db})))
 	apiGroup.DELETE("/reader/documents/:id", reader.DeleteDocumentHandler)
 
 	// Reading statistics (ADR-028). Deliberately NOT on the metered path:
@@ -423,7 +425,7 @@ func setupRouterWithBilling(cfg *config.Config, m *metrics.Metrics, stripeClient
 		// The sign-up funnel: counts per weekly cohort, allowlisted admins
 		// left out of every one.
 		funnelhttp.Register(adminDict, funnel.NewService(
-			funneladapters.Repo{DB: sqlitex.DB}, admins.Contains, time.Now))
+			funneladapters.Repo{DB: db}, admins.Contains, time.Now))
 		// ADR-062 Decision 4-7: the admin's account actions. An account in
 		// ADMIN_AUTH_SUBJECTS can be neither disabled nor deleted.
 		adminDict.POST("/users/:id/revoke-sessions", accountHandler.RevokeSessions)

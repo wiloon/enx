@@ -232,7 +232,7 @@ func TestSQLLogLevel(t *testing.T) {
 
 func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "billing.db")
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := MigrateWebhookReceipts(DB); err != nil {
@@ -252,7 +252,7 @@ func TestCutoverInitPreservesMigratedBillingSchema(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := InitWithLogLevel(path, "error"); err != nil {
+	if _, err := InitWithLogLevel(path, "error"); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
