@@ -1,6 +1,6 @@
 // ADR-095: the popup in a browser that never signed in.
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 jest.mock('@/config/env')
@@ -56,4 +56,32 @@ it('shows a failed enable once', async () => {
 
   await screen.findAllByText("Couldn't turn on Catglish")
   expect(screen.getAllByText("Couldn't turn on Catglish")).toHaveLength(1)
+})
+
+it('asks the background which mode a signed-out browser reads in', async () => {
+  render(<Popup />)
+
+  await screen.findByRole('button', { name: /Read with Catglish/ })
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'learningAccess',
+  })
+})
+
+it('keeps the signed-out popup when the mode cannot be fetched', async () => {
+  const sendMessage = chrome.runtime.sendMessage as jest.Mock
+  sendMessage.mockImplementation(async () => {
+    throw new Error('Could not establish connection.')
+  })
+
+  render(<Popup />)
+
+  await waitFor(() => {
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'learningAccess' })
+  })
+  // Let the rejected reply settle before asserting on what it left behind.
+  await screen.findByRole('heading', { name: 'Sign in to Catglish' })
+  await Promise.resolve()
+  expect(
+    screen.queryByRole('button', { name: /Read with Catglish/ })
+  ).not.toBeInTheDocument()
 })

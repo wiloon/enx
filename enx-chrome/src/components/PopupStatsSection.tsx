@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import PopupStatsCard from '@/components/PopupStatsCard'
+import { sendToBackground } from '@/lib/messaging'
 import type { PopupSummary } from '@/lib/popupSummary'
 
 export default function PopupStatsSection() {
@@ -12,8 +13,7 @@ export default function PopupStatsSection() {
 
   useEffect(() => {
     let cancelled = false
-    chrome.runtime
-      .sendMessage({ type: 'GET_POPUP_SUMMARY' })
+    sendToBackground({ type: 'GET_POPUP_SUMMARY' })
       .then((response: PopupSummary) => {
         if (!cancelled) setSummary(response)
       })
