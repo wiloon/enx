@@ -37,7 +37,7 @@ Catglish 的释义只有英→中。线上第一位真实用户（注册的免�
 - 保留：词头、词性、义项释义、义项标签、例句、第一个 IPA、form-of / alt-of 关系（`was` → `be`）。丢掉：词源、各语种翻译、分类、同义词等关系、带出处的文学引文、残留的 wiki 标记。
 - 专有名词（`pos = name`，约 20 万条，人名地名）**保留**。英文模式下音标用 Wiktionary 的 IPA（美式、英式各一个），不用 ECDICT 的音标。
 - 例句只保留真正的例句（#1295）：除带出处的引文外，整条丢掉（不截短）以关系标签加冒号开头的（`Synonym(s)`、`Near-synonym(s)`、`Antonym(s)`、`Hypernym(s)`、`Hyponym(s)`、`Meronym(s)`、`Holonym(s)`、`Coordinate term(s)`、`Alternative form(s)`、`See also`、`Former name(s)`、`Pitch contour`）、以 `http(s)://` 开头的，以及以日期加逗号开头的（年份、用连字符或短破折号连接的年份区间、`c. 1851`、日月年）。
-- **ECDICT 只在构建时用作「这个词只是变形」的信号**（#1295）：有自己词条、又是另一个词变形的键，如果它的 ECDICT `translation` 只含原形引用（`be的过去式` 这类，可带词性前缀；任何其他文字都算它自己的义项），就记进 `lemma_preferred` 表；ECDICT 没有这个词或 `translation` 为空时，自己的词条全是专有名词（`pos = name`）才记。具体语法见 #1295。中文不写进文件。
+- **ECDICT 只在构建时用作「这个词只是变形」的信号**（#1295）：有自己词条、又是另一个词变形的键，如果它的 ECDICT `translation` 只含原形引用（`be的过去式`、`have的第三人称单数现在式`、`be的现在时复数或第二人称单数` 这类，可带词性前缀；任何其他文字都算它自己的义项），就记进 `lemma_preferred` 表；ECDICT 没有这个词或 `translation` 为空时，自己的词条全是专有名词（`pos = name`）才记。具体语法见 #1295。中文不写进文件。
 - `schema_version` 保持 1：读取方可以缺省的新增表不升版本号。服务端打开文件时检查一次有没有这张表，没有就当作没有任何标记；旧版服务端忽略这张表，回滚后仍能打开新文件。
 - 过滤带 `archaic`、`obsolete`、`historical` 标签的义项。词性的先后顺序有 ECDICT 词性频率字段（`pos`）时按它排，没有时按 Wiktionary 原顺序。
 - 社区没有 Wiktextract 的标准 SQLite 格式，各工具自己定义。我们的表沿用 Wiktextract 的字段名：`meta`（数据来源、日期、版本、许可证、计数）、`entries`、`senses`、`examples`、`forms`（变形 → 原形）、`form_ipa`（只有变形义项、没有自己词条的词的音标，如 `went`）。具体表结构在 #1233。查询键的规则是 `wordform` 里的一个导出函数，构建程序和服务端查词调用同一个。
@@ -54,7 +54,7 @@ Catglish 的释义只有英→中。线上第一位真实用户（注册的免�
 
 ### 5. 查词：选了英文时走英英数据源，绝不退回中文
 
-- 解释语言为 `en` 时，`dictionary.Service.Resolve`（ADR-018）释义来自 Wiktionary 文件，不用 `words` / ECDICT 的释义（它们只用来确定词的身份，见下）。变形词先跳回原形：`was` 显示 `be` 的词条，标题下注明 "past tense of be"。
+- 解释语言为 `en` 时，`dictionary.Service.Resolve`（ADR-018）释义来自 Wiktionary 文件，不用 `words` / ECDICT 的释义（它们只用来确定词的身份，见下）。没有自己词条的变形词，或被记进 `lemma_preferred`（决策 3）的词，跳回原形：`was` 显示 `be` 的词条，标题下注明 "past tense of be"；有自己词条的词（如 `left`）显示自己的词条，见下。
 - **短语这一版仍走 AI**：浮层点词只接受单个词（`QUERY /api/dictionary/entries` 拒收带空格的条目），划选多个词走 ADR-008 的语境查询，本来就由 AI 解释；英英模式下 AI 用简单英文解释（#1237）。让短语先查内置词典（ECDICT / Wiktionary）以后单独做（#1241，P3）。
 - 被点的词自己有词条时显示它自己的词条，不加变形注记（所有者决定，#1295；`left` 只显示自己的词条）。只有变形关系时，或者它被记进 `lemma_preferred`（决策 3）时，才跳回原形并注明（`ran`："past tense of run"）；原形取第一条指向别的键的变形关系，音标仍是被点词形自己的。
 - **查不到时**走 AI 兜底，AI 输出英英释义和例句。资格沿用 ADR-045：订阅、充值余额或未过期的试用积分（ADR-048）都可以用；没有订阅的用户自动 AI 兜底默认关，需要手动点「用 AI 查询」。没有 AI 资格的免费用户看到「没有找到英文释义」和升级入口；#1170 的每日 AI 额度上线后，他们每天也能用几次。
